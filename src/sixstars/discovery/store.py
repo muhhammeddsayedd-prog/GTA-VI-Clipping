@@ -11,8 +11,9 @@ from typing import Any
 
 from psycopg.types.json import Jsonb
 
-from sixstars import db, jobs
+from sixstars import db, events, jobs
 from sixstars.discovery.assign import ACTIVE_STATUSES, Session, SlotPlan
+from sixstars.discovery.blocked import BLOCKED_REASON_PREFIX, BlockedVideo, Queue
 from sixstars.discovery.models import FORBIDDEN_TIERS, Creator, Scored
 
 VOD_JOB_TYPE = "vod.process"
@@ -98,10 +99,76 @@ def clip_view_population() -> list[float]:
     return [float(row["avg_clip_views"]) for row in rows]
 
 
-def videos_waiting() -> int:
-    """Videos queued for the VOD lane that it has not started yet (status `new`)."""
-    row = db.fetch_one("select count(*) as n from videos where status = 'new'")
-    return int(row["n"]) if row is not None else 0
+def video_queues() -> dict[str, Queue]:
+    """The open videos per platform: waiting for the VOD lane (status `new`), waiting out a download
+    block (status `new` with a `download_blocked` reason) and in work (`processing`)."""
+    rows = db.fetch_all(
+        """
+        select platform,
+               count(*) filter (where status = 'new' and not coalesce(starts_with(skip_reason, %s), false))
+                 as waiting,
+               count(*) filter (where status = 'new' and starts_with(skip_reason, %s)) as blocked,
+               count(*) filter (where status = 'processing') as processing
+        from videos
+        where status in ('new', 'processing')
+        group by platform
+        """,
+        (BLOCKED_REASON_PREFIX, BLOCKED_REASON_PREFIX),
+    )
+    return {
+        str(row["platform"]): Queue(int(row["waiting"]), int(row["blocked"]), int(row["processing"]))
+        for row in rows
+    }
+
+
+def blocked_waiting(platforms: Collection[str]) -> list[BlockedVideo]:
+    """The videos of `platforms` that wait out a download block."""
+    if not platforms:
+        return []
+    rows = db.fetch_all(
+        """
+        select id::text as id, platform, created_at from videos
+        where status = 'new' and starts_with(skip_reason, %s) and platform = any(%s)
+        """,
+        (BLOCKED_REASON_PREFIX, sorted(platforms)),
+    )
+    return [BlockedVideo(str(row["id"]), str(row["platform"]), row["created_at"]) for row in rows]
+
+
+def give_up_blocked(video_ids: Sequence[str], reason: str) -> list[str]:
+    """Close videos that waited out a block for too long: status `skipped` with `reason`, their queued
+    jobs cancelled, one `video.skipped` event each. Returns the ids that were closed (a video the VOD lane
+    took in the meantime is left alone)."""
+    if not video_ids:
+        return []
+    with db.transaction():
+        rows = db.fetch_all(
+            """
+            update videos set status = 'skipped', skip_reason = %s, updated_at = now()
+            where id = any(%s::uuid[]) and status = 'new' and starts_with(skip_reason, %s)
+            returning id::text as id
+            """,
+            (reason[:500], list(video_ids), BLOCKED_REASON_PREFIX),
+        )
+        closed = [str(row["id"]) for row in rows]
+        if closed:
+            # the job of a deferred video carries `vod:<id>` or `vod:<id>:again`: match on the payload
+            db.execute(
+                """
+                update jobs set status = 'cancelled'
+                where status = 'queued' and type = %s and payload->>'video_id' = any(%s)
+                """,
+                (VOD_JOB_TYPE, closed),
+            )
+        for video_id in closed:
+            events.emit(
+                "video.skipped",
+                entity_type="video",
+                entity_id=video_id,
+                message=reason[:500],
+                data={"status": "skipped", "stage": "discovery"},
+            )
+    return closed
 
 
 def approved_hourly_clips() -> int:

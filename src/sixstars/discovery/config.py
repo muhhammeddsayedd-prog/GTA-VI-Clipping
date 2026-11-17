@@ -114,7 +114,14 @@ SOURCES_DEFAULTS: Final[dict[str, Any]] = {
     "discovery.thin_chat_factor": 0.75,
 }
 
-_ALL_DEFAULTS: Final[dict[str, Any]] = {**DEFAULTS, **SOURCES_DEFAULTS}
+# Values of migration 0013 (blocked platforms). Only used when a key is missing.
+BLOCKED_DEFAULTS: Final[dict[str, Any]] = {
+    "discovery.platform_weight": {},
+    "discovery.max_blocked_waiting": 12,
+    "discovery.blocked_platform_stale_s": 7200,
+}
+
+_ALL_DEFAULTS: Final[dict[str, Any]] = {**DEFAULTS, **SOURCES_DEFAULTS, **BLOCKED_DEFAULTS}
 SEARCH_API_MODES: Final[tuple[str, ...]] = ("off", "fallback", "always")
 
 
@@ -152,6 +159,16 @@ def _strings(key: str) -> tuple[str, ...]:
 
 def _weights(key: str) -> dict[str, float]:
     return {str(name): float(value) for name, value in settings.get_dict(key).items()}
+
+
+def _platform_weights(key: str) -> dict[str, float]:
+    """`{platform: factor}`; entries that are not numbers are ignored and a factor is never negative."""
+    values = settings.get_dict(key, dict(_ALL_DEFAULTS[key]))
+    return {
+        str(name).casefold(): max(0.0, float(value))
+        for name, value in values.items()
+        if isinstance(value, int | float) and not isinstance(value, bool)
+    }
 
 
 @dataclass(frozen=True)
@@ -239,6 +256,10 @@ class DiscoveryConfig:
     ytdlp_use_cookies: bool = False
     non_latin_share: float = 0.3
     non_english_terms: tuple[str, ...] = ()
+    # blocked platforms (migration 0013); the defaults leave hand-built configs as they were
+    platform_weight: dict[str, float] = field(default_factory=dict)  # missing platform = 1.0
+    max_blocked_waiting: int = 12
+    blocked_platform_stale_s: int = 7200
 
     @classmethod
     def from_settings(cls) -> "DiscoveryConfig":
@@ -317,4 +338,7 @@ class DiscoveryConfig:
             ytdlp_use_cookies=_bool("discovery.ytdlp_use_cookies"),
             non_latin_share=_float("discovery.non_latin_share"),
             non_english_terms=_strings("discovery.non_english_terms"),
+            platform_weight=_platform_weights("discovery.platform_weight"),
+            max_blocked_waiting=max(0, _int("discovery.max_blocked_waiting")),
+            blocked_platform_stale_s=max(0, _int("discovery.blocked_platform_stale_s")),
         )

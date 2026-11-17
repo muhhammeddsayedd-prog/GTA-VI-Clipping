@@ -21,7 +21,7 @@ from sixstars.clients.anthropic_client import InvalidModelOutput
 from sixstars.clients.fakes import FakeAnthropicClient
 from sixstars.factory import tools
 from sixstars.factory.pipeline import RenderInput
-from sixstars.vod import cleanup, process, sections, store
+from sixstars.vod import cleanup, health, process, sections, store
 from sixstars.vod.common import Deps
 from sixstars.vod.config import DEFAULTS, VodConfig
 
@@ -562,6 +562,14 @@ def test_a_bot_check_defers_the_video_and_notifies_once(lane: Lane) -> None:
     )
     assert "PROXY_URL" in outbox[0]["body"] and "not a bot" in outbox[0]["body"]
     assert "1 video(s) are waiting" not in outbox[0]["body"] and "2 video(s) are waiting" in outbox[0]["body"]
+    # The block is on record for discovery, which then queues no new YouTube videos.
+    record = settings.get(health.STATE_KEY)["youtube"]
+    assert (record["blocks"], record["since"], record["last_blocked_at"]) == (
+        1,
+        NOW.isoformat(),
+        NOW.isoformat(),
+    )
+    assert health.blocked(health.load(), NOW, 7200) == {"youtube": NOW}
 
     # A second video of the same platform does not even try: no chat, no AI, no download.
     asked_before = (lane.claude.asked(calls.P1), len(lane.ytdlp.commands), lane.chat_calls)
@@ -585,6 +593,7 @@ def test_a_blocked_backlog_drains_once_downloads_work(lane: Lane) -> None:
     make_due()
     assert lane.run_next().status == "deferred"
     assert video_row(video_id)["status"] == "new"
+    assert settings.get(health.STATE_KEY)["youtube"]["blocks"] == 2
     assert len(db.fetch_all("select 1 from notify_outbox")) == 1
     assert [job["dedupe_key"] for job in queued("vod.process")] == [f"vod:{video_id}"]  # the key flipped back
 
@@ -596,6 +605,7 @@ def test_a_blocked_backlog_drains_once_downloads_work(lane: Lane) -> None:
 
     assert outcome.status == "done" and outcome.queued == 2
     assert video_row(video_id)["status"] == "done" and video_row(video_id)["skip_reason"] is None
+    assert settings.get(health.STATE_KEY) == {}  # a window came through: the record of the block is gone
     assert lane.claude.asked(calls.P1) == 1  # the verdicts of the first attempt were kept
     assert "video.failed" not in video_events(video_id)
 

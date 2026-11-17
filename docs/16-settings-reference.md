@@ -59,7 +59,7 @@ Defaults below are the production values from `supabase/migrations/0002_seed_set
 | `discovery.chat_replay_bonus` | `5` | Points added to a video with a chat replay, scaled by its estimated chat size. (M09) |
 | `discovery.passive_views_engagement` | `0.005` | A video whose (likes + 2 x comments) / views is below this was viewed passively (Shorts feed): its views-per-hour score and chat estimate are scaled down in proportion. 0 switches this off. (M09) |
 | `discovery.max_vod_per_creator_per_run` | `1` | Max new videos of one creator queued per discovery run. (M09) |
-| `discovery.max_vod_backlog` | `24` | Discovery queues no more videos while this many are waiting for the VOD lane (videos.status = new). (M09) |
+| `discovery.max_vod_backlog` | `24` | Discovery queues no more videos while this many are waiting for the VOD lane (videos.status = new). Videos waiting out a download block are not counted. (M09, fix-blocked-platform-queue) |
 | `discovery.permission_recheck_days` | `14` | Days after which a creator's channel description is read again (prompt P6). (M09) |
 | `discovery.require_permission_check` | `true` | When true a creator gets no live slot and no video job before the first permission check (P6) has run. (M09) |
 | `discovery.permission_checks_per_run` | `12` | Permission checks made inside one discovery run for creators about to be picked. (M09) |
@@ -90,6 +90,9 @@ Defaults below are the production values from `supabase/migrations/0002_seed_set
 | `discovery.edited_engagement_full` | `0.04` | (likes + 2 x comments) / views at which an edited upload gets the whole discovery.edited_upload_bonus. (hardening-sources) |
 | `discovery.long_stream_min_s` | `3600` | Past streams and raw uploads at least this long are scored by how much chat they have (discovery.thin_chat_factor). (hardening-sources) |
 | `discovery.thin_chat_factor` | `0.75` | Score factor of a long past stream with no chat at all; rises to 1 as the estimated chat replay reaches discovery.chat_min_messages. 1 = off. (hardening-sources) |
+| `discovery.platform_weight` | `{}` | Factor on the trend score per platform, for example `{"twitch": 1.2, "youtube": 0.8}`. A platform that is not named has factor 1; the score stays inside 0 to 100. `{}` = no preference. (fix-blocked-platform-queue) |
+| `discovery.max_blocked_waiting` | `12` | Videos per platform that may wait out a download block (videos.status = new, skip_reason download_blocked). Discovery marks the oldest beyond this as skipped so they do not retry for ever. (fix-blocked-platform-queue) |
+| `discovery.blocked_platform_stale_s` | `7200` | A download block recorded in vod.source_health counts for this many seconds after its last refusal; then discovery queues the platform again. Keep it well above vod.blocked_backoff_s. (fix-blocked-platform-queue) |
 
 ## Live lane
 
@@ -181,6 +184,7 @@ Defaults below are the production values from `supabase/migrations/0002_seed_set
 | `vod.section_exact_cuts` | `false` | true re-encodes each downloaded window so it starts on the exact frame (slow); false copies the streams and relies on the edit list ffmpeg writes. (M08) |
 | `vod.blocked_backoff_s` | `1800` | Downloads refused by the platform (YouTube bot check, rate limit): seconds before videos of that platform are tried again. (M08) |
 | `vod.blocked_notify_interval_s` | `3600` | At most one "downloads are blocked" notification per this many seconds. (M08) |
+| `vod.source_health` | `null` | Written by code: platforms that refuse video downloads from this machine (since, last refusal, count, error). Discovery queues no new videos of a platform listed here; cleared when a download works. (fix-blocked-platform-queue) |
 | `vod.stop_retry_s` | `600` | Seconds a video waits while control.emergency_stop is set. (M08) |
 | `vod.fallback_enabled` | `true` | Use the transcript fallback for videos without a usable chat replay. (M08) |
 | `vod.fallback_below_spikes` | `3` | The transcript fallback also runs when the chat replay gave fewer spikes than this. (M08; 1 until migration 0010) |
