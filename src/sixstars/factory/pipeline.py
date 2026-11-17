@@ -452,6 +452,8 @@ def produce(
             ai_client=deps.ai_client,
             ref_id=clip_id,
             ffmpeg=deps.ffmpeg,
+            pause_s=cfg.snap.pause_s if cfg.snap.vad else 0.0,
+            punctuate_below=cfg.snap.punctuate_below if cfg.snap.enabled else 0.0,
         )
     else:
         transcript = transcripts.WindowTranscript(language="en", original_language=None, words=())
@@ -479,6 +481,7 @@ def produce(
         verdict=item.verdict,
         profanity_hint=writer.profanity_hint(transcript.words, assets.profanity()),
         clip_id=clip_id,
+        snap=cfg.snap,
     )
     started = time.monotonic()
     writing = choose_writing(writer_input)

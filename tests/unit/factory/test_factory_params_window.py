@@ -24,6 +24,8 @@ DOCS = Path(__file__).resolve().parents[3] / "docs" / "16-settings-reference.md"
 def test_fields_match_the_documented_factory_settings_one_to_one() -> None:
     documented = re.findall(r"^\| `(factory\.[a-z_0-9]+)` \|", DOCS.read_text(encoding="utf-8"), flags=re.M)
     assert documented, "no factory.* rows found in docs/16"
+    # `factory.cut_snap` is a rule of the cut, not of the look: `FactoryConfig.snap` reads it.
+    documented.remove("factory.cut_snap")
     assert list(FactoryParams.setting_keys()) == documented
 
 

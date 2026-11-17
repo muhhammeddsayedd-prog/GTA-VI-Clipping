@@ -1,5 +1,6 @@
-"""Settings the factory reads besides `factory.*`: clip length limits, the context pad, the local Whisper
-model and the music limit of the lane's gate profile. Loaded once per render from the `settings` table.
+"""Settings the factory reads besides the look of the clip: clip length limits, the context pad, the
+local Whisper model, the snap-to-pause rule and the music limit of the lane's gate profile. Loaded once
+per render from the `settings` table.
 """
 
 from collections.abc import Mapping
@@ -8,6 +9,7 @@ from typing import Literal
 
 from sixstars import settings
 from sixstars.factory.params import FactoryParams
+from sixstars.factory.pauses import SnapRules
 
 Lane = Literal["spike", "hourly"]
 GateProfile = Literal["hourly", "express"]
@@ -33,6 +35,15 @@ OFFLINE_DEFAULTS: dict[str, object] = {
     "factory.series_label": "6 Stars Moments",
     "factory.bleep": True,
     "factory.music_duck_db": -18,
+    "factory.cut_snap": {
+        "pause_s": 0.4,
+        "start_back_s": 4.0,
+        "start_forward_s": 2.0,
+        "end_forward_s": 3.0,
+        "end_back_s": 2.0,
+        "vad": True,
+        "punctuate_below": 0.02,
+    },
     "spikes.min_len_s": 15,
     "spikes.max_len_s": 60,
     "spikes.context_pad_s": 15,
@@ -69,6 +80,7 @@ class FactoryConfig:
     whisper_model: str
     gate_profile: GateProfile
     max_music_ratio: float
+    snap: SnapRules = SnapRules()
 
     @classmethod
     def from_mapping(cls, values: Mapping[str, object], lane: str) -> "FactoryConfig":
@@ -95,6 +107,7 @@ class FactoryConfig:
             whisper_model=whisper,
             gate_profile=profile,
             max_music_ratio=max(0.0, _number(gate.get("max_music_ratio"), 0.0)),
+            snap=SnapRules.from_setting(values.get("factory.cut_snap")),
         )
 
     @classmethod
@@ -110,6 +123,8 @@ class FactoryConfig:
         values: dict[str, object] = {key: settings.get(key) for key in keys}
         profile = gate_profile_for(lane)
         values[f"gate.{profile}"] = settings.get(f"gate.{profile}", {})
+        # Absent before migration 0011: the snap rule is then switched off.
+        values["factory.cut_snap"] = settings.get("factory.cut_snap", None)
         return cls.from_mapping(values, lane)
 
     @classmethod

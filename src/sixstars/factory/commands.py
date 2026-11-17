@@ -6,6 +6,7 @@ import json
 import shutil
 import tempfile
 from collections.abc import Mapping, Sequence
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
@@ -182,6 +183,8 @@ def render_file(
         if whisper_model:
             overrides["vod.whisper_model"] = whisper_model
         cfg = FactoryConfig.offline(lane, overrides)
+        # Nothing but the file is needed without --ai: no model is asked for sentence ends either.
+        cfg = replace(cfg, snap=replace(cfg.snap, punctuate_below=0.0))
     model = whisper_model or cfg.whisper_model
     deps = Deps(transcriber=default_transcriber(model), skip_music=no_music)
     ai_lane: BudgetKind = "express" if mode == "express" else "vod"

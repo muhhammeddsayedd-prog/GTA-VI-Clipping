@@ -6,6 +6,16 @@ normal renders, the hosted API for express renders, each falling back to the oth
 language is translated to English segment by segment (prompt P8) and the English words are spread over
 each segment's time span. Every time this module returns is in seconds from the start of the window it was
 given ("window time").
+
+Whisper stretches a word across the silence next to it, so a pause between two phrases does not show as a
+gap between two words. When asked to (`pause_s`), the window is also run through the voice activity
+detector that ships with faster-whisper (Silero VAD, a small ONNX model, well under a second for a
+90-second window) and each stretched word is pulled back onto the speech (`pauses.tighten_words`). The
+subtitle lines then break at real pauses and the factory can snap the cut to one.
+
+When Whisper returns English with (almost) no punctuation (`punctuate_below`), the fast model is asked
+where the sentences end (prompt P10) and a full stop is written after those words, so the lines, the clip
+writer and the cut all see sentences again. If that call cannot run the words are used as they are.
 """
 
 import wave
@@ -24,6 +34,7 @@ from sixstars.clients.anthropic_client import AnthropicClient, BudgetKind
 from sixstars.clients.transcribe import Mode, Transcriber, Transcript
 from sixstars.factory import tools
 from sixstars.factory.lines import Word
+from sixstars.factory.pauses import Silence, mark_sentence_ends, sentence_end_share, tighten_words
 from sixstars.factory.window import ClipWindow
 from sixstars.logging import get_logger
 
@@ -36,6 +47,11 @@ SEGMENT_MAX_WORDS = 18
 MIN_WORD_STEP_S = 0.03
 SHARED_START_STEP_S = 0.3
 _SENTENCE_END = (".", "!", "?", "…")
+# Voice activity detection for the pauses (detector tuning, not settings): speech is padded by this much
+# so a soft word ending is not counted as silence, and a tightened word keeps at least this length.
+VAD_SPEECH_PAD_MS = 30
+VAD_MIN_SPEECH_MS = 100
+MIN_TIGHT_WORD_S = 0.05
 # The hosted Whisper API names the language in English; faster-whisper gives the ISO 639-1 code.
 _LANGUAGE_CODES = {
     "english": "en",
@@ -137,6 +153,49 @@ def default_transcriber(whisper_model: str | None = None) -> Transcriber:
     """The transcriber the factory uses: `vod.whisper_model` (or the given model) locally, hosted by
     the `transcribe.express_provider` setting."""
     return Transcriber(whisper_model=whisper_model, model_factory=whisper_factory)
+
+
+def silences_from_speech(
+    speech: Sequence[tuple[float, float]], duration_s: float, min_silence_s: float
+) -> list[Silence]:
+    """The stretches of at least `min_silence_s` between the given speech spans, from time zero to
+    `duration_s`."""
+    silences: list[Silence] = []
+    cursor = 0.0
+    for start, end in sorted(speech):
+        if start - cursor >= min_silence_s:
+            silences.append(Silence(cursor, start))
+        cursor = max(cursor, end)
+    if duration_s - cursor >= min_silence_s:
+        silences.append(Silence(cursor, duration_s))
+    return silences
+
+
+def speech_silences(wav: Path, min_silence_s: float) -> list[Silence]:
+    """Where nobody speaks in a 16 kHz mono WAV file, for at least `min_silence_s` (window time).
+
+    Uses the Silero voice activity detector bundled with faster-whisper, which hears speech over game
+    sound. Returns an empty list when the detector cannot run: the words are then used as they are.
+    """
+    if min_silence_s <= 0:
+        return []
+    try:
+        from faster_whisper.vad import VadOptions, get_speech_timestamps
+
+        samples = read_wav_samples(wav)
+        options = VadOptions(
+            min_silence_duration_ms=int(min_silence_s * 1000),
+            speech_pad_ms=VAD_SPEECH_PAD_MS,
+            min_speech_duration_ms=VAD_MIN_SPEECH_MS,
+        )
+        rate = transcribe_client.AUDIO_SAMPLE_RATE
+        speech = [
+            (item["start"] / rate, item["end"] / rate) for item in get_speech_timestamps(samples, options)
+        ]
+    except Exception as exc:
+        get_logger("factory").warning("pause_detection_failed", error=f"{type(exc).__name__}: {exc}"[:200])
+        return []
+    return silences_from_speech(speech, len(samples) / rate, min_silence_s)
 
 
 def words_from_client(transcript: Transcript, window_s: float) -> list[Word]:
@@ -258,8 +317,15 @@ def transcribe_window(
     ref_id: str | None = None,
     translate: bool = True,
     ffmpeg: str = "ffmpeg",
+    pause_s: float = 0.0,
+    punctuate_below: float = 0.0,
 ) -> WindowTranscript:
     """Transcribe `window` of `source`; words come back in English, in window time.
+
+    With `pause_s` above zero, words stretched across a silence of at least that length are pulled back
+    onto the speech (see the module docstring), so pauses show as gaps between words. With
+    `punctuate_below` above zero, an English transcript in which a smaller share of words than that ends
+    a sentence gets its sentence ends from prompt P10.
 
     `modes` are tried in order (`("local", "hosted")` for a normal render, `("hosted", "local")` for an
     express one); the hosted mode is skipped when no provider has a key or today's budget is used up.
@@ -282,6 +348,9 @@ def transcribe_window(
     if result is None:
         raise TranscriptionFailedError(f"transcription failed in modes {list(modes)}") from last_error
     words = words_from_client(result, window.duration_s)
+    silences = speech_silences(wav, pause_s) if pause_s > 0 and words else []
+    if silences:
+        words = tighten_words(words, silences, MIN_TIGHT_WORD_S)
     original = language_code(result.language)
     translated = False
     if translate and words and not is_english(original):
@@ -291,6 +360,19 @@ def transcribe_window(
         )
         words = spread_words(english)
         translated = True
+    punctuated = False
+    if punctuate_below > 0 and words and not translated and sentence_end_share(words) < punctuate_below:
+        try:
+            ends = calls.sentence_ends(
+                [word.text for word in words], lane=ai_lane, ref_id=ref_id, client=ai_client
+            )
+        except Exception as exc:
+            # Budget used up, no key, no database (offline render) or an unusable reply: the cut then
+            # relies on the pauses alone.
+            log.warning("sentence_ends_failed", error=f"{type(exc).__name__}: {exc}"[:200])
+        else:
+            words = mark_sentence_ends(words, ends)
+            punctuated = bool(ends)
     log.info(
         "window_transcribed",
         provider=result.provider,
@@ -299,6 +381,8 @@ def transcribe_window(
         translated=translated,
         words=len(words),
         window_s=round(window.duration_s, 2),
+        silences=len(silences),
+        punctuated=punctuated,
     )
     return WindowTranscript(
         language="en" if translated or is_english(original) else (original or "en"),

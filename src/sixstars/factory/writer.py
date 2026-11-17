@@ -1,8 +1,9 @@
 """Claude-written clip metadata: hook, title and captions for each platform. Implemented in M06.
 
 Builds the `ClipContext` for prompt P2 from the numbered subtitle lines, calls `calls.write_clip`, turns
-the reply's in and out points into the final clip window (trim rules, then a small move so the cut does
-not land inside a word) and maps the reply to `clips` columns. All times here are in window time: seconds
+the reply's in and out points into the final clip window (trim rules, then the snap to a pause so the
+clip opens and closes on a phrase, then a small move so the cut does not land inside a word) and maps the
+reply to `clips` columns. All times here are in window time: seconds
 from the start of the transcribed (padded) window.
 """
 
@@ -17,6 +18,7 @@ from sixstars.ai.schemas import ClipWriting, SpikeVerdict
 from sixstars.clients.anthropic_client import AnthropicClient, BudgetKind
 from sixstars.factory.bleep import ProfanityMatcher, Span, normalize_word
 from sixstars.factory.lines import Line, Word
+from sixstars.factory.pauses import SnapRules, snap_to_pauses
 from sixstars.factory.subtitles import keyword_flags
 from sixstars.factory.window import ClipWindow, resolve_trim
 
@@ -45,6 +47,7 @@ class WriterInput:
     verdict: SpikeVerdict | None = None
     profanity_hint: Sequence[str] = ()
     clip_id: str | None = None
+    snap: SnapRules = SnapRules()
 
     @property
     def effective_min_len_s(self) -> float:
@@ -122,18 +125,29 @@ def snap_to_words(
 
 
 def final_window(writing: ClipWriting, item: WriterInput) -> ClipWindow:
-    """The clip window in window time: the writer's trim under the trim rules, moved off the words."""
+    """The clip window in window time: the writer's trim under the trim rules, snapped to the nearest
+    pause or sentence boundary (`item.snap`, the setting `factory.cut_snap`), then moved off the words."""
+    max_len_s = max(item.max_len_s, item.effective_min_len_s)
     trimmed = resolve_trim(
         item.proposed,
         writer_start_s=writing.start_s,
         writer_end_s=writing.end_s,
         spike_floor_s=item.effective_floor_s,
         min_len_s=item.effective_min_len_s,
-        max_len_s=max(item.max_len_s, item.effective_min_len_s),
+        max_len_s=max_len_s,
         file_duration_s=item.window_s,
     )
     words = [word for line in item.lines for word in line.words]
-    return snap_to_words(trimmed, words, limit_s=item.window_s, max_len_s=item.max_len_s)
+    snapped = snap_to_pauses(
+        trimmed,
+        words,
+        item.snap,
+        floor_s=item.effective_floor_s,
+        min_len_s=item.effective_min_len_s,
+        max_len_s=max_len_s,
+        limit_s=item.window_s,
+    )
+    return snap_to_words(snapped, words, limit_s=item.window_s, max_len_s=item.max_len_s)
 
 
 def keyword_times(lines: Sequence[Line], keywords: Mapping[int, Sequence[str]]) -> tuple[float, ...]:
