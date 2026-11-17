@@ -29,4 +29,52 @@ wanker
 prick
 cock
 # Slurs: always bleeped, and a clip where a slur is the focus is rejected by the gate.
-# Add the standard slur list here before launch (kept out of this kit on purpose).
+# Standard English slur list, added at M01 with the owner's approval (intake, 2026-11-16).
+nigger
+nigga
+niggas
+negro
+coon
+jigaboo
+porch monkey
+spic
+wetback
+beaner
+chink
+gook
+zipperhead
+jap
+paki
+raghead
+towelhead
+sand nigger
+camel jockey
+kike
+heeb
+gypsy
+gyppo
+redskin
+injun
+squaw
+abo
+wop
+dago
+kraut
+polack
+mick
+cracker
+honky
+faggot
+fag
+faggy
+dyke
+tranny
+shemale
+homo
+retard
+retarded
+spaz
+spastic
+mongoloid
+cripple
+midget

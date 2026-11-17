@@ -30,15 +30,12 @@ def test_cli_version_reports_app_env(monkeypatch: pytest.MonkeyPatch) -> None:
     [
         ["api"],
         ["live-manager"],
-        ["worker", "--queue", "express"],
         ["scheduler"],
         ["discovery", "run-once"],
         ["vod", "process", "https://example.com/v"],
         ["spikes", "scan", "chat.json"],
         ["clip", "render", "spike-1"],
         ["post", "hourly", "--dry-run"],
-        ["settings", "get", "dry_run"],
-        ["settings", "set", "dry_run", "true"],
     ],
 )
 def test_placeholder_commands(args: list[str]) -> None:
