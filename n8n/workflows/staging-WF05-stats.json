@@ -1,0 +1,130 @@
+{
+  "name": "[STG] WF05 Stats Collector",
+  "description": "Every 2 hours, asks the control API to collect account and post stats.",
+  "active": false,
+  "nodes": [
+    {
+      "id": "3afe2ca5-d4f6-49ef-b3b1-1dc2ce6813e5",
+      "name": "Every 2 hours",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours",
+              "hoursInterval": 2,
+              "triggerAtMinute": 0
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "aa6230d1-fe52-4cde-a4ec-905cd28e3944",
+      "name": "Config",
+      "notes": "The only node that differs between staging and production (besides the credentials).",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        220,
+        0
+      ],
+      "parameters": {
+        "mode": "manual",
+        "assignments": {
+          "assignments": [
+            {
+              "id": "14ff0ac0-9ade-567f-a0b0-d5ea356a9bc4",
+              "name": "API_BASE",
+              "value": "https://api-staging.46.224.14.255.sslip.io",
+              "type": "string"
+            },
+            {
+              "id": "bc4519a9-9d44-5f27-96a9-c6b105fda5dc",
+              "name": "TELEGRAM_CHAT_ID",
+              "value": "<TELEGRAM_CHAT_ID>",
+              "type": "string"
+            },
+            {
+              "id": "b815debe-00de-5a07-9638-3b2edae920c6",
+              "name": "ENV_PREFIX",
+              "value": "[STG]",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": false,
+        "options": {}
+      }
+    },
+    {
+      "id": "031d2eda-6e57-4f8d-8a7a-955365d014c7",
+      "name": "Collect stats",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "position": [
+        440,
+        0
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Config').first().json.API_BASE }}/v1/stats/collect",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "name": "6stars API staging"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Every 2 hours": {
+      "main": [
+        [
+          {
+            "node": "Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Config": {
+      "main": [
+        [
+          {
+            "node": "Collect stats",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "saveExecutionProgress": false,
+    "saveManualExecutions": true,
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "none",
+    "errorWorkflow": "<id of [STG] WF09 Error Alert>",
+    "timezone": "UTC",
+    "executionOrder": "v1"
+  },
+  "tags": [
+    "6stars",
+    "staging"
+  ]
+}

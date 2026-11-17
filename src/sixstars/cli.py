@@ -103,15 +103,74 @@ def scheduler() -> None:
 
 
 @discovery_app.command("run-once")
-def discovery_run_once() -> None:
-    """Run one discovery pass."""
-    _not_implemented()
+def discovery_run_once(
+    as_json: bool = typer.Option(False, "--json", help="Print the full summary as JSON."),
+) -> None:
+    """Run one discovery pass and print the summary with the top live streams and videos."""
+    from sixstars.discovery import commands
+
+    with _database():
+        code = commands.run_once(as_json=as_json)
+    raise typer.Exit(code=code)
+
+
+@discovery_app.command("permissions")
+def discovery_permissions(
+    limit: int = typer.Option(5, "--limit", help="How many creators to check."),
+) -> None:
+    """Run the permission check (prompt P6) now for creators that are due."""
+    from sixstars.discovery import commands
+
+    with _database():
+        code = commands.permissions(limit)
+    raise typer.Exit(code=code)
+
+
+@discovery_app.command("set-tier")
+def discovery_set_tier(
+    platform: str = typer.Argument(..., help="youtube or twitch."),
+    channel: str = typer.Argument(..., help="Channel id or handle of a known creator."),
+    tier: str = typer.Argument(..., help="preferred, auto, restricted or blocked."),
+    reason: str = typer.Option("set by the owner", "--reason", help="Why (stored on the creator)."),
+) -> None:
+    """Set a creator's tier by hand, for example `blocked` so they are never clipped."""
+    from sixstars.discovery import commands
+
+    with _database():
+        code = commands.set_tier(platform, channel, tier, reason)
+    raise typer.Exit(code=code)
 
 
 @vod_app.command("process")
-def vod_process(url: str = typer.Argument(..., help="Video URL to process end to end.")) -> None:
-    """Process one video end to end."""
-    _not_implemented()
+def vod_process(
+    url: str = typer.Argument(..., help="Twitch VOD or YouTube video URL to process end to end."),
+    render: bool = typer.Option(False, "--render", help="Also run the queued clip.render jobs here."),
+    whisper_model: str = typer.Option("", "--whisper-model", help="Local model for --render (testing)."),
+    force: bool = typer.Option(False, "--force", help="Ignore the blocked-downloads and concurrency gates."),
+    as_json: bool = typer.Option(False, "--json", help="Print the outcome as JSON."),
+) -> None:
+    """Process one video end to end: chat, spikes, confirmation, window downloads, render jobs."""
+    from sixstars.vod import commands
+
+    with _database():
+        code = commands.process_url(
+            url, render=render, whisper_model=whisper_model, force=force, as_json=as_json
+        )
+    raise typer.Exit(code=code)
+
+
+@vod_app.command("scan-only")
+def vod_scan_only(
+    url: str = typer.Argument(..., help="Twitch VOD or YouTube video URL."),
+    top: int = typer.Option(25, "--top", help="How many spikes to print, best first (0 = all)."),
+    details: bool = typer.Option(False, "--details", help="Also print the z-scores and a chat sample."),
+) -> None:
+    """Download the chat replay and print its spikes. Stores nothing and downloads no video."""
+    from sixstars.vod import commands
+
+    with _database():
+        code = commands.scan_only(url, top=top, details=details)
+    raise typer.Exit(code=code)
 
 
 @spikes_app.command("scan")
@@ -156,9 +215,90 @@ def spikes_scan(
 
 
 @clip_app.command("render")
-def clip_render(spike_id: str = typer.Argument(..., help="Spike to render a clip for.")) -> None:
-    """Render one clip."""
-    _not_implemented()
+def clip_render(
+    spike_id: str = typer.Argument(..., help="Spike to render a clip for."),
+    source: str = typer.Option("", "--source", help="Local video file that holds the spike window."),
+    source_offset: float = typer.Option(
+        0.0, "--source-offset", help="Where the file starts in the original video, in seconds."
+    ),
+    lane: str = typer.Option("", "--lane", help="spike or hourly (default: from the spike)."),
+    mode: str = typer.Option("", "--mode", help="normal or express (default: from the lane)."),
+    upload: bool = typer.Option(False, "--upload", help="Also upload the clip to Storage."),
+    force: bool = typer.Option(False, "--force", help="Render again even if the clip is finished."),
+) -> None:
+    """Render one clip from a stored spike (transcribe, write, render; the clip row ends in `gating`)."""
+    from pathlib import Path
+
+    from sixstars.factory import commands
+
+    with _database():
+        code = commands.render_spike(
+            spike_id,
+            source=Path(source) if source else None,
+            source_offset_s=source_offset,
+            lane=lane,
+            mode=mode,
+            upload=upload,
+            force=force,
+        )
+    raise typer.Exit(code=code)
+
+
+@clip_app.command("render-file")
+def clip_render_file(
+    video: str = typer.Argument(..., help="Local video file."),
+    start: float = typer.Option(..., "--start", help="Clip start in the file, in seconds."),
+    end: float = typer.Option(..., "--end", help="Clip end in the file, in seconds."),
+    creator: str = typer.Option(..., "--creator", help="Creator handle for the credit."),
+    lane: str = typer.Option("hourly", "--lane", help="hourly or spike (spike adds the LIVE badge)."),
+    mode: str = typer.Option("normal", "--mode", help="normal or express."),
+    output: str = typer.Option("", "-o", "--output", help="MP4 to write (default: next to the video)."),
+    hook: str = typer.Option("", "--hook", help="Hook title (without --ai)."),
+    keyword: list[str] = typer.Option([], "--keyword", help="Word to highlight (repeatable, without --ai)."),
+    facecam: str = typer.Option("", "--facecam", help="Facecam box x,y,w,h in source pixels (layout A)."),
+    layout: str = typer.Option("auto", "--layout", help="auto or b (b forces the no-facecam layout)."),
+    series_no: int = typer.Option(1, "--series-no", help="Series number shown on the end card."),
+    ai: bool = typer.Option(False, "--ai", help="Use the clip writer and layout detection (needs the DB)."),
+    title: str = typer.Option("", "--title", help="Stream title given to the clip writer (with --ai)."),
+    whisper_model: str = typer.Option("", "--whisper-model", help="Local Whisper model for this run."),
+    set_pairs: list[str] = typer.Option(
+        [], "--set", help="Override one setting, as key=json (repeatable, without --ai)."
+    ),
+    stills: str = typer.Option("", "--stills", help="Directory for stills at 1 s, 5 s, middle, end card."),
+    no_music: bool = typer.Option(False, "--no-music", help="Skip music detection."),
+) -> None:
+    """Render a clip from a local video without writing a clip row (for design iteration)."""
+    from pathlib import Path
+
+    from sixstars.factory import commands
+
+    def run() -> int:
+        return commands.render_file(
+            Path(video),
+            start=start,
+            end=end,
+            creator=creator,
+            lane=lane,
+            mode=mode,
+            output=Path(output) if output else None,
+            hook=hook,
+            keywords=keyword,
+            facecam_box=facecam,
+            layout=layout,
+            series_no=series_no,
+            use_ai=ai,
+            title=title,
+            whisper_model=whisper_model,
+            set_pairs=set_pairs,
+            stills_dir=Path(stills) if stills else None,
+            no_music=no_music,
+        )
+
+    if not ai:
+        raise typer.Exit(code=run())
+    with _database():
+        code = run()
+    raise typer.Exit(code=code)
 
 
 @post_app.command("hourly")
@@ -359,6 +499,81 @@ def posting_clip(
 
     with _database():
         code = commands.clip(clip_id, account)
+    raise typer.Exit(code=code)
+
+
+# Notifications (M12). Kept as one block so other milestones' edits to this file do not collide with it.
+notify_app = typer.Typer(help="Telegram notifications through the n8n notify webhook.", no_args_is_help=True)
+app.add_typer(notify_app, name="notify")
+
+
+@notify_app.command("test")
+def notify_test() -> None:
+    """Send the info notification "Test" through the notify webhook, to check the path to Telegram."""
+    from sixstars import notify
+
+    with _database():
+        delivered = notify.send("info", "Test")
+    typer.echo("Test notification delivered." if delivered else "Test notification was NOT delivered.")
+    raise typer.Exit(code=0 if delivered else 1)
+
+
+# Quality gate (M07). Kept as one block so other milestones' edits to this file do not collide with it.
+gate_app = typer.Typer(help="Quality gate (M07): judge clips and explain verdicts.", no_args_is_help=True)
+app.add_typer(gate_app, name="gate")
+
+
+@gate_app.command("run")
+def gate_run(
+    clip_id: str = typer.Argument(..., help="Clip in status gating."),
+    no_post: bool = typer.Option(False, "--no-post", help="Do not hand an approved spike clip to posting."),
+) -> None:
+    """Judge one clip: approve, reject or hold it, and store the verdict."""
+    from sixstars.gate import commands
+
+    with _database():
+        code = commands.run(clip_id, post=not no_post)
+    raise typer.Exit(code=code)
+
+
+@gate_app.command("pending")
+def gate_pending(
+    older_than: float = typer.Option(
+        0.0, "--older-than", help="Only clips waiting at least this many seconds."
+    ),
+    no_post: bool = typer.Option(False, "--no-post", help="Do not hand approved spike clips to posting."),
+) -> None:
+    """Judge every clip still in status gating (recovery)."""
+    from sixstars.gate import commands
+
+    with _database():
+        code = commands.pending(older_than, post=not no_post)
+    raise typer.Exit(code=code)
+
+
+@gate_app.command("explain")
+def gate_explain(clip_id: str = typer.Argument(..., help="Any clip.")) -> None:
+    """Print the stored verdict of a clip with every check. Writes nothing."""
+    from sixstars.gate import commands
+
+    with _database():
+        code = commands.explain(clip_id)
+    raise typer.Exit(code=code)
+
+
+@gate_app.command("check-file")
+def gate_check_file(
+    video: str = typer.Argument(..., help="Rendered MP4 file."),
+    duration: float = typer.Option(
+        0.0, "--duration", help="Clip length without the end card (default: file)."
+    ),
+    p5: bool = typer.Option(False, "--p5", help="Also ask the vision model about four frames (costs money)."),
+) -> None:
+    """Measure a rendered file as the gate does; with --p5 also run the visual check. Writes no clip."""
+    from sixstars.gate import commands
+
+    with _database():
+        code = commands.check_file(video, duration or None, p5)
     raise typer.Exit(code=code)
 
 

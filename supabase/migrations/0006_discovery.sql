@@ -1,0 +1,36 @@
+-- M09 discovery: settings for the low-cost YouTube route (yt-dlp search + Data API + RSS, Apify only as a
+-- rare supplement), creator permission checks and chat-activity scoring. Settings only, additive and
+-- idempotent: existing values are never changed.
+insert into settings (key, value, description) values
+  ('discovery.youtube_search_results', '40'::jsonb, 'Results read per yt-dlp YouTube search (one search per term for live, one per term and sort for recent videos).'),
+  ('discovery.youtube_recent_sorts', '["relevance", "views"]'::jsonb, 'Sort orders of the recent-video searches: relevance, views, date or rating.'),
+  ('discovery.ytdlp_workers', '6'::jsonb, 'yt-dlp searches and RSS reads that run at the same time.'),
+  ('discovery.ytdlp_timeout_s', '25'::jsonb, 'Seconds before one yt-dlp search is killed.'),
+  ('discovery.youtube_quota_daily_units', '3000'::jsonb, 'YouTube Data API quota units discovery may use per UTC day (the project has 10,000). Over it, discovery scores from the search listing alone.'),
+  ('discovery.rss_max_channels_per_run', '25'::jsonb, 'Known YouTube creators whose RSS feed is read per run (rotating).'),
+  ('discovery.rss_cursor', 'null'::jsonb, 'Written by code: where the RSS rotation continues.'),
+  ('discovery.apify_interval_s', '21600'::jsonb, 'Minimum seconds between Apify YouTube searches (they alternate live and recent). 0 switches Apify off.'),
+  ('discovery.apify_max_results', '5'::jsonb, 'Results per search term of one Apify run.'),
+  ('discovery.apify_price_per_result_usd', '0.003'::jsonb, 'Apify price per video written, used to project the cost of a run.'),
+  ('discovery.apify_daily_budget_usd', '0.4'::jsonb, 'Apify spend allowed per UTC day. A run that would pass it is not started.'),
+  ('discovery.apify_monthly_budget_usd', '12'::jsonb, 'Apify spend allowed per calendar month (UTC). A run that would pass it is not started.'),
+  ('discovery.twitch_max_streams', '300'::jsonb, 'Live Twitch streams read per run.'),
+  ('discovery.twitch_max_videos', '50'::jsonb, 'Twitch archives read per run.'),
+  ('discovery.twitch_follower_lookups_per_run', '20'::jsonb, 'Twitch follower counts fetched per run for creators that have none.'),
+  ('discovery.twitch_game_cache', 'null'::jsonb, 'Written by code: Twitch game id of env.target_game, cached 24 h.'),
+  ('discovery.growth_window_s', '1800'::jsonb, 'Live growth compares viewers now with viewers this long ago.'),
+  ('discovery.min_observation_gap_s', '120'::jsonb, 'A source observed again within this time updates its last candidates row instead of adding one.'),
+  ('discovery.min_live_viewers', '50'::jsonb, 'Live streams with fewer viewers are recorded as candidates but never get a live slot.'),
+  ('discovery.chat_mpm_per_viewer', '0.01'::jsonb, 'Estimated chat messages per minute per live viewer, used when no chat of the creator was measured yet.'),
+  ('discovery.chat_msgs_per_view', '0.02'::jsonb, 'Estimated chat messages per view of a finished stream, used when nothing better is known.'),
+  ('discovery.chat_min_messages', '1500'::jsonb, 'Chat replay size at which a finished stream gets the full chat-replay bonus (the spike engine finds nothing on thinner chats).'),
+  ('discovery.chat_replay_bonus', '5'::jsonb, 'Points added to a video with a chat replay, scaled by its estimated chat size.'),
+  ('discovery.passive_views_engagement', '0.005'::jsonb, 'A video whose (likes + 2 x comments) / views is below this was viewed passively (Shorts feed): its views-per-hour score and chat estimate are scaled down in proportion. 0 switches this off.'),
+  ('discovery.max_vod_per_creator_per_run', '1'::jsonb, 'Max new videos of one creator queued per discovery run.'),
+  ('discovery.max_vod_backlog', '24'::jsonb, 'Discovery queues no more videos while this many are waiting for the VOD lane (videos.status = new).'),
+  ('discovery.permission_recheck_days', '14'::jsonb, 'Days after which a creator''s channel description is read again (prompt P6).'),
+  ('discovery.require_permission_check', 'true'::jsonb, 'When true a creator gets no live slot and no video job before the first permission check (P6) has run.'),
+  ('discovery.permission_checks_per_run', '12'::jsonb, 'Permission checks made inside one discovery run for creators about to be picked.'),
+  ('discovery.permission_jobs_per_run', '25'::jsonb, 'creator.permission jobs queued per discovery run for other new or stale creators.'),
+  ('discovery.excluded_channels', '[]'::jsonb, 'Creators that are never clipped: channel ids or handles, optionally prefixed with "youtube:" or "twitch:".')
+on conflict (key) do nothing;

@@ -1,0 +1,130 @@
+{
+  "name": "[STG] WF02 Hourly Poster",
+  "description": "At minute 0 of every hour, triggers the hourly posting slot.",
+  "active": false,
+  "nodes": [
+    {
+      "id": "437bc5d7-e6eb-4717-a1af-ec988c013f05",
+      "name": "Every hour at minute 0",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours",
+              "hoursInterval": 1,
+              "triggerAtMinute": 0
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "6ff8107f-105a-4f21-a700-47fe787d55b0",
+      "name": "Config",
+      "notes": "The only node that differs between staging and production (besides the credentials).",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        220,
+        0
+      ],
+      "parameters": {
+        "mode": "manual",
+        "assignments": {
+          "assignments": [
+            {
+              "id": "14ff0ac0-9ade-567f-a0b0-d5ea356a9bc4",
+              "name": "API_BASE",
+              "value": "https://api-staging.46.224.14.255.sslip.io",
+              "type": "string"
+            },
+            {
+              "id": "bc4519a9-9d44-5f27-96a9-c6b105fda5dc",
+              "name": "TELEGRAM_CHAT_ID",
+              "value": "<TELEGRAM_CHAT_ID>",
+              "type": "string"
+            },
+            {
+              "id": "b815debe-00de-5a07-9638-3b2edae920c6",
+              "name": "ENV_PREFIX",
+              "value": "[STG]",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": false,
+        "options": {}
+      }
+    },
+    {
+      "id": "6dd81ab9-88d6-41d0-ba2e-05314ff48c5c",
+      "name": "Trigger hourly slot",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "position": [
+        440,
+        0
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Config').first().json.API_BASE }}/v1/posting/hourly",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "name": "6stars API staging"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Every hour at minute 0": {
+      "main": [
+        [
+          {
+            "node": "Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Config": {
+      "main": [
+        [
+          {
+            "node": "Trigger hourly slot",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "saveExecutionProgress": false,
+    "saveManualExecutions": true,
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "none",
+    "errorWorkflow": "<id of [STG] WF09 Error Alert>",
+    "timezone": "UTC",
+    "executionOrder": "v1"
+  },
+  "tags": [
+    "6stars",
+    "staging"
+  ]
+}

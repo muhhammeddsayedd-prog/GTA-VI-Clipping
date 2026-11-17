@@ -1,0 +1,178 @@
+{
+  "name": "[STG] WF07 Notify Relay",
+  "description": "Relays notifications from the worker (sixstars.notify) to Telegram. Answers 200 at once; a request whose x-6stars-secret header does not match is dropped silently.",
+  "active": true,
+  "nodes": [
+    {
+      "id": "4afe55a7-e8a2-406d-b0f6-f753b5951cae",
+      "name": "Notify webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "6stars-notify-staging",
+        "responseMode": "onReceived",
+        "options": {}
+      }
+    },
+    {
+      "id": "2a70efa9-bf1c-4168-b0ec-a19d73c484d2",
+      "name": "Config",
+      "notes": "The only node that differs between staging and production (besides the credentials).",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        220,
+        0
+      ],
+      "parameters": {
+        "mode": "manual",
+        "assignments": {
+          "assignments": [
+            {
+              "id": "14ff0ac0-9ade-567f-a0b0-d5ea356a9bc4",
+              "name": "API_BASE",
+              "value": "https://api-staging.46.224.14.255.sslip.io",
+              "type": "string"
+            },
+            {
+              "id": "bc4519a9-9d44-5f27-96a9-c6b105fda5dc",
+              "name": "TELEGRAM_CHAT_ID",
+              "value": "<TELEGRAM_CHAT_ID>",
+              "type": "string"
+            },
+            {
+              "id": "b815debe-00de-5a07-9638-3b2edae920c6",
+              "name": "ENV_PREFIX",
+              "value": "[STG]",
+              "type": "string"
+            },
+            {
+              "id": "6d3ff33f-48b0-57b9-a8b4-fd229f8aebd6",
+              "name": "NOTIFY_SECRET_SHA256",
+              "value": "<sha256 hex digest of N8N_NOTIFY_SECRET>",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": false,
+        "options": {}
+      }
+    },
+    {
+      "id": "c714fa63-837e-43c4-a70b-1a33c998a125",
+      "name": "Secret matches?",
+      "notes": "Compares SHA-256 digests so the secret itself is never stored in the workflow. No match: the false output is left unconnected on purpose (drop silently, the caller still got 200).",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        440,
+        0
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "dfe9faea-1880-571f-8aba-730bcf50329a",
+              "leftValue": "={{ ($('Notify webhook').first().json.headers['x-6stars-secret'] ?? '').toString().hash('sha256') }}",
+              "rightValue": "={{ $('Config').first().json.NOTIFY_SECRET_SHA256 }}",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "f30ada03-f5de-4723-993e-85b1ca233d07",
+      "name": "Send notification",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "position": [
+        660,
+        0
+      ],
+      "parameters": {
+        "resource": "message",
+        "operation": "sendMessage",
+        "chatId": "={{ $('Config').first().json.TELEGRAM_CHAT_ID }}",
+        "text": "={{ (() => {\n  const b = $('Notify webhook').first().json.body ?? {};\n  const esc = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');\n  const emoji = ({ critical: '🔴', warn: '🟠', info: '🔵' })[b.severity] ?? '🔵';\n  const head = [$('Config').first().json.ENV_PREFIX, emoji, '<b>' + esc(b.title) + '</b>'].filter(Boolean).join(' ');\n  const body = esc(b.body).slice(0, 3500);\n  return body ? head + '\\n' + body : head;\n})() }}",
+        "additionalFields": {
+          "appendAttribution": false,
+          "disable_web_page_preview": true,
+          "parse_mode": "HTML"
+        }
+      },
+      "credentials": {
+        "telegramApi": {
+          "name": "6stars Telegram"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Notify webhook": {
+      "main": [
+        [
+          {
+            "node": "Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Config": {
+      "main": [
+        [
+          {
+            "node": "Secret matches?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Secret matches?": {
+      "main": [
+        [
+          {
+            "node": "Send notification",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "saveExecutionProgress": false,
+    "saveManualExecutions": true,
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "none",
+    "errorWorkflow": "<id of [STG] WF09 Error Alert>",
+    "timezone": "UTC",
+    "executionOrder": "v1"
+  },
+  "tags": [
+    "6stars",
+    "staging"
+  ]
+}

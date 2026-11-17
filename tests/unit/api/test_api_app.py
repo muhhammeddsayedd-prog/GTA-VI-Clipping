@@ -221,14 +221,10 @@ def use_discovery(monkeypatch: pytest.MonkeyPatch, run: Any) -> None:
     monkeypatch.setattr(routes_triggers, "find_run_discovery", lambda: run)
 
 
-def test_discovery_answers_501_while_the_module_has_no_run_discovery(
-    client: TestClient, auth: dict[str, str], heartbeats: list[str]
+def test_discovery_answers_501_when_run_discovery_cannot_be_found(
+    client: TestClient, auth: dict[str, str], heartbeats: list[str], monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    # The real lookup: `sixstars.discovery` exists but has no `run_discovery` yet.
-    import sixstars.discovery
-
-    if hasattr(sixstars.discovery, "run_discovery"):
-        pytest.skip("discovery is implemented")
+    monkeypatch.setattr(routes_triggers, "find_run_discovery", lambda: None)
     response = client.post("/v1/discovery/run", headers=auth)
     assert response.status_code == 501
     assert response.json()["code"] == "not_implemented"

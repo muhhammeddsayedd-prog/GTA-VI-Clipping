@@ -23,7 +23,7 @@ from sixstars.posting.hourly import schedule_hourly_slot
 
 router = APIRouter(prefix="/v1")
 
-DISCOVERY_MODULE = "sixstars.discovery"
+DISCOVERY_MODULE = "sixstars.discovery.run"
 DISCOVERY_FUNCTION = "run_discovery"
 DISCOVERY_TIMEOUT_S = 60.0  # docs/17: the route answers within 60 s
 HEARTBEAT_DISCOVERY = "trigger:discovery"
@@ -44,7 +44,7 @@ def not_implemented(milestone: str, what: str) -> ApiError:
 
 
 def find_run_discovery() -> Callable[[], Any] | None:
-    """`sixstars.discovery.run_discovery`, or None while the discovery milestone has not delivered it."""
+    """`sixstars.discovery.run.run_discovery`, or None when it cannot be imported."""
     try:
         module = importlib.import_module(DISCOVERY_MODULE)
     except Exception as exc:
@@ -57,7 +57,10 @@ def find_run_discovery() -> Callable[[], Any] | None:
 def summary_to_json(summary: Any) -> dict[str, Any]:
     """The discovery summary as a JSON object: a dataclass, a pydantic model or a mapping is passed
     through; anything else is wrapped as `{"summary": ...}`."""
-    if dataclasses.is_dataclass(summary) and not isinstance(summary, type):
+    to_dict = getattr(summary, "to_dict", None)
+    if callable(to_dict):
+        summary = to_dict()
+    elif dataclasses.is_dataclass(summary) and not isinstance(summary, type):
         summary = dataclasses.asdict(summary)
     encoded = jsonable_encoder(summary)
     return encoded if isinstance(encoded, dict) else {"summary": encoded}

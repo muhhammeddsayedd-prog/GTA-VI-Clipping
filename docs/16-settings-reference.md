@@ -21,7 +21,7 @@ Defaults below are the production values from `supabase/migrations/0002_seed_set
 
 | Key | Default | Meaning |
 |---|---|---|
-| `discovery.apify_last_run` | `null` | Written by code: id of the last Apify run (read on the next pass). |
+| `discovery.apify_last_run` | `null` | Written by code: the last Apify run as `{run_id, started_at, mode, collected, status, cost_usd}` (read on a later pass). |
 | `discovery.interval_s` | `600` | Expected interval between discovery runs (failover uses this). |
 | `discovery.vod_lookback_h` | `48` | How far back to look for finished videos. |
 | `discovery.min_vod_duration_s` | `480` | Skip videos shorter than this. |
@@ -34,6 +34,37 @@ Defaults below are the production values from `supabase/migrations/0002_seed_set
 | `discovery.non_english_penalty` | `0.85` | Multiplier on trend score for non-English sources. |
 | `discovery.preferred_bonus` | `15` | Points added for preferred creators. |
 | `discovery.title_blocklist` | `["sponsored", "#ad", "music only", "lofi", "radio", "casino", "gambling", "slots"]` | Titles containing these are skipped. |
+| `discovery.youtube_search_results` | `40` | Results read per yt-dlp YouTube search (one search per term for live, one per term and sort for recent videos). (M09) |
+| `discovery.youtube_recent_sorts` | `["relevance", "views"]` | Sort orders of the recent-video searches: relevance, views, date or rating. (M09) |
+| `discovery.ytdlp_workers` | `6` | yt-dlp searches and RSS reads that run at the same time. (M09) |
+| `discovery.ytdlp_timeout_s` | `25` | Seconds before one yt-dlp search is killed. (M09) |
+| `discovery.youtube_quota_daily_units` | `3000` | YouTube Data API quota units discovery may use per UTC day (the project has 10,000). Over it, discovery scores from the search listing alone. (M09) |
+| `discovery.rss_max_channels_per_run` | `25` | Known YouTube creators whose RSS feed is read per run (rotating). (M09) |
+| `discovery.rss_cursor` | `null` | Written by code: where the RSS rotation continues. (M09) |
+| `discovery.apify_interval_s` | `21600` | Minimum seconds between Apify YouTube searches (they alternate live and recent). 0 switches Apify off. (M09) |
+| `discovery.apify_max_results` | `5` | Results per search term of one Apify run. (M09) |
+| `discovery.apify_price_per_result_usd` | `0.003` | Apify price per video written, used to project the cost of a run. (M09) |
+| `discovery.apify_daily_budget_usd` | `0.4` | Apify spend allowed per UTC day. A run that would pass it is not started. (M09) |
+| `discovery.apify_monthly_budget_usd` | `12` | Apify spend allowed per calendar month (UTC). A run that would pass it is not started. (M09) |
+| `discovery.twitch_max_streams` | `300` | Live Twitch streams read per run. (M09) |
+| `discovery.twitch_max_videos` | `50` | Twitch archives read per run. (M09) |
+| `discovery.twitch_follower_lookups_per_run` | `20` | Twitch follower counts fetched per run for creators that have none. (M09) |
+| `discovery.twitch_game_cache` | `null` | Written by code: Twitch game id of env.target_game, cached 24 h. (M09) |
+| `discovery.growth_window_s` | `1800` | Live growth compares viewers now with viewers this long ago. (M09) |
+| `discovery.min_observation_gap_s` | `120` | A source observed again within this time updates its last candidates row instead of adding one. (M09) |
+| `discovery.min_live_viewers` | `50` | Live streams with fewer viewers are recorded as candidates but never get a live slot. (M09) |
+| `discovery.chat_mpm_per_viewer` | `0.01` | Estimated chat messages per minute per live viewer, used when no chat of the creator was measured yet. (M09) |
+| `discovery.chat_msgs_per_view` | `0.02` | Estimated chat messages per view of a finished stream, used when nothing better is known. (M09) |
+| `discovery.chat_min_messages` | `1500` | Chat replay size at which a finished stream gets the full chat-replay bonus (the spike engine finds nothing on thinner chats). (M09) |
+| `discovery.chat_replay_bonus` | `5` | Points added to a video with a chat replay, scaled by its estimated chat size. (M09) |
+| `discovery.passive_views_engagement` | `0.005` | A video whose (likes + 2 x comments) / views is below this was viewed passively (Shorts feed): its views-per-hour score and chat estimate are scaled down in proportion. 0 switches this off. (M09) |
+| `discovery.max_vod_per_creator_per_run` | `1` | Max new videos of one creator queued per discovery run. (M09) |
+| `discovery.max_vod_backlog` | `24` | Discovery queues no more videos while this many are waiting for the VOD lane (videos.status = new). (M09) |
+| `discovery.permission_recheck_days` | `14` | Days after which a creator's channel description is read again (prompt P6). (M09) |
+| `discovery.require_permission_check` | `true` | When true a creator gets no live slot and no video job before the first permission check (P6) has run. (M09) |
+| `discovery.permission_checks_per_run` | `12` | Permission checks made inside one discovery run for creators about to be picked. (M09) |
+| `discovery.permission_jobs_per_run` | `25` | creator.permission jobs queued per discovery run for other new or stale creators. (M09) |
+| `discovery.excluded_channels` | `[]` | Creators that are never clipped: channel ids or handles, optionally prefixed with "youtube:" or "twitch:". (M09) |
 
 ## Live lane
 
@@ -84,6 +115,36 @@ Defaults below are the production values from `supabase/migrations/0002_seed_set
 | `vod.paused_until` | `null` | Set by guardian when the spend cap is hit; VOD jobs wait until this time. |
 | `downloads.proxy_platforms` | `["youtube"]` | Platforms whose downloads (yt-dlp, streamlink) go through PROXY_URL. |
 | `downloads.max_height` | `1080` | Max source video height downloaded. |
+| `vod.max_concurrent` | `1` | Videos the VOD lane processes at the same time. A job over the limit waits vod.concurrency_retry_s. (M08) |
+| `vod.concurrency_retry_s` | `120` | Seconds a vod.process job waits when vod.max_concurrent videos are already being processed. (M08) |
+| `vod.processing_stale_s` | `7200` | A video in status processing that was not updated for this long no longer counts as being processed (its worker died). (M08) |
+| `vod.render_priority` | `{"S": 55, "A": 55, "B": 40}` | Priority of the clip.render job per spike tier. (M08) |
+| `vod.clipped_range_margin_s` | `30` | Replay pass after a live stream: spikes closer than this to a range the live lane already clipped are dropped. (M08) |
+| `vod.chat_retry_delay_s` | `20` | Seconds before the single retry when YouTube reports no chat replay for a past stream. (M08) |
+| `vod.confirm_with_captions` | `true` | Fetch the caption track (no media) and show the words around each spike to the confirmation prompt. (M08) |
+| `vod.caption_langs` | `[".*-orig", "en"]` | Caption tracks asked for, in order of preference: language codes or patterns (.*-orig is the automatic track in the language spoken). (M08) |
+| `vod.caption_timeout_s` | `180` | Seconds before the yt-dlp caption download is killed. (M08) |
+| `vod.download_timeout_s` | `900` | Seconds before one yt-dlp window download is killed. (M08) |
+| `vod.download_failures_max` | `3` | Failed window downloads in a row after which the video is given up for this attempt. (M08) |
+| `vod.download_workers` | `3` | Windows of one video downloaded at the same time (YouTube serves each at about 1.5 times playback speed). (M08) |
+| `vod.section_exact_cuts` | `false` | true re-encodes each downloaded window so it starts on the exact frame (slow); false copies the streams and relies on the edit list ffmpeg writes. (M08) |
+| `vod.blocked_backoff_s` | `1800` | Downloads refused by the platform (YouTube bot check, rate limit): seconds before videos of that platform are tried again. (M08) |
+| `vod.blocked_notify_interval_s` | `3600` | At most one "downloads are blocked" notification per this many seconds. (M08) |
+| `vod.stop_retry_s` | `600` | Seconds a video waits while control.emergency_stop is set. (M08) |
+| `vod.fallback_enabled` | `true` | Use the transcript fallback for videos without a usable chat replay. (M08) |
+| `vod.fallback_below_spikes` | `1` | The transcript fallback also runs when the chat replay gave fewer spikes than this. (M08) |
+| `vod.fallback_max_duration_s` | `43200` | Transcript fallback: videos longer than this are skipped. (M08) |
+| `vod.fallback_min_confidence` | `0.5` | Transcript fallback: moments below this confidence are stored as rejected. (M08) |
+| `vod.fallback_chunk_s` | `30` | Transcript fallback: seconds of transcript per block shown to the moment picker. (M08) |
+| `vod.fallback_max_transcript_s` | `21600` | Transcript fallback: seconds of transcript the moment picker reads per video at most (0 = all). One request per 30 minutes. (M08) |
+| `vod.fallback_transcribe_mode` | `"local"` | Transcript fallback without a caption track: local (faster-whisper, no fee) or hosted (transcribe.express_provider, paid). (M08) |
+| `vod.fallback_transcribe_max_s` | `5400` | Transcript fallback without a caption track: seconds of audio transcribed per video at most (0 = never transcribe). (M08) |
+| `vod.fallback_transcribe_daily_s` | `21600` | Transcript fallback without a caption track: seconds of audio transcribed per UTC day at most. (M08) |
+| `vod.fallback_transcribe_block_s` | `600` | Transcript fallback: seconds of audio per transcription request. (M08) |
+| `vod.fallback_whisper_model` | `null` | Local model for the fallback transcription; null uses vod.whisper_model. (M08) |
+| `vod.section_retention_s` | `93600` | Downloaded windows whose render never finished are deleted after this many seconds. (M08) |
+| `vod.chat_retention_s` | `604800` | Chat replay files are deleted this many seconds after the download. (M08) |
+| `vod.cleanup_interval_s` | `900` | Seconds between clean-up passes over one video's downloaded windows. (M08) |
 
 ## Clip factory
 
@@ -130,6 +191,12 @@ Defaults below are the production values from `supabase/migrations/0002_seed_set
 | `precheck.enabled` | `true` | Run YouTube private-upload pre-check for risky hourly clips. |
 | `precheck.wait_s` | `1800` | Wait before reading pre-check status. |
 | `precheck.daily_max` | `20` | Max pre-check uploads per day. |
+| `gate.spoiler_terms` | `["spoiler", "spoilers", "ending", "endings", "true ending", "secret ending", "final mission", "last mission", "final boss", "final heist", "final choice", "final cutscene", "epilogue", "post credits", "credits scene", "plot twist", "story twist", "character death", "main character dies", "who dies", "death scene", "killed off", "betrayal", "betrays"]` | Words and phrases that may never appear in a hook, title, caption or hashtag (whole words, any case). Checked by the gate whatever the model said (D20). Added by migration 0007. |
+| `gate.strict_max_music_ratio` | `0.0` | Music limit of a risky hourly clip when the YouTube pre-check cannot run (no OAuth token, switched off, daily quota used; D103). Never above `gate.hourly.max_music_ratio`. Added by migration 0007. |
+| `gate.music_min_run_frames` | `1` | Music frames in a run shorter than this many seconds are ignored by the gate. `1` counts every flagged frame. Added by migration 0007. |
+| `gate.checks` | `{"max_black_s": 2.0, "max_freeze_s": 2.0, "freeze_noise": 0.003, "band_freeze_noise": 0.001, "band_black_pixel": 0.03, "max_subtitle_drift_s": 0.3, "max_file_mb": 100, "width": 1080, "height": 1920, "duration_tolerance_s": 1.0}` | Technical gate limits: a black or frozen picture of this length or more fails (`freeze_noise` is the freezedetect tolerance on the whole frame as in docs/10; `band_freeze_noise` and `band_black_pixel` are the tighter tolerances inside the gameplay band, where our moving overlays cannot hide a frozen or black source), subtitle drift, file size (MB of 10^6 bytes) and frame size, allowed difference between the file length and the clip length plus end card. Added by migration 0007. |
+| `gate.duplicate` | `{"source_pad_s": 30, "topic_overlap_same_creator": 0.5, "topic_overlap_any_creator": 0.8, "transcript_overlap": 0.5}` | Duplicate detection: padding around a source range; shared topic words (same creator: share of the shorter topic, any creator: Jaccard); shared three-word sequences of the transcripts. `0` switches a rule off. Added by migration 0007. |
+| `precheck.max_status_checks` | `3` | How many times the pre-check status is read while YouTube is still processing before the clip is rejected as inconclusive. Added by migration 0007. |
 
 ## Posting
 

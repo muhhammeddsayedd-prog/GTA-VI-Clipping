@@ -40,6 +40,9 @@ from sixstars.factory.textfit import TextMeasurer, estimate_text_width
 WHITE = "#FFFFFF"
 BLACK = "#000000"
 # docs/09 section 4: keyword pop.
+# The thick outline eats most of the font's narrow space, so the gap between words is widened.
+WORD_GAP_EXTRA = 10
+WORD_GAP = "{\\fsp" + str(WORD_GAP_EXTRA) + "} {\\fsp0}"
 KEYWORD_POP = "\\t(0,80,\\fscx118\\fscy118)\\t(80,160,\\fscx100\\fscy100)"
 
 
@@ -118,7 +121,7 @@ def _caption_text(
             parts.append(f"{{\\1c{accent}}}{escaped}{{\\1c{white}}}")
         else:
             parts.append(escaped)
-    return prefix + " ".join(parts)
+    return prefix + WORD_GAP.join(parts)
 
 
 def caption_events(
@@ -151,7 +154,7 @@ def caption_events(
             for i in profanity.find(texts):
                 texts[i] = mask_word(texts[i])
         flags = keyword_flags([word.text for word in line.words], keywords.get(line.index, ()))
-        width = measure(" ".join(texts), style.size)
+        width = measure(" ".join(texts), style.size) + WORD_GAP_EXTRA * (len(texts) - 1)
         size = style.size if width <= max_width else max(style.min_size, int(style.size * max_width / width))
         prefix = (
             f"{{\\an2\\pos({REF_WIDTH // 2},{bottom})" + (f"\\fs{size}" if size != style.size else "") + "}"

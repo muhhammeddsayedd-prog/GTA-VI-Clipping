@@ -15,6 +15,10 @@ PIXEL_FORMAT = "yuv420p"
 NVENC_PRESET = "p4"
 NVENC_CQ = 23
 AUDIO_BITRATE = "128k"
+# Bitrate ceiling for the video stream. CRF alone gave 12 Mbit/s on fast gameplay with the express preset
+# (48 MB for 31 s); the ceiling keeps a 60 s clip under 50 MB without touching ordinary scenes.
+MAX_VIDEO_BITRATE = "6M"
+VIDEO_BUFFER_SIZE = "12M"
 
 
 def uses_nvenc(params: FactoryParams, mode: RenderMode, *, nvenc_available: bool) -> bool:
@@ -33,7 +37,8 @@ def video_encoder_args(
     else:
         preset = params.preset_express if mode == "express" else params.preset_normal
         codec = ["-c:v", "libx264", "-preset", preset, "-crf", str(params.crf)]
-    return [*codec, "-profile:v", X264_PROFILE, "-pix_fmt", PIXEL_FORMAT, "-r", str(params.fps)]
+    rate = ["-maxrate", MAX_VIDEO_BITRATE, "-bufsize", VIDEO_BUFFER_SIZE]
+    return [*codec, *rate, "-profile:v", X264_PROFILE, "-pix_fmt", PIXEL_FORMAT, "-r", str(params.fps)]
 
 
 def audio_encoder_args() -> list[str]:

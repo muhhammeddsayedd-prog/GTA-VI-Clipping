@@ -244,8 +244,10 @@ def layout_filters(
                 ("luma_power", str(B_BLUR_POWER)),
             ],
         ),
-        render_filter("scale", [("w", str(g.width)), ("h", str(g.height)), ("flags", "bilinear")]),
+        # Darkened while the frame is still small: drawbox with alpha on the full frame took most of the
+        # render time of layout B.
         render_filter("drawbox", [("color", f"black@{B_DARKEN:g}"), ("thickness", "fill")]),
+        render_filter("scale", [("w", str(g.width)), ("h", str(g.height)), ("flags", "bilinear")]),
         "setsar=1",
     ]
     game_chain = [_crop(game), *scale_filters(g.width, g.b_gameplay_h, duration_s, zoom=zoom)]

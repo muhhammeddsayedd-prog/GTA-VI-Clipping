@@ -45,6 +45,7 @@ HOSTED_MAX_BYTES = 25 * 1024 * 1024
 PROVIDERS: tuple[Provider, ...] = ("openai", "groq")
 AUDIO_SAMPLE_RATE = 16000
 LOCAL_COMPUTE_TYPE = "int8"
+DECODE_TIMEOUT_S = 600
 
 
 class TranscriptionError(ClientError):
@@ -93,6 +94,28 @@ def extract_audio(source: Path, destination: Path, ffmpeg: str = "ffmpeg") -> Pa
     ]
     subprocess.run([*command, str(destination)], check=True, capture_output=True, timeout=300)
     return destination
+
+
+def decode_samples(source: Path, ffmpeg: str = "ffmpeg") -> Any:
+    """Decode the audio of `source` to 16 kHz mono float samples in [-1, 1] (a numpy array).
+
+    The local model is given these samples instead of the path: faster-whisper 1.2.1 decodes a path with
+    PyAV and calls `av.open(..., metadata_errors=...)`, which PyAV 19 rejects with a `TypeError`.
+    """
+    import numpy as np
+
+    command = [ffmpeg, "-nostdin", "-v", "error", "-i", str(source), "-vn", "-ac", "1"]
+    command += ["-ar", str(AUDIO_SAMPLE_RATE), "-f", "f32le", "-"]
+    try:
+        done = subprocess.run(
+            command, check=False, capture_output=True, timeout=DECODE_TIMEOUT_S, stdin=subprocess.DEVNULL
+        )
+    except (subprocess.TimeoutExpired, OSError) as exc:
+        raise TranscriptionError(f"could not decode {source.name}: {type(exc).__name__}") from exc
+    if done.returncode != 0:
+        tail = done.stderr.decode("utf-8", errors="replace")[-300:]
+        raise TranscriptionError(f"could not decode {source.name} (exit code {done.returncode}): {tail}")
+    return np.frombuffer(done.stdout, dtype=np.float32)
 
 
 def hosted_cost_usd(provider: Provider, seconds: float) -> float:
@@ -239,7 +262,7 @@ class Transcriber:
         model = _cached_model(name, self._model_factory)
         started = time.monotonic()
         segments, info = model.transcribe(
-            str(audio_path), language=language, word_timestamps=True, vad_filter=True
+            decode_samples(audio_path), language=language, word_timestamps=True, vad_filter=True
         )
         words = tuple(
             Word(w=str(word.word).strip(), s=float(word.start), e=float(word.end))
