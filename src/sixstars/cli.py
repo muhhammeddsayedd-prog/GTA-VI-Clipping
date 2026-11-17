@@ -74,7 +74,7 @@ def api(
 
 @app.command("live-manager")
 def live_manager() -> None:
-    """Run live recorders, chat readers and live spike detection (a heartbeat-only stub until M14)."""
+    """Run live recorders, chat readers and live spike detection."""
     from sixstars.services import live_manager as live_manager_service
 
     with _database():
@@ -663,3 +663,51 @@ def report_collect() -> None:
     with _database():
         code = commands.collect()
     raise typer.Exit(code=code)
+
+
+# Live lane (M14). Kept as one block so other milestones' edits to this file do not collide with it.
+live_app = typer.Typer(help="Live lane (M14): sessions, buffers and source checks.", no_args_is_help=True)
+app.add_typer(live_app, name="live")
+
+
+@live_app.command("status")
+def live_status(as_json: bool = typer.Option(False, "--json", help="Print everything as JSON.")) -> None:
+    """Show the live sessions, the buffers on disk and the health of the live sources."""
+    from sixstars.live import commands
+
+    with _database():
+        code = commands.status(as_json)
+    raise typer.Exit(code=code)
+
+
+@live_app.command("probe")
+def live_probe(
+    source: str = typer.Argument(..., help="Twitch login or URL, or the URL of a live YouTube stream."),
+    seconds: float = typer.Option(40.0, "--seconds", help="How long to record."),
+    keep: bool = typer.Option(False, "--keep", help="Keep the recorded files."),
+    no_chat: bool = typer.Option(False, "--no-chat", help="Do not read the live chat."),
+) -> None:
+    """Record a stream for a few seconds the way the live lane does and report what happened.
+
+    Writes nothing to the database. Exit code 0: recorded; 3: the platform refused this machine; 1: other.
+    """
+    from sixstars.live import commands
+
+    try:
+        code = commands.probe(source, seconds, keep=keep, with_chat=not no_chat)
+    finally:
+        db.close_pool()
+    raise typer.Exit(code=code)
+
+
+@live_app.command("cut")
+def live_cut(
+    session: str = typer.Argument(..., help="Session id, or the path of a buffer directory."),
+    start: str = typer.Option(..., "--start", help="Window start, ISO 8601 (UTC without a zone)."),
+    end: str = typer.Option(..., "--end", help="Window end, ISO 8601."),
+    output: str = typer.Option("", "-o", "--output", help="File to write (default: the cuts directory)."),
+) -> None:
+    """Cut a wall-clock window out of a session's rolling buffer, without re-encoding."""
+    from sixstars.live import commands
+
+    raise typer.Exit(code=commands.cut(session, start, end, output))

@@ -363,7 +363,7 @@ def test_the_scheduler_survives_a_task_that_fails(monkeypatch: pytest.MonkeyPatc
     run_service(scheduler.run, "scheduler")
 
 
-def test_the_live_manager_stub_writes_its_heartbeat_keeps_running_and_stops_on_request() -> None:
+def test_the_live_manager_writes_its_heartbeat_keeps_running_and_stops_on_request() -> None:
     run_service(live_manager.run, "live-manager")
     row = db.fetch_one("select info from heartbeats where name = 'live-manager'")
-    assert row is not None and row["info"]["stub"] is True
+    assert row is not None and row["info"]["started_at"] and row["info"]["active"] == 0
