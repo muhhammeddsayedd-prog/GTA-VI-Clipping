@@ -18,6 +18,10 @@
   are released without being tried until the back-off ends, then one start probes again.
 - Less than `live.min_free_bytes` free on the data volume: no new session starts.
 
+**Disk.** Every minute `sweep_orphans` removes the segments of sessions that are not running, the cut of
+every spike whose render is over, and cuts older than `live.cut_keep_s`. A running session sweeps its own
+buffer every ten seconds (`LiveSession.sweep`).
+
 **Shutdown.** `shutdown()` stops every recorder and chat reader in parallel and leaves the rows in
 `recording`, so the next start resumes them. Buffers stay on disk for that.
 """
@@ -28,6 +32,7 @@ import threading
 import time
 from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from typing import Any, Final
 
 from sixstars import jobs, notify
@@ -236,8 +241,6 @@ class LiveManager:
     def _start(self, row: store.SessionRow, cfg: LiveConfig) -> None:
         session = self._factory(row, cfg, self._session_deps())
         self.sessions[row.id] = session
-        if row.status == "recording":
-            self._marked.add(row.id)
         try:
             session.start()
         except Exception as exc:  # noqa: BLE001 - reported as a failed session below
@@ -317,11 +320,35 @@ class LiveManager:
             return
         self._closing = {key: session for key, session in self._closing.items() if session.busy()}
         for directory in directories:
+            self._drop_finished_cuts(directory)
+        for directory in directories:
             if directory.name in self.sessions or directory.name in self._closing:
                 continue
             buffer.remove_segments(directory)
             buffer.sweep_cuts(directory, now=now, keep_s=cfg.cut_keep_s)
             buffer.remove_if_empty(directory)
+
+    def _drop_finished_cuts(self, directory: Path) -> None:
+        """Delete the cut of every spike whose render is over (clipped, rejected or failed): the file is
+        only needed until then, so a slot holds a couple of cuts at most."""
+        cuts = directory / buffer.CUTS_DIR
+        try:
+            names = {path.stem: path for path in cuts.iterdir() if path.suffix == ".mp4"}
+        except OSError:
+            return
+        spike_ids = [name for name in names if len(name) == 36]
+        if not spike_ids:
+            return
+        try:
+            done = store.finished_spikes(spike_ids)
+        except Exception as exc:  # noqa: BLE001 - the age rule still bounds the cuts
+            self._log.warning("live_cut_cleanup_failed", error=type(exc).__name__)
+            return
+        for spike_id in done:
+            try:
+                names[spike_id].unlink()
+            except OSError:
+                continue
 
     # ── shutdown ─────────────────────────────────────────────
 

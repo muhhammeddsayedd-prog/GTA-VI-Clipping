@@ -83,6 +83,15 @@ NETWORK_MARKERS: Final[tuple[str, ...]] = (
 )
 
 
+# Log lines of streamlink (stream/hls/hls.py, plugins/twitch.py) around a Twitch ad break. With
+# --twitch-disable-ads it writes nothing while ads run, which must not be taken for a stalled stream.
+AD_START_MARKERS: Final[tuple[str, ...]] = (
+    "filtering out segments and pausing stream output",
+    "waiting for pre-roll ads to finish",
+)
+AD_END_MARKERS: Final[tuple[str, ...]] = ("resuming stream output",)
+
+
 @dataclass(frozen=True, slots=True)
 class Failure:
     """Why a recorder run ended. `detail` is the last error line of streamlink (proxy scrubbed)."""
@@ -108,7 +117,13 @@ def classify_failure(output: str, *, had_data: bool) -> Failure:
     text = normalise(output)
     detail = last_error_line(output)
     if any(marker in text for marker in LIVE_BLOCKED_MARKERS):
-        return Failure("blocked", detail or "the platform refused this machine")
+        # Name the refusal itself, not the "no playable streams" line streamlink prints after it.
+        refusals = [
+            line.strip()
+            for line in output.splitlines()
+            if any(marker in normalise(line) for marker in LIVE_BLOCKED_MARKERS)
+        ]
+        return Failure("blocked", refusals[-1][-DETAIL_CHARS:] if refusals else detail)
     if any(marker in text for marker in ENDED_MARKERS):
         return Failure("ended", detail or "the stream ended")
     if any(marker in text for marker in NOT_LIVE_MARKERS):
@@ -158,7 +173,7 @@ def streamlink_command(
         "--retry-open",
         str(RETRY_OPEN),
         "--stream-sorting-excludes",
-        f">{max_height}p",
+        f">{max_height}p60",  # "1080p60" sorts above "1080p": excluding ">1080p" would drop it
     ]
     if platform == "twitch":
         command += ["--twitch-disable-ads"]
@@ -199,6 +214,17 @@ def ffmpeg_command(directory: Path, run: int, segment_s: float, ffmpeg: str = "f
     ]
 
 
+def ad_state(line: str) -> bool | None:
+    """What one line of the streamlink log says about ads: True when it starts skipping ad segments (its
+    output pauses), False when the stream resumes, None for any other line. Pure."""
+    lowered = line.lower()
+    if any(marker in lowered for marker in AD_START_MARKERS):
+        return True
+    if any(marker in lowered for marker in AD_END_MARKERS):
+        return False
+    return None
+
+
 def scrub(text: str, proxy: str | None) -> str:
     """Remove the proxy URL (it embeds credentials) from text that will be logged or stored."""
     return text.replace(proxy, "<proxy>") if proxy else text
@@ -209,13 +235,18 @@ class _Tail:
 
     def __init__(self, stream: IO[bytes]) -> None:
         self._lines: deque[str] = deque(maxlen=STDERR_KEEP_LINES)
+        self.filtering = False  # streamlink is skipping ad segments and writes nothing meanwhile
         self._thread = threading.Thread(target=self._read, args=(stream,), daemon=True)
         self._thread.start()
 
     def _read(self, stream: IO[bytes]) -> None:
         with contextlib.suppress(Exception):
             for raw in iter(stream.readline, b""):
-                self._lines.append(raw.decode("utf-8", errors="replace").rstrip())
+                line = raw.decode("utf-8", errors="replace").rstrip()
+                self._lines.append(line)
+                state = ad_state(line)
+                if state is not None:
+                    self.filtering = state
         with contextlib.suppress(Exception):
             stream.close()
 
@@ -258,6 +289,10 @@ class RunHandle:
     def output(self) -> str:
         """What both processes printed (streamlink first)."""
         return self._source_tail.text() + "\n" + self._sink_tail.text()
+
+    def filtering(self) -> bool:
+        """True while streamlink is skipping an ad break (it writes no data then)."""
+        return self._source_tail.filtering
 
     def stop(self, timeout_s: float) -> None:
         """Stop streamlink first so ffmpeg sees the end of its input and closes the last segment; kill
@@ -313,6 +348,7 @@ class Recorder:
         max_height: int,
         start_timeout_s: float,
         stall_timeout_s: float,
+        ad_break_max_s: float = 300.0,
         proxy: str | None = None,
         cookies_file: Path | None = None,
         ffmpeg: str = "ffmpeg",
@@ -326,6 +362,7 @@ class Recorder:
         self.max_height = max_height
         self.start_timeout_s = start_timeout_s
         self.stall_timeout_s = stall_timeout_s
+        self.ad_break_max_s = ad_break_max_s
         self._proxy = proxy
         self._cookies_file = cookies_file
         self._ffmpeg = ffmpeg
@@ -335,8 +372,14 @@ class Recorder:
         self._run = 0
         self._started_at = 0.0
         self._last_growth = 0.0
-        self._last_size = 0
+        self._newest: tuple[str, int] | None = None
+        self._ad_started: float | None = None
         self._log = get_logger("live")
+
+    def _ad_since(self, now: float) -> float:
+        if self._ad_started is None:
+            self._ad_started = now
+        return self._ad_started
 
     @property
     def run(self) -> int:
@@ -360,12 +403,16 @@ class Recorder:
         sink = ffmpeg_command(self.directory, self._run, self.segment_s, self._ffmpeg)
         self._handle = self._spawn(source, sink, env)
         self._started_at = self._last_growth = self._clock()
-        self._last_size = 0
+        self._newest = None
         self._log.info("recorder_started", run=self._run, platform=self.platform)
         return self._run
 
-    def _run_bytes(self) -> int:
-        return sum(segment.size for segment in buffer.scan(self.directory) if segment.run == self._run)
+    def _progress(self) -> tuple[int, tuple[str, int] | None]:
+        """Bytes of this run on disk, and its newest segment as (name, size). Growth is judged by the
+        newest segment alone: the total shrinks whenever the janitor deletes an old segment."""
+        segments = [segment for segment in buffer.scan(self.directory) if segment.run == self._run]
+        newest = (segments[-1].name, segments[-1].size) if segments else None
+        return sum(segment.size for segment in segments), newest
 
     def poll(self) -> RecorderStatus:
         """Look at the current run. A run that ended, never started or stalled is stopped and its
@@ -374,10 +421,17 @@ class Recorder:
         if handle is None:
             return RecorderStatus(running=False, has_data=False)
         now = self._clock()
-        size = self._run_bytes()
-        if size > self._last_size:
-            self._last_size, self._last_growth = size, now
-        has_data = size > 0
+        size, newest = self._progress()
+        if newest is not None and newest != self._newest:
+            self._newest, self._last_growth = newest, now
+        has_data = self._newest is not None and (size > 0 or self._newest[1] > 0)
+        if handle.alive() and handle.filtering() and now - self._ad_since(now) <= self.ad_break_max_s:
+            # An ad break: no data is expected. The start and stall timers wait for its end.
+            self._last_growth = now
+            if not has_data:
+                self._started_at = now
+            return RecorderStatus(running=True, has_data=has_data, bytes_written=size)
+        self._ad_started = None
         failure: Failure | None = None
         if not handle.alive():
             handle.stop(KILL_WAIT_S)

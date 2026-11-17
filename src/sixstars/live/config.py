@@ -18,6 +18,7 @@ DEFAULTS: Final[dict[str, Any]] = {
     "live.reconnect_reset_s": 300,
     "live.start_timeout_s": 60,
     "live.stall_timeout_s": 45,
+    "live.ad_break_max_s": 300,
     "live.stop_timeout_s": 8,
     "live.blocked_backoff_s": 1800,
     "live.blocked_notify_after": 2,
@@ -59,6 +60,7 @@ class LiveConfig:
     reconnect_reset_s: float
     start_timeout_s: float
     stall_timeout_s: float
+    ad_break_max_s: float
     stop_timeout_s: float
     blocked_backoff_s: float
     blocked_notify_after: int
@@ -91,6 +93,7 @@ class LiveConfig:
             reconnect_reset_s=_number("live.reconnect_reset_s"),
             start_timeout_s=_number("live.start_timeout_s"),
             stall_timeout_s=_number("live.stall_timeout_s"),
+            ad_break_max_s=_number("live.ad_break_max_s"),
             stop_timeout_s=_number("live.stop_timeout_s"),
             blocked_backoff_s=_number("live.blocked_backoff_s"),
             blocked_notify_after=max(1, int(_number("live.blocked_notify_after"))),

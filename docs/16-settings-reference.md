@@ -106,6 +106,7 @@ Defaults below are the production values from `supabase/migrations/0002_seed_set
 | `live.reconnect_reset_s` | `300` | A reconnected recorder that runs this long clears the count of failed attempts (live.max_reconnects counts failures in a row). (M14) |
 | `live.start_timeout_s` | `60` | Seconds a recorder start may take to deliver the first stream data before it counts as failed. (M14) |
 | `live.stall_timeout_s` | `45` | Seconds without new stream data after which a running recorder is restarted. (M14) |
+| `live.ad_break_max_s` | `300` | Longest Twitch ad break the recorder waits out without data (streamlink skips the ad segments) before it treats the silence as a stalled stream. (M14) |
 | `live.stop_timeout_s` | `8` | Seconds a recorder gets to close its last segment when a session stops, before it is killed. (M14) |
 | `live.blocked_backoff_s` | `1800` | Seconds a platform that refuses this machine (bot check, rate limit) is left alone before one stream probes it again. The first refusal waits a sixth of it. (M14) |
 | `live.blocked_notify_after` | `2` | Refused stream starts in a row after which a blocked live source is reported once (warn); one info follows when it records again. (M14) |

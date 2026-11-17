@@ -236,3 +236,18 @@ def emergency_stop() -> bool:
 def recording_sessions_count() -> int:
     row = db.fetch_one("select count(*) as n from live_sessions where status = 'recording'")
     return int(row["n"]) if row is not None else 0
+
+
+def finished_spikes(spike_ids: list[str]) -> list[str]:
+    """Those of `spike_ids` whose render is over (or that no longer exist): their cut file is not needed
+    any more."""
+    rows = db.fetch_all(
+        """
+        select k.id
+        from unnest(%s::text[]) as k(id)
+        left join spikes s on s.id::text = k.id
+        where s.id is null or s.status = any(%s)
+        """,
+        (spike_ids, ["clipped", "rejected", "failed", "merged"]),
+    )
+    return [str(row["id"]) for row in rows]

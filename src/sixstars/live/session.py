@@ -290,6 +290,7 @@ class LiveSession:
             max_height=cfg.max_height,
             start_timeout_s=cfg.start_timeout_s,
             stall_timeout_s=cfg.stall_timeout_s,
+            ad_break_max_s=cfg.ad_break_max_s,
             proxy=proxy_for(self._platform),
             cookies_file=cookies_file() if row.platform == "youtube" else None,
             ffmpeg=self.deps.ffmpeg,

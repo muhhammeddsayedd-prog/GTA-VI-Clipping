@@ -8,6 +8,7 @@ insert into settings (key, value, description) values
   ('live.reconnect_reset_s', '300'::jsonb, 'A reconnected recorder that runs this long clears the count of failed attempts (live.max_reconnects counts failures in a row).'),
   ('live.start_timeout_s', '60'::jsonb, 'Seconds a recorder start may take to deliver the first stream data before it counts as failed.'),
   ('live.stall_timeout_s', '45'::jsonb, 'Seconds without new stream data after which a running recorder is restarted.'),
+  ('live.ad_break_max_s', '300'::jsonb, 'Longest Twitch ad break the recorder waits out without data (streamlink skips the ad segments) before it treats the silence as a stalled stream.'),
   ('live.stop_timeout_s', '8'::jsonb, 'Seconds a recorder gets to close its last segment when a session stops, before it is killed.'),
   ('live.blocked_backoff_s', '1800'::jsonb, 'Seconds a platform that refuses this machine (bot check, rate limit) is left alone before one stream probes it again. The first refusal waits a sixth of it.'),
   ('live.blocked_notify_after', '2'::jsonb, 'Refused stream starts in a row after which a blocked live source is reported once (warn); one info follows when it records again.'),
