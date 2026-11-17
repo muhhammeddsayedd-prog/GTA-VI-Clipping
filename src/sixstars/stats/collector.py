@@ -160,6 +160,26 @@ def parse_post_metrics(body: Any, platform: str) -> PostNumbers:
     )
 
 
+def parse_post_link(body: Any, platform: str) -> tuple[str | None, str | None]:
+    """The platform's own post id and the link of a post in an Upload-Post post-analytics answer
+    (`platforms.<platform>.platform_post_id` and `.post_url`); each is None when the answer has none.
+
+    TikTok releases the post id after its moderation, minutes to hours after the upload, and Upload-Post
+    then adds it to this answer (first real upload: both were null at first). `post_url` can also hold a
+    note instead of a link ("Post uploaded as Private. No public URL available."): only a real link counts.
+    """
+    if not isinstance(body, Mapping):
+        return None, None
+    platforms = body.get("platforms")
+    entry = platforms.get(platform) if isinstance(platforms, Mapping) else None
+    if not isinstance(entry, Mapping):
+        return None, None
+    raw_id, raw_url = entry.get("platform_post_id"), entry.get("post_url")
+    post_id = str(raw_id).strip() if isinstance(raw_id, str | int) and not isinstance(raw_id, bool) else ""
+    url = raw_url.strip() if isinstance(raw_url, str) else ""
+    return post_id or None, url if url.startswith(("https://", "http://")) else None
+
+
 def parse_youtube_statistics(item: Mapping[str, Any]) -> PostNumbers:
     """Numbers from a `videos.list` item with part `statistics` (the API sends them as strings)."""
     stats = item.get("statistics")
@@ -261,6 +281,18 @@ def save_post(post_id: str, numbers: PostNumbers) -> None:
     )
 
 
+def save_link(post_id: str, platform_post_id: str | None, post_url: str | None) -> None:
+    """Fill in a post id or link that was not known when the post was published. Never replaces one."""
+    db.execute(
+        """
+        update posts
+        set platform_post_id = coalesce(platform_post_id, %s), post_url = coalesce(post_url, %s)
+        where id = %s and (platform_post_id is null or post_url is null)
+        """,
+        (platform_post_id, post_url, post_id),
+    )
+
+
 def _is_public(row: Mapping[str, Any]) -> bool:
     return str(row["privacy"] or "public").lower() in ("public", "public_to_everyone")
 
@@ -338,6 +370,9 @@ def collect_upload_post(
             log.warning("post_analytics_failed", post_id=row["id"], error=type(exc).__name__)
             result.skipped += 1
             continue
+        late_id, late_url = parse_post_link(body, str(row["platform"]))
+        if (late_id and not row["platform_post_id"]) or (late_url and not row["post_url"]):
+            save_link(row["id"], late_id, late_url)
         numbers = parse_post_metrics(body, str(row["platform"]))
         if numbers.empty:
             result.skipped += 1

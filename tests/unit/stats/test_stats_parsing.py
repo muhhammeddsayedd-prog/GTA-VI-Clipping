@@ -170,3 +170,90 @@ def test_youtube_statistics_arrive_as_strings() -> None:
     assert collector.parse_youtube_statistics({"statistics": {"viewCount": "5"}}) == PostNumbers(
         5, None, None, None
     )
+
+
+# Real post-analytics answers of the first private staging posts (2026-11-17; values trimmed).
+REAL_YOUTUBE_PRIVATE_POST = {
+    "success": True,
+    "post": {"request_id": "post:c1:youtube_main", "profile_username": "default", "media_type": "video"},
+    "platforms": {
+        "youtube": {
+            "success": True,
+            "platform_post_id": "kwtCUdnP_Zk",
+            "post_url": "Post uploaded as Private. No public URL available.",
+            "error_message": None,
+            "media_size_bytes": 23925395,
+            "post_metrics": {
+                "views": 0,
+                "likes": 0,
+                "comments": 0,
+                "favorites": 0,
+                "watch_time_minutes": 0,
+                "average_view_duration_seconds": 0,
+                "average_view_percentage": 0.0,
+                "engaged_views": 0,
+                "subscribers_gained": 0,
+                "shares": 0,
+            },
+            "post_metrics_source": "platform_api",
+        }
+    },
+}
+REAL_TIKTOK_NO_ID_YET = {
+    "success": True,
+    "post": {"request_id": "post:c1:tiktok_main", "profile_username": "default", "media_type": "video"},
+    "platforms": {
+        "tiktok": {
+            "success": True,
+            "platform_post_id": None,
+            "post_url": None,
+            "error_message": None,
+            "original_publish_id": "v_pub_url~v2.7709065962657630260",
+            "post_metrics_error": "TikTok post ID could not be resolved yet. Moderation may still be in "
+            "progress. Please try again later.",
+            "profile_snapshot_latest": {"followers": 0, "reach": 0, "impressions": 0, "video_count": 0},
+            "profile_snapshot_latest_date": "2026-11-17",
+        }
+    },
+}
+
+
+def test_real_post_analytics_answers() -> None:
+    assert collector.parse_post_metrics(REAL_YOUTUBE_PRIVATE_POST, "youtube") == PostNumbers(0, 0, 0, 0)
+    # The profile snapshot beside a missing post must not be read as the numbers of the post.
+    assert collector.parse_post_metrics(REAL_TIKTOK_NO_ID_YET, "tiktok").empty
+
+
+@pytest.mark.parametrize(
+    ("body", "platform", "expected"),
+    [
+        (REAL_YOUTUBE_PRIVATE_POST, "youtube", ("kwtCUdnP_Zk", None)),  # a note is not a link
+        (REAL_TIKTOK_NO_ID_YET, "tiktok", (None, None)),  # the publish id is not a post id
+        (
+            {
+                "platforms": {
+                    "tiktok": {"platform_post_id": 7300, "post_url": "https://www.tiktok.com/@x/video/7300"}
+                }
+            },
+            "tiktok",
+            ("7300", "https://www.tiktok.com/@x/video/7300"),
+        ),
+        (
+            {
+                "platforms": {
+                    "tiktok": {"platform_post_id": "", "post_url": "Video sent to Inbox (No Public URL)"}
+                }
+            },
+            "tiktok",
+            (None, None),
+        ),
+        ({"platforms": {"tiktok": {"platform_post_id": "7300"}}}, "youtube", (None, None)),
+        ({"platforms": {"tiktok": {"platform_post_id": True, "post_url": 5}}}, "tiktok", (None, None)),
+        ({"platforms": "broken"}, "tiktok", (None, None)),
+        (None, "tiktok", (None, None)),
+    ],
+)
+def test_post_link_in_an_analytics_answer(
+    body: Any, platform: str, expected: tuple[str | None, str | None]
+) -> None:
+    assert collector.parse_post_link(body, platform) == expected
