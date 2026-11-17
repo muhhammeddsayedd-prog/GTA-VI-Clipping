@@ -16,6 +16,7 @@ from dataclasses import replace
 from pathlib import Path
 from typing import Final
 
+import psycopg
 import typer
 
 from sixstars import db
@@ -64,8 +65,8 @@ def run(clip_id: str, post: bool = True) -> int:
     _safe_stdout()
     try:
         outcome = gate.run_gate(clip_id, deps=_deps(post))
-    except ValueError as exc:
-        typer.echo(str(exc), err=True)
+    except (ValueError, psycopg.DataError) as exc:  # an unknown clip, or an id that is not a uuid
+        typer.echo(str(exc).splitlines()[0] if str(exc) else type(exc).__name__, err=True)
         return EXIT_USAGE
     _print(outcome)
     if outcome.decision is None:

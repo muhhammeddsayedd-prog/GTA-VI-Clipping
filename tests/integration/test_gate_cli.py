@@ -49,6 +49,7 @@ def test_gate_run_prints_every_reason_of_a_rejection(good_video: Path) -> None:
 def test_gate_run_with_an_unknown_clip() -> None:
     result = runner.invoke(app, ["gate", "run", "00000000-0000-0000-0000-000000000000"])
     assert result.exit_code == 2 and "does not exist" in result.output
+    assert runner.invoke(app, ["gate", "run", "not-a-uuid"]).exit_code == 2
 
 
 def test_gate_run_no_post_leaves_a_spike_clip_approved_without_the_hand_off(good_video: Path) -> None:

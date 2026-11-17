@@ -45,12 +45,18 @@ def setting(key: str) -> object:
 def current_state(client: YouTubeClient, now: datetime) -> PrecheckState:
     """The state from `precheck.enabled`, the client's OAuth token and today's uploads (settings are read
     uncached). A client that cannot even be asked counts as no OAuth."""
-    enabled = setting("precheck.enabled")
-    daily_max = setting("precheck.daily_max")
+    keys = ["precheck.enabled", "precheck.daily_max"]
+    rows = db.fetch_all("select key, value from settings where key = any(%s)", (keys,))
+    values = {str(row["key"]): row["value"] for row in rows}
+    if set(values) != set(keys):
+        raise KeyError("settings precheck.enabled and precheck.daily_max are required")
+    enabled, daily_max = values["precheck.enabled"], values["precheck.daily_max"]
     if not isinstance(enabled, bool) or isinstance(daily_max, bool) or not isinstance(daily_max, int):
         raise TypeError("precheck.enabled must be a boolean and precheck.daily_max an integer")
     try:
         has_oauth = bool(client.has_oauth())
     except Exception:  # noqa: BLE001 - an unusable client is "unavailable", never a reason to skip the rule
         has_oauth = False
-    return state_for(enabled=enabled, has_oauth=has_oauth, used_today=uploads_today(now), daily_max=daily_max)
+    # Today's uploads only matter when the pre-check could run at all.
+    used_today = uploads_today(now) if enabled and has_oauth else 0
+    return state_for(enabled=enabled, has_oauth=has_oauth, used_today=used_today, daily_max=daily_max)

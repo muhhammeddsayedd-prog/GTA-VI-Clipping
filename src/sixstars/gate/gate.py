@@ -131,9 +131,10 @@ def _decide(
     state: PrecheckState,
     settings: GateSettings,
     now: datetime,
+    frames: tuple[bool, ...] | None,
 ) -> GateDecision:
-    """Load the database inputs and call the pure decision."""
-    clip = store.clip_facts(row, file, store.music_frames(row.id))
+    """Load the creator and the other clips and call the pure decision."""
+    clip = store.clip_facts(row, file, frames)
     creator = store.creator_facts(row.creator_id, row.id, now)
     recent = store.recent_clips(row, settings, now)
     return decide(clip, creator, recent, settings, visual, state, now)
@@ -166,9 +167,11 @@ def _finish(
     settings: GateSettings,
     deps: GateDeps,
     *,
+    frames: tuple[bool, ...] | None,
     p5_skipped: bool = False,
 ) -> GateOutcome:
-    """Decide under the lock, store, then do what follows the verdict. `state` None means "ask now"."""
+    """Decide under the lock, store, then do what follows the verdict. `state` None means "ask now".
+    `frames` are the per-second music flags of the clip (they do not change after the render)."""
     log = get_logger("gate")
     precheck_job: int | None = None
     with store.decision_lock():
@@ -177,7 +180,7 @@ def _finish(
             return GateOutcome(row.id, current.status if current else "missing", skipped="status changed")
         now = deps.clock()
         decided_state = state or precheck_state.current_state(_youtube(deps), now)
-        decision = _decide(row, file, visual, decided_state, settings, now)
+        decision = _decide(row, file, visual, decided_state, settings, now, frames)
         document = store.result_document(decision, file, visual, now, p5_skipped=p5_skipped)
         # A clip that was moved to the hourly lane before its pre-check keeps that mark and its boost.
         earlier = row.gate_result or {}
@@ -284,10 +287,11 @@ def run_gate(clip_id: str, *, deps: GateDeps | None = None) -> GateOutcome:
         # Would the clip be rejected even if the pictures were fine? Then P5 is not asked.
         now = deps.clock()
         state = precheck_state.current_state(_youtube(deps), now)
-        optimistic = _decide(row, file, _NOTHING_SEEN, state, settings, now)
+        frames = store.music_frames(row.id)
+        optimistic = _decide(row, file, _NOTHING_SEEN, state, settings, now, frames)
         if optimistic.verdict is Verdict.REJECT:
-            return _finish(row, file, _NOTHING_SEEN, None, settings, deps, p5_skipped=True)
-        return _finish(row, file, _look(row, deps), None, settings, deps)
+            return _finish(row, file, _NOTHING_SEEN, None, settings, deps, frames=frames, p5_skipped=True)
+        return _finish(row, file, _look(row, deps), None, settings, deps, frames=frames)
 
 
 def resolve_precheck(clip_id: str, state: PrecheckState, *, deps: GateDeps | None = None) -> GateOutcome:
@@ -308,7 +312,7 @@ def resolve_precheck(clip_id: str, state: PrecheckState, *, deps: GateDeps | Non
         stored = inputs if isinstance(inputs, dict) else {}
         file = store.file_from_json(stored.get("file")) or _measure(row, settings, deps)
         visual = visuals.findings_from_json(stored.get("visual"))
-        return _finish(row, file, visual, state, settings, deps)
+        return _finish(row, file, visual, state, settings, deps, frames=store.music_frames(row.id))
 
 
 # ── Factory hook and job handlers ────────────────────────────
