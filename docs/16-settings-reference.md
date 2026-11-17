@@ -94,6 +94,24 @@ Defaults below are the production values from `supabase/migrations/0002_seed_set
 | `discovery.max_blocked_waiting` | `12` | Videos per platform that may wait out a download block (videos.status = new, skip_reason download_blocked). Discovery marks the oldest beyond this as skipped so they do not retry for ever. (fix-blocked-platform-queue) |
 | `discovery.blocked_platform_stale_s` | `7200` | A download block recorded in vod.source_health counts for this many seconds after its last refusal; then discovery queues the platform again. Keep it well above vod.blocked_backoff_s. (fix-blocked-platform-queue) |
 
+## Twitch Clips source
+
+Viewer-made Twitch Clips of `env.target_game` as a discovery source (decision D110, migration 0019). The length limits come from `gate.hourly` (`min_len`, `max_len`), the language factor from `discovery.non_english_penalty`, the same-moment distance from `gate.duplicate.source_pad_s`; the title blocklist, the excluded channels and the permission-check settings are those of discovery. The download uses `vod.download_timeout_s` and `downloads.max_height`; a job stopped by `control.emergency_stop` runs again after `vod.stop_retry_s`.
+
+| Key | Default | Meaning |
+|---|---|---|
+| `twitch_clips.enabled` | `true` | Viewer-made Twitch Clips are a discovery source. `false`: the source does nothing. It also does nothing without the Twitch keys, while `control.emergency_stop` is set, and on a database without this key. |
+| `twitch_clips.lookback_h` | `24` | Each pass reads the most viewed clips made in the last this many hours. |
+| `twitch_clips.read_per_pass` | `100` | Clips read from Twitch per pass, most viewed first (100 per request; a request costs one rate-limit point). |
+| `twitch_clips.max_queued_per_pass` | `3` | Clips queued for rendering per discovery pass, at most. |
+| `twitch_clips.max_per_creator_per_pass` | `1` | Clips of one streamer queued per discovery pass, at most. |
+| `twitch_clips.min_views` | `10` | A clip with fewer views on Twitch is not queued. Measured 2026-11-17 over 24 hours: every one of the 300 most viewed GTA V clips had 45 views or more, so there this is only a floor; in the GTA VI category before release 16 clips of 20 s or more had 10 views or more (7 had 20, 3 had 50). |
+| `twitch_clips.daily_cap` | `48` | Clips queued from this source in any 24 hours, at most (two per hourly posting slot). |
+| `twitch_clips.max_backlog` | `6` | No more clips are queued while this many wait to be rendered (status `new` or `processing`). |
+| `twitch_clips.min_age_min` | `15` | A clip younger than this waits for a later pass: Twitch writes its position in the broadcast (`vod_offset`, which the duplicate check needs) some minutes after the clip is made. |
+| `twitch_clips.rate_floor_h` | `1` | Views per hour are computed over at least this many hours. |
+| `twitch_clips.render_without_moment` | `false` | `true`: a viewer clip is rendered and judged by the gate even when the clip writer (P2), reading the transcript alone, says there is no moment in it. A writer reject with a safety flag or a spoiler always stands. `false`: the reject closes the clip before rendering, as on every other lane. |
+
 ## Live lane
 
 | Key | Default | Meaning |
