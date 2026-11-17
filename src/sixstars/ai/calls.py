@@ -12,9 +12,11 @@ One function per prompt of docs/15:
     classify_takedown   P7  fast model    is this email a removal request?
     translate_segments  P8  writer model  transcript segments into English
     score_clip          P9  fast model    the score of a finished cut, median of several asks
+    score_clip_visual   P9V see below     the score of the rendered clip, judged from its frames (vision)
     sentence_ends       P10 fast model    where sentences end in a transcript without punctuation
 
-Models come from `ai.model_writer` and `ai.model_fast`. Tokens and cost are recorded by the client in
+Models come from `ai.model_writer` and `ai.model_fast`; P9V uses the one `ai.visual_score_model` names
+(`"fast"` or `"writer"`). Tokens and cost are recorded by the client in
 `api_usage` with `operation` = the prompt id. Calls made for the VOD lane (`lane="vod"`, the default)
 stop with `BudgetExceededError` once today's spend reaches `ai.daily_budget_usd`; express calls
 (`lane="express"`) and takedown classification always run.
@@ -45,6 +47,7 @@ from sixstars.ai.schemas import (
     SpikeVerdict,
     TakedownVerdict,
     TranslatedSegment,
+    VisualClipScore,
     VisualVerdict,
     clip_writing_schema,
     layout_schema,
@@ -73,6 +76,7 @@ P6 = "p6_permission_read"
 P7 = "p7_takedown_classify"
 P8 = "p8_translate_lines"
 P9 = "p9_clip_score"
+P9V = "p9_visual_score"
 P10 = "p10_sentence_ends"
 
 # Shapes fixed by docs/15 (prompt contract, not runtime settings).
@@ -83,6 +87,12 @@ TAKEDOWN_BODY_MAX_CHARS = 4000
 PERMISSION_TITLES_MAX = 15
 TRANSLATE_BATCH_SIZE = 60
 VISUAL_FRAMES_MAX = 8
+# P9V: frames are shrunk to this long side (a 1080x1920 frame becomes 432x768; the event and the game's
+# own text stay readable), and chat is shown from this window around the peak.
+VISUAL_SCORE_MAX_SIDE_PX = 768
+VISUAL_SCORE_CHAT_MAX = 30
+VISUAL_SCORE_CHAT_BEFORE_S = 15.0
+VISUAL_SCORE_CHAT_AFTER_S = 25.0
 
 # Output caps. Both models think before answering and thinking counts toward the cap, so these leave
 # room for it; the client doubles the cap once if a reply is cut off.
@@ -96,6 +106,7 @@ MAX_TOKENS: dict[str, int] = {
     P7: 2500,
     P8: 8000,
     P9: 2000,
+    P9V: 3000,
     P10: 3000,
 }
 # Reasoning depth per prompt. The clip writer and the layout box are judgement calls worth more thought;
@@ -110,6 +121,7 @@ EFFORT: dict[str, Effort] = {
     P7: "low",
     P8: "low",
     P9: "low",
+    P9V: "low",
     P10: "low",
 }
 
@@ -205,6 +217,33 @@ class Segment:
     start: float
     end: float
     text: str
+
+
+@dataclass(frozen=True, slots=True)
+class ChatReaction:
+    """The chat spike a clip was cut around, as P9V sees it. The counts are those of the peak window
+    (`spikes.msgs_in_bucket`, `unique_chatters`, `reaction_count`); `reactions` are the messages the spike
+    engine counted as laughter or shock. `peak_s` is the peak in clip time when that is known; the
+    `lines` are timed relative to the peak."""
+
+    msgs: int | None = None
+    uniq: int | None = None
+    reactions: int | None = None
+    tier: str | None = None
+    peak_s: float | None = None
+    lines: Sequence[ChatLine] = ()
+
+
+@dataclass(frozen=True, slots=True)
+class RenderedClip:
+    """What P9V sees about one rendered clip besides its frames. Line times are clip time."""
+
+    hook: str
+    length_s: float
+    lines: Sequence[NumberedLine]
+    commentary: str | None = None
+    chat: ChatReaction | None = None
+    clip_id: str | None = None
 
 
 # ── Shared plumbing ──────────────────────────────────────────
@@ -505,6 +544,142 @@ def _rescored(
         score=scored.score,
     )
     return writing.model_copy(update={"score": scored.score, "score_parts": scored.score_parts})
+
+
+# ── P9V visual_score ─────────────────────────────────────────
+
+
+# The rubric's bands (`_score_rubric.md`): a score in the band starting at the key needs `payoff` and
+# `clarity` both at least the value.
+BAND_NEEDS: dict[int, int] = {9: 8, 7: 7}
+
+
+def bounded_score(score: ClipScore | VisualClipScore) -> int:
+    """The overall score held to the rubric's own rules: never more than one above `payoff`, never more
+    than two above `clarity`, and in the 7-8 or 9-10 band only when both reach what that band asks for.
+    The model is told these rules; here they are enforced. The result is never above the model's score."""
+    parts = score.score_parts
+    bounded = min(score.score, parts.payoff + 1, parts.clarity + 2)
+    for band_start, needed in sorted(BAND_NEEDS.items(), reverse=True):
+        if bounded >= band_start and min(parts.payoff, parts.clarity) < needed:
+            bounded = band_start - 1
+    return max(1, bounded)
+
+
+def chat_summary(chat: ChatReaction | None) -> str:
+    """One line of numbers about the chat spike, in words the model can use."""
+    if chat is None:
+        return "(no chat data for this clip)"
+    facts: list[str] = []
+    if chat.msgs is not None:
+        who = f" from {chat.uniq} chatters" if chat.uniq is not None else ""
+        facts.append(f"{chat.msgs} messages{who} in the peak window")
+        if chat.reactions is not None and chat.msgs > 0:
+            share = min(100, round(100 * chat.reactions / chat.msgs))
+            facts.append(f"{chat.reactions} of them ({share}%) laughter or shock reactions")
+    if chat.tier:
+        facts.append(f"spike tier {chat.tier} (S strongest, then A, then B)")
+    if chat.peak_s is not None:
+        facts.append(f"the peak is about {chat.peak_s:.0f} s into the clip (chat reacts a few seconds late)")
+    return "; ".join(facts) + "." if facts else "(no chat counts for this clip)"
+
+
+def _reaction_block(chat: ChatReaction | None) -> str:
+    """The messages near the peak, in clip time when the peak position is known."""
+    if chat is None:
+        return "(no chat messages)"
+    near = [
+        line
+        for line in chat.lines
+        if -VISUAL_SCORE_CHAT_BEFORE_S <= line.t_s <= VISUAL_SCORE_CHAT_AFTER_S and line.text.strip()
+    ][:VISUAL_SCORE_CHAT_MAX]
+    if not near:
+        return "(no chat messages near the peak)"
+    if chat.peak_s is None:
+        head = "Messages around the peak (seconds relative to the peak):"
+        rows = [f"{line.t_s:+.0f}s  {_one_line(line.text)}" for line in near]
+    else:
+        head = "Messages around the peak (seconds from the start of the clip; some fall outside it):"
+        rows = [f"{chat.peak_s + line.t_s:.0f}s  {_one_line(line.text)}" for line in near]
+    return "\n".join([head, *rows])
+
+
+def visual_score_model() -> str:
+    """The model id P9V runs on: the fast or the writer model, as `ai.visual_score_model` says."""
+    role = settings.get_str("ai.visual_score_model", "writer")
+    if role == "writer":
+        return _writer_model()
+    if role == "fast":
+        return _fast_model()
+    raise ValueError(f"ai.visual_score_model must be 'fast' or 'writer', not {role!r}")
+
+
+def score_clip_visual(
+    clip: RenderedClip,
+    frames: Sequence[bytes],
+    frame_times_s: Sequence[float],
+    *,
+    samples: int = 1,
+    lane: BudgetKind = "vod",
+    client: AnthropicClient | None = None,
+) -> VisualClipScore:
+    """P9V: score the rendered clip from `frames` (JPEG, in time order, taken at `frame_times_s` of clip
+    time), its hook, its subtitle lines and the chat reaction, on the same scales as the clip writer.
+
+    `samples` requests go to the model `ai.visual_score_model` names, each recorded as operation
+    `p9_visual_score`; the median is returned (`median_visual_score`). The returned `score` obeys the
+    rubric's limits (`bounded_score`). Raises `ValueError` for unusable input and the `AnthropicError`
+    family when a call fails (`BudgetExceededError` for a VOD clip over the daily budget); the caller
+    keeps the clip writer's score then."""
+    if samples < 1:
+        raise ValueError("samples must be at least 1")
+    if not frames:
+        raise ValueError("score_clip_visual needs at least one frame")
+    if len(frames) > VISUAL_FRAMES_MAX:
+        raise ValueError(f"score_clip_visual takes at most {VISUAL_FRAMES_MAX} frames")
+    if len(frame_times_s) != len(frames):
+        raise ValueError("one time is needed for each frame")
+    model = visual_score_model()
+    _guard(P9V, lane)
+    images = [prepare_jpeg(frame, max_side=VISUAL_SCORE_MAX_SIDE_PX).data for frame in frames]
+    lines = "\n".join(f"{_seconds(line.start_s)}-{_seconds(line.end_s)} | {line.text}" for line in clip.lines)
+    values: dict[str, object] = {
+        "length_s": f"{clip.length_s:.0f}",
+        "hook": _one_line(clip.hook) or "(none)",
+        "commentary": _one_line(clip.commentary) if clip.commentary else "(none)",
+        "count": len(images),
+        "frame_times": ", ".join(f"{time_s:.1f}" for time_s in frame_times_s),
+        "lines": lines or "(nobody speaks)",
+        "chat_summary": chat_summary(clip.chat),
+        "chat": _reaction_block(clip.chat),
+    }
+    asked: list[VisualClipScore] = []
+    for _ in range(samples):
+        reply = _ask(P9V, VisualClipScore, model, values, client, images=images, ref_id=clip.clip_id)
+        asked.append(reply.model_copy(update={"score": bounded_score(reply)}))
+    scored = median_visual_score(asked)
+    _log.info(
+        "clip_scored_visual",
+        clip_id=clip.clip_id,
+        model=model,
+        frames=len(images),
+        samples=samples,
+        score=scored.score,
+        asked_scores=[item.score for item in asked],
+        payoff=scored.score_parts.payoff,
+        clarity=scored.score_parts.clarity,
+    )
+    return scored
+
+
+def median_visual_score(scores: Sequence[VisualClipScore]) -> VisualClipScore:
+    """The middle of several visual scores: each part and the overall score separately (the lower middle
+    one for an even number), held to the rubric's limits again, with the description of an ask that
+    gave that overall score."""
+    middle = median_score([ClipScore(score_parts=item.score_parts, score=item.score) for item in scores])
+    seen = next((item.seen for item in scores if item.score == middle.score), scores[0].seen)
+    result = VisualClipScore(seen=seen, score_parts=middle.score_parts, score=middle.score)
+    return result.model_copy(update={"score": bounded_score(result)})
 
 
 # ── P10 sentence_ends ────────────────────────────────────────

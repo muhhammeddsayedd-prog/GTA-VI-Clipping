@@ -170,6 +170,15 @@ class ClipScore(Reply):
     score: int = Field(ge=1, le=10)
 
 
+class VisualClipScore(Reply):
+    """P9V: the score of one rendered clip, judged from its frames, its lines and the chat reaction.
+    `seen` comes first so the model says what happens on screen before it scores it."""
+
+    seen: str = Field(min_length=1, description="One or two sentences: what happens, and the payoff.")
+    score_parts: ScoreParts
+    score: int = Field(ge=1, le=10)
+
+
 class ClipWriting(Reply):
     """Everything needed to trim, subtitle, title and post one clip."""
 

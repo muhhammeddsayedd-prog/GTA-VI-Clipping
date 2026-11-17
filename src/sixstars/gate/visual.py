@@ -36,6 +36,12 @@ BAND_BOTTOM = (min(layout.CAPTION_Y_A, layout.CAPTION_Y_B) - 150) / layout.REF_H
 BLACK_PIXEL_THRESHOLD = 0.10
 # Where in the clip the P5 frames are taken (docs/10, progress notes M05).
 FRAME_POSITIONS = (0.10, 0.35, 0.60, 0.85)
+# The visual score (P9V) sees the P5 frames plus extra ones, tried in this order: seconds relative to the
+# chat peak, then positions in the clip (the end first: a cut closes just after its payoff).
+SCORE_PEAK_OFFSETS_S = (-3.0, 0.0, -6.0, 3.0)
+SCORE_EXTRA_POSITIONS = (0.975, 0.725, 0.475, 0.225)
+SCORE_MIN_GAP_S = 1.0
+SCORE_EDGE_S = 0.2
 DETECT_TIMEOUT_S = 300.0
 # How often P5 is asked when its reply cannot be read (each ask includes the client's own repair retry).
 P5_ATTEMPTS = 2
@@ -145,6 +151,38 @@ def frame_times(clip_duration_s: float) -> list[float]:
 def sample_frames(path: Path, clip_duration_s: float, ffmpeg: str = "ffmpeg") -> list[bytes]:
     """Four JPEG frames of the rendered file."""
     return [tools.grab_frame(path, time_s, ffmpeg) for time_s in frame_times(clip_duration_s)]
+
+
+def score_frame_times(clip_duration_s: float, count: int, peak_s: float | None = None) -> list[float]:
+    """Where the frames for the visual score (P9V) are taken, in time order: always the four P5 positions,
+    so one extraction serves both calls, plus up to `count - 4` more. The extra ones go where the event
+    most likely is: around the chat peak when its place in the clip is known (chat reacts a few seconds
+    after what it saw), then between and after the P5 positions. A candidate outside the clip or within
+    `SCORE_MIN_GAP_S` of a frame already chosen is skipped."""
+    chosen = frame_times(clip_duration_s)
+    candidates = [peak_s + offset for offset in SCORE_PEAK_OFFSETS_S] if peak_s is not None else []
+    candidates += [clip_duration_s * position for position in SCORE_EXTRA_POSITIONS]
+    for time_s in candidates:
+        if len(chosen) >= count:
+            break
+        inside = SCORE_EDGE_S <= time_s <= clip_duration_s - SCORE_EDGE_S
+        if inside and all(abs(time_s - other) >= SCORE_MIN_GAP_S for other in chosen):
+            chosen.append(round(time_s, 3))
+    return sorted(chosen)
+
+
+def sample_score_frames(
+    path: Path, clip_duration_s: float, count: int, peak_s: float | None = None, ffmpeg: str = "ffmpeg"
+) -> list[tuple[float, bytes]]:
+    """`(time, JPEG)` for every time of `score_frame_times`, in time order."""
+    times = score_frame_times(clip_duration_s, count, peak_s)
+    return [(time_s, tools.grab_frame(path, time_s, ffmpeg)) for time_s in times]
+
+
+def p5_frames(shots: Sequence[tuple[float, bytes]], clip_duration_s: float) -> list[bytes]:
+    """The four P5 frames out of an extraction made for the visual score."""
+    by_time = dict(shots)
+    return [by_time[time_s] for time_s in frame_times(clip_duration_s)]
 
 
 def findings_from_verdict(verdict: VisualVerdict) -> VisualFindings:

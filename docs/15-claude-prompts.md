@@ -151,8 +151,39 @@ Keep slang energy; translate profanity faithfully (it will be bleeped); keep nam
 
 ---
 
+## P9V — visual_score (model: `ai.visual_score_model`: `"writer"` or `"fast"`, vision)
+
+Added by `visual-scoring` (migration 0016). File: `src/sixstars/ai/prompts/p9_visual_score.md`; call: `ai.calls.score_clip_visual`; usage operation: `p9_visual_score`. It runs in the gate (`gate/rescore.py`), after the render and before the decision, when `ai.visual_score` is true, and its score replaces the clip writer's in `clips.score`.
+
+**Why:** P2 scores from the transcript and chat sample before anything is rendered. In game clips the payoff is on screen, so P2 scored every staging clip 4 to 6, including the ones worth posting.
+
+**Input:** up to 8 JPEG frames of the rendered clip (at most 768 px on the long side) in time order, then text: clip length, hook, commentary line, the time of each frame, the subtitle lines in clip time, one line of chat numbers (messages and chatters in the peak window, share counted as laughter or shock, spike tier, where the peak falls in the clip) and the chat messages from 15 s before to 25 s after the peak (at most 30).
+
+**System prompt (summary; the file is the source):**
+- the shared preamble and the shared rubric of P2 and P9 (`_score_rubric.md`), unchanged: four parts, five bands, the rules tying `score` to the parts;
+- "judge the payoff from the frames and the chat reaction as well as the words" in place of P2's "when a clip sits between two numbers, give the lower one" and "do not assume a visual payoff that nothing in them points to";
+- what is ours and never scored: hook box, subtitles, watermark, creator credit, progress bar, LIVE badge, series counter, commentary line, blurred bars, webcam panel;
+- how to read stills (a change between two frames is the event; nothing is invented when the picture never changes) and chat (evidence of what the audience saw, not a score);
+- `score` follows from the parts: `payoff` and `clarity` both 7 or more means 7 at least; either at 6 or less means 6 or less;
+- menus, inventory screens, stream overlays and watched cutscenes have a `payoff` of 5 or less; people standing and talking with no event and no punchline score 5 or less.
+
+```json
+{
+  "seen": "one or two sentences: what happens, and where the payoff is",
+  "score_parts": {"hook": 1, "clarity": 1, "payoff": 1, "rewatch": 1},
+  "score": 1
+}
+```
+
+Code-side backstop (`calls.bounded_score`): the stored score is never more than one above `payoff`, never more than two above `clarity`, and is in the 7-8 band only with both at 7 or more (9-10: both at 8 or more). Code only ever lowers the model's number. On the hourly lane the clip is asked `ai.visual_score_samples` times and the median is stored; express clips are asked once.
+
+**Failure:** the clip keeps the writer's score (event `clip.visual_score_failed`); a used-up daily budget on the VOD lane defers the gate instead, as for P5.
+
+---
+
 ## Cost control
 - P1 batches in replay mode.
 - P2 uses prompt caching for its long rules block.
 - P4 is cached per creator for 7 days.
 - Daily budget `ai.daily_budget_usd`; when exceeded, VOD-lane calls stop until midnight UTC; express calls continue.
+- P9V (visual score): one request per express clip, `ai.visual_score_samples` per hourly clip; about $0.011 per request with `claude-sonnet-5-5` and 8 frames (measured, see `development-plan/progress-notes/visual-scoring.md`). Not asked for a clip that would be rejected even with a perfect score.

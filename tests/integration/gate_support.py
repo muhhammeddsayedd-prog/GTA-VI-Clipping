@@ -12,7 +12,7 @@ import pytest
 from posting_support import clean_posting_tables
 from psycopg.types.json import Jsonb
 
-from sixstars import db, events
+from sixstars import db, events, settings
 from sixstars.clients.fakes import (
     FakeAnthropicClient,
     FakeUploadPostClient,
@@ -216,8 +216,11 @@ def count(table: str, where: str = "true") -> int:
 class Kit:
     """The fakes one gate run uses, and the `GateDeps` built from them."""
 
-    def __init__(self, p5: Any = None, oauth: bool = False) -> None:
-        self.ai = FakeAnthropicClient({"p5_visual_check": p5 if p5 is not None else P5_CLEAN})
+    def __init__(self, p5: Any = None, oauth: bool = False, score: Any = None) -> None:
+        replies = {"p5_visual_check": p5 if p5 is not None else P5_CLEAN}
+        if score is not None:
+            replies["p9_visual_score"] = score
+        self.ai = FakeAnthropicClient(replies)
         self.youtube = FakeYouTubeClient(oauth=oauth)
         self.storage = FakeClipStorage()
         self.upload_post = FakeUploadPostClient()
@@ -235,9 +238,13 @@ class Kit:
 
 @pytest.fixture
 def tables() -> Iterator[None]:
-    """Empty clip tables before and after; the gate's module-level collaborators are reset."""
+    """Empty clip tables before and after; the gate's module-level collaborators are reset.
+
+    The visual score (`ai.visual_score`, on since migration 0016) is switched off here: these tests are
+    about the gate's rules and run on the stored score. `test_gate_visual_score.py` switches it on."""
     clean_posting_tables()
     gate.configure(None)
+    settings.set("ai.visual_score", False)
     yield
     gate.configure(None)
     clean_posting_tables()

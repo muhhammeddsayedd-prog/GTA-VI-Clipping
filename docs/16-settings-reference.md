@@ -238,6 +238,10 @@ Defaults below are the production values from `supabase/migrations/0002_seed_set
 | `ai.model_fast` | `"claude-haiku-5-5"` | Model for spike confirmation and classifiers. |
 | `ai.daily_budget_usd` | `25` | Daily Anthropic spend cap. Over it: VOD lane pauses, express continues. |
 | `ai.score_samples` | `1` | How many times a clip is scored. `1`: the clip writer's own score is stored. `3` (or another odd number): the fast model scores the finished cut that many times with the same rubric (prompt P9) and the median is stored; about $0.001 more per clip. Added by migration 0011. |
+| `ai.visual_score` | `true` | Score the rendered clip from its frames before the gate decides (prompt P9V, `gate/rescore.py`); `clips.score` becomes that score and `clips.score_parts` keeps the writer's and the visual parts under `writer` and `visual`. `false`: the clip writer's score is judged, as before. If the call fails the writer's score stands. Added by migration 0016. |
+| `ai.visual_score_model` | `"writer"` | Which model gives the visual score: `"writer"` (`ai.model_writer`) or `"fast"` (`ai.model_fast`). Measured on 15 staging clips: the writer model kept every weak clip at 5 or less (about $0.011 per request); the fast model is 18 times cheaper but put weak clips at 6 and one at 7 in 2 of 9 asks. (migration 0016) |
+| `ai.visual_score_frames` | `8` | Frames the visual score sees, 4 to 8: the four P5 frames plus extra ones around the chat peak and near the end of the clip. One extraction serves P9V and P5. With 4 the good clips scored lower. (migration 0016) |
+| `ai.visual_score_samples` | `3` | How many times an hourly clip is scored visually; the median is stored. Use an odd number. Express clips are always scored once. (migration 0016) |
 | `transcribe.express_provider` | `"openai"` | Hosted transcription for express: groq | openai. |
 | `transcribe.daily_budget_usd` | `5` | Daily hosted transcription cap. |
 
