@@ -1,6 +1,8 @@
 """Loads the prompt files in `ai/prompts/`. Each `<prompt id>.md` has a `## System` section (static, cached
 by the API) and a `## User template` section; both use `{placeholders}` filled with `str.format_map`.
-`_preamble.md` is the common first paragraph of every system prompt. Implemented in M05.
+`_preamble.md` is the common first paragraph of every system prompt and `_score_rubric.md` the scoring
+scales shared by the clip writer (P2) and the clip scorer (P9); a system section includes them with
+`{preamble}` and `{score_rubric}`. Implemented in M05.
 """
 
 from collections.abc import Mapping
@@ -18,6 +20,8 @@ PROMPT_IDS = (
     "p6_permission_read",
     "p7_takedown_classify",
     "p8_translate_lines",
+    "p9_clip_score",
+    "p10_sentence_ends",
 )
 SYSTEM_HEADING = "## System"
 USER_HEADING = "## User template"
@@ -36,7 +40,8 @@ class Prompt:
     def render_system(self, values: Mapping[str, object]) -> str:
         """System prompt with the preamble and the given values filled in."""
         preamble = _fill(self.prompt_id, preamble_text(), values)
-        return _fill(self.prompt_id, self.system, {**values, "preamble": preamble})
+        shared = {"preamble": preamble, "score_rubric": score_rubric_text()}
+        return _fill(self.prompt_id, self.system, {**values, **shared})
 
     def render_user(self, values: Mapping[str, object]) -> str:
         return _fill(self.prompt_id, self.user_template, values)
@@ -78,3 +83,9 @@ def load(prompt_id: str) -> Prompt:
 @cache
 def preamble_text() -> str:
     return (PROMPTS_DIR / "_preamble.md").read_text(encoding="utf-8").strip()
+
+
+@cache
+def score_rubric_text() -> str:
+    """The scoring scales and bands, word for word the same in P2 and P9."""
+    return (PROMPTS_DIR / "_score_rubric.md").read_text(encoding="utf-8").strip()

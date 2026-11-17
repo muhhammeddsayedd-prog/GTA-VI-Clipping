@@ -10,11 +10,17 @@ from typing import Any
 import pytest
 from ai_samples import clip_context, spike, verdict_reply, writing_reply
 from PIL import Image
+from structlog.testing import capture_logs
 
 from sixstars.ai import calls
 from sixstars.ai.calls import BudgetExceededError, Segment, TranscriptChunk
-from sixstars.ai.schemas import Moment
-from sixstars.clients.anthropic_client import AnthropicClient, AnthropicRefusal, InvalidModelOutput
+from sixstars.ai.schemas import ClipScore, ClipWriting, Moment
+from sixstars.clients.anthropic_client import (
+    AnthropicClient,
+    AnthropicError,
+    AnthropicRefusal,
+    InvalidModelOutput,
+)
 from sixstars.clients.fakes import FakeAnthropicClient
 
 Scripted = Callable[..., tuple[AnthropicClient, Any]]
@@ -159,7 +165,8 @@ def test_write_clip_invalid_then_valid_is_repaired(scripted: Scripted) -> None:
     assert writing.hook == "He did NOT stick this landing 😭"
     assert len(sdk.requests) == 2
     repair = sdk.requests[1]["messages"][0]["content"][-1]["text"]
-    assert "hook has 13 words, the maximum is 8" in repair
+    assert "hook has 13 words (this | hook | is | far" in repair and "the maximum is 8" in repair
+    assert "at least 5 fewer" in repair
     assert sdk.requests[0]["system"][0]["cache_control"] == {"type": "ephemeral"}
     assert sdk.requests[0]["system"] == sdk.requests[1]["system"]
 
@@ -172,11 +179,24 @@ def test_write_clip_trim_outside_the_rules_is_sent_back(scripted: Scripted) -> N
 
 
 @pytest.mark.parametrize("bad", ["not json at all", '{"hook": "missing everything else"}'])
-def test_write_clip_invalid_twice_fails(scripted: Scripted, bad: str) -> None:
+def test_write_clip_still_invalid_after_the_repairs_fails(scripted: Scripted, bad: str) -> None:
     client, sdk = scripted(bad, bad)
-    with pytest.raises(InvalidModelOutput, match="p2_clip_writer"):
+    with pytest.raises(InvalidModelOutput, match="p2_clip_writer: reply is not valid for ClipWriting"):
         calls.write_clip(clip_context(now=NOW), client=client)
-    assert len(sdk.requests) == 2
+    assert len(sdk.requests) == 3
+
+
+def test_write_clip_request_carries_the_schema_as_output_format(scripted: Scripted) -> None:
+    client, sdk = scripted(json.dumps(writing_reply()))
+    calls.write_clip(clip_context(now=NOW), client=client)
+    request = sdk.requests[0]
+    schema = request["output_config"]["format"]["schema"]
+    assert request["output_config"]["effort"] == "medium"
+    assert schema["title"] == "ClipWriting" and schema["additionalProperties"] is False
+    # The parts are written before the overall score, so the score follows from them.
+    names = list(schema["properties"])
+    assert names.index("score_parts") < names.index("score")
+    assert "JSON Schema" not in request["system"][0]["text"]
 
 
 def test_write_clip_needs_lines_and_passes_a_refusal_on() -> None:
@@ -265,6 +285,40 @@ def test_pick_moments_slices_long_videos_and_merges() -> None:
     assert "Pick between 0 and 3" in fake.calls[0][1]["user_content"]
     assert "covers 1800 s to 3600 s" in fake.calls[1][1]["user_content"]
     assert [(m.start_s, m.confidence) for m in moments] == [(120, 0.9), (2000, 0.8), (900, 0.7)]
+
+
+def test_pick_moments_keeps_the_other_slices_when_one_reply_is_unusable() -> None:
+    chunks = [TranscriptChunk(index * 30.0, index * 30.0 + 30.0, "talk") for index in range(130)]  # 65 min
+    replies = [
+        {"moments": [moment(100, 140, 0.5)]},
+        InvalidModelOutput("p3_vod_moment_picker: reply is not valid for MomentList: bad"),
+        {"moments": [moment(3700, 3740, 0.8)]},
+    ]
+    fake = FakeAnthropicClient({calls.P3: replies})
+    with capture_logs() as logs:
+        moments = calls.pick_moments(chunks, 3, 3, 20, 60, ref_id="video-1", client=fake)
+    assert [m.start_s for m in moments] == [3700, 100]
+    assert len(fake.calls) == 3
+    event = next(item for item in logs if item["event"] == "moment_slice_failed")
+    assert (event["slice_start_s"], event["slice_end_s"], event["ref_id"]) == (1800, 3600, "video-1")
+    assert "not valid for MomentList" in event["error"]
+
+
+def test_pick_moments_raises_when_every_slice_fails() -> None:
+    chunks = [TranscriptChunk(index * 30.0, index * 30.0 + 30.0, "talk") for index in range(130)]
+    fake = FakeAnthropicClient({calls.P3: InvalidModelOutput("bad reply")})
+    with pytest.raises(InvalidModelOutput, match="bad reply"):
+        calls.pick_moments(chunks, 3, 3, 20, 60, client=fake)
+    assert len(fake.calls) == 3
+
+
+def test_pick_moments_does_not_hide_an_api_failure() -> None:
+    chunks = [TranscriptChunk(index * 30.0, index * 30.0 + 30.0, "talk") for index in range(130)]
+    fake = FakeAnthropicClient(
+        {calls.P3: [{"moments": []}, AnthropicError("Anthropic API returned HTTP 529")]}
+    )
+    with pytest.raises(AnthropicError, match="529"):
+        calls.pick_moments(chunks, 3, 3, 20, 60, client=fake)
 
 
 def test_pick_moments_without_text_makes_no_call() -> None:
@@ -440,3 +494,88 @@ def test_spoiler_status_compares_the_dates_in_code() -> None:
     assert calls.spoiler_status(NOW, block).startswith("BLOCKED until 2026-12-03 00:00 UTC")
     assert calls.spoiler_status(block, block).startswith("allowed")
     assert calls.spoiler_status(NOW, None).startswith("allowed")
+
+
+# ── P9 ───────────────────────────────────────────────────────
+
+
+def scored(score: int, **parts: int) -> dict[str, Any]:
+    return {"score": score, "score_parts": {"hook": 6, "clarity": 6, "payoff": 6, "rewatch": 6, **parts}}
+
+
+def test_score_clip_asks_the_fast_model_and_takes_the_median() -> None:
+    replies = [scored(7, payoff=7), scored(5, payoff=5), scored(6, payoff=8)]
+    fake = FakeAnthropicClient({calls.P9: replies})
+    writing = ClipWriting.model_validate(writing_reply(start_s=3.4, end_s=32.0))
+    result = calls.score_clip(clip_context(), writing, 3, lane="express", client=fake)
+    assert result.score == 6 and result.score_parts.payoff == 7  # each part and the score separately
+    assert len(fake.calls) == 3
+    call = fake.calls[0][1]
+    assert call["model"] == FAST and call["ref_id"] == "clip-1"
+    user = call["user_content"]
+    assert "Hook on screen: He did NOT stick this landing" in user and "Clip length: 29 s" in user
+    # Only the lines of the cut, in clip time: the line before the cut is not shown.
+    assert "0.00-1.60 | I'm gonna jump it" in user and "okay watch this" not in user
+    assert "First `score_parts`" in call["system"]
+
+
+def test_median_score_of_an_even_number_is_the_lower_middle() -> None:
+    items = [ClipScore.model_validate(scored(value)) for value in (7, 6, 8, 5)]
+    assert calls.median_score(items).score == 6
+    with pytest.raises(ValueError):
+        calls.median_score([])
+
+
+def test_write_clip_keeps_its_own_score_unless_score_samples_is_set(ai_settings: dict[str, Any]) -> None:
+    fake = FakeAnthropicClient({calls.P2: writing_reply(), calls.P9: scored(6)})
+    assert calls.write_clip(clip_context(now=NOW), client=fake).score == 8
+    assert [call[1]["prompt_id"] for call in fake.calls] == [calls.P2]
+
+    ai_settings["ai.score_samples"] = 3
+    fake = FakeAnthropicClient(
+        {calls.P2: writing_reply(), calls.P9: [scored(6), scored(7), scored(6, hook=4)]}
+    )
+    writing = calls.write_clip(clip_context(now=NOW), client=fake)
+    assert writing.score == 6 and writing.score_parts.hook == 6
+    assert writing.hook == "He did NOT stick this landing 😭"  # only the score changes
+    assert [call[1]["prompt_id"] for call in fake.calls] == [calls.P2, calls.P9, calls.P9, calls.P9]
+
+
+def test_write_clip_does_not_rescore_a_rejected_clip(ai_settings: dict[str, Any]) -> None:
+    ai_settings["ai.score_samples"] = 3
+    fake = FakeAnthropicClient({calls.P2: writing_reply(reject=True, reject_reason="no moment", score=3)})
+    assert calls.write_clip(clip_context(now=NOW), client=fake).score == 3
+    assert len(fake.calls) == 1
+
+
+def test_write_clip_keeps_the_writers_score_when_the_scorer_fails(ai_settings: dict[str, Any]) -> None:
+    ai_settings["ai.score_samples"] = 3
+    failing = [scored(6), InvalidModelOutput("p9_clip_score: reply is not valid for ClipScore: bad")]
+    fake = FakeAnthropicClient({calls.P2: writing_reply(), calls.P9: failing})
+    with capture_logs() as logs:
+        assert calls.write_clip(clip_context(now=NOW), client=fake).score == 8
+    assert any(item["event"] == "clip_score_failed" for item in logs)
+    # A cut with no subtitle line inside it cannot be scored either: the writer's score stays.
+    fake = FakeAnthropicClient({calls.P2: writing_reply(start_s=8.9, end_s=29.0), calls.P9: scored(6)})
+    lines = [line for line in clip_context().lines if line.index in (0, 4)]
+    assert calls.write_clip(clip_context(now=NOW, lines=lines), client=fake).score == 8
+
+
+# ── P10 ──────────────────────────────────────────────────────
+
+
+def test_sentence_ends_numbers_the_words_and_returns_sorted_indexes() -> None:
+    fake = FakeAnthropicClient({calls.P10: {"ends": [5, 1, 5]}})
+    words = ["no", "way", "he", "did", "that\n now", "look"]
+    assert calls.sentence_ends(words, lane="express", ref_id="clip-1", client=fake) == [1, 5]
+    call = only_call(fake)
+    assert call["model"] == FAST and call["ref_id"] == "clip-1"
+    assert "6 words, numbered 0 to 5" in call["user_content"]
+    assert "0:no 1:way 2:he 3:did 4:that now 5:look" in call["user_content"]
+    assert calls.sentence_ends([], client=fake) == [] and len(fake.calls) == 1
+
+
+def test_sentence_ends_outside_the_transcript_are_sent_back(scripted: Scripted) -> None:
+    client, sdk = scripted(json.dumps({"ends": [1, 9]}), json.dumps({"ends": [1, 2]}))
+    assert calls.sentence_ends(["a", "b", "c"], lane="express", client=client) == [1, 2]
+    assert "word numbers go from 0 to 2" in sdk.requests[1]["messages"][0]["content"][-1]["text"]

@@ -73,7 +73,9 @@ def test_config_rejects_bad_values() -> None:
 
 def test_offline_defaults_follow_the_seed_migration() -> None:
     """The offline defaults of `clip render-file` must not drift from the seeded settings."""
-    seed = (REPO / "supabase" / "migrations" / "0002_seed_settings.sql").read_text(encoding="utf-8")
+    migrations = REPO / "supabase" / "migrations"
+    seed = (migrations / "0002_seed_settings.sql").read_text(encoding="utf-8")
+    seed += (migrations / "0011_quality.sql").read_text(encoding="utf-8")  # adds factory.cut_snap
     for key, value in OFFLINE_DEFAULTS.items():
         if key.startswith("gate.") or key == "factory.watermark":
             continue  # gate profiles are checked below; the watermark was changed by migration 0003

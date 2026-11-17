@@ -11,6 +11,15 @@ Facts this module relies on:
   response can begin with `thinking` blocks and a small cap can be used up before any text. Depth is set
   with `output_config.effort`; sampling parameters and assistant prefill are rejected by these models.
 - A policy decline is HTTP 200 with `stop_reason == "refusal"`: it is raised as `AnthropicRefusal`.
+- Structured outputs (https://platform.claude.com/docs/en/build-with-claude/structured-outputs, checked
+  2026-11-17): both models accept `output_config.format = {"type": "json_schema", "schema": ...}` and then
+  answer with one text block holding JSON of that shape (constrained decoding). Forced tool use
+  (`tool_choice` `any` or `tool`) is rejected by `claude-sonnet-5-5`, so the format is the mechanism used
+  here. The API schema dialect has no numeric, string-length or array-size limits and wants
+  `additionalProperties: false` on every object: `anthropic.transform_schema` rewrites the Pydantic schema
+  that way (the dropped limits go into the field descriptions) and the full Pydantic model, with its
+  validators, is still applied to the reply here. The format does not change the system prompt, so the
+  cached prefix is untouched; the compiled grammar is cached by the API for 24 hours per schema.
 - The SDK retries network errors, 408, 409, 429 and 5xx itself with backoff and honours `retry-after`;
   `max_retries=2` gives the three attempts the milestone asks for, so tenacity is not stacked on top.
 """
@@ -39,6 +48,10 @@ from sixstars.logging import get_logger
 
 SERVICE = "anthropic"
 MIN_MAX_TOKENS = 1024  # room for adaptive thinking before the JSON answer
+# How many times a reply that fails validation is sent back with the reason (protocol constant, like
+# `MAX_ATTEMPTS` for the HTTP retries). A cut-off reply uses one of them to double `max_tokens` instead.
+REPAIR_ATTEMPTS = 2
+LOGGED_REASON_CHARS = 300
 HAIKU_LONG_PROMPT_TOKENS = 100_000
 
 BudgetKind = Literal["vod", "express"]
@@ -70,10 +83,15 @@ HAIKU_5_5_LONG = ModelPrice(input=0.50, output=2.50, cache_write_5m=0.625, cache
 FALLBACK_PRICE = PRICES["claude-opus-5-5"]
 
 _FENCE_RE = re.compile(r"^```[a-zA-Z0-9_-]*\s*\n?(.*?)\n?```$", re.DOTALL)
+_JSON_START_RE = re.compile(r"[{\[]")
 
 
 class AnthropicError(ClientError):
     """The model call failed or its output could not be used."""
+
+
+class AnthropicBadRequest(AnthropicError):
+    """The API rejected the request itself (HTTP 400)."""
 
 
 class AnthropicRefusal(AnthropicError):
@@ -85,7 +103,7 @@ class AnthropicRefusal(AnthropicError):
 
 
 class InvalidModelOutput(AnthropicError):
-    """The reply was not valid JSON for the schema, even after the repair retry."""
+    """The reply was not valid JSON for the schema, even after the repair retries."""
 
 
 def price_for(model: str, prompt_tokens: int = 0) -> ModelPrice:
@@ -112,26 +130,32 @@ def cost_usd(
     return total / 1_000_000
 
 
-def extract_json(text: str) -> str:
-    """Return the JSON part of a model reply: strips a Markdown code fence and any prose around the
-    outermost object or array."""
+def first_json(text: str) -> Any:
+    """The first complete JSON value in a model reply.
+
+    A Markdown code fence and prose before the value are skipped, and anything after the value is
+    ignored: a second JSON value or a closing remark after the answer does not make the reply unusable.
+    Raises `ValueError` (`json.JSONDecodeError`) when there is no complete value.
+    """
     cleaned = text.strip()
     fenced = _FENCE_RE.match(cleaned)
     if fenced:
         cleaned = fenced.group(1).strip()
-    if cleaned[:1] in ("{", "["):
-        return cleaned
-    starts = [index for index in (cleaned.find("{"), cleaned.find("[")) if index >= 0]
-    if not starts:
-        return cleaned
-    start = min(starts)
-    end = max(cleaned.rfind("}"), cleaned.rfind("]"))
-    return cleaned[start : end + 1] if end > start else cleaned
+    opening = _JSON_START_RE.search(cleaned)
+    if opening is None:
+        raise ValueError("no JSON object in the reply")
+    value, _ = json.JSONDecoder().raw_decode(cleaned, opening.start())
+    return value
+
+
+def output_format(schema: type[BaseModel]) -> dict[str, Any]:
+    """The `output_config.format` value that makes the API answer in the shape of `schema`."""
+    return {"type": "json_schema", "schema": anthropic.transform_schema(schema)}
 
 
 def system_with_schema(system: str, schema: type[BaseModel]) -> str:
-    """Append the JSON Schema of `schema` to a system prompt. The text is deterministic (sorted keys),
-    so the cached prompt prefix stays byte-identical between calls."""
+    """Append the JSON Schema of `schema` to a system prompt: the fallback used only when the API
+    rejects the structured output format. The text is deterministic (sorted keys)."""
     schema_json = json.dumps(schema.model_json_schema(), sort_keys=True, ensure_ascii=False)
     instruction = (
         "Reply with exactly one JSON object that is valid for this JSON Schema. "
@@ -195,8 +219,12 @@ class AnthropicClient:
         cache_system: bool,
         effort: Effort | None,
         ref_id: str | None,
+        response_format: dict[str, Any] | None = None,
     ) -> tuple[str, str | None]:
-        """One Messages request. Returns `(text, stop_reason)` and records tokens and cost."""
+        """One Messages request. Returns `(text, stop_reason)` and records tokens and cost.
+
+        `response_format` is the structured output format (`output_format(schema)`), or None to ask in
+        free text."""
         system_block: dict[str, Any] = {"type": "text", "text": system}
         if cache_system:
             system_block["cache_control"] = {"type": "ephemeral"}
@@ -206,14 +234,25 @@ class AnthropicClient:
             "system": [system_block],
             "messages": [{"role": "user", "content": content}],
         }
+        output_config: dict[str, Any] = {}
         if effort is not None:
-            kwargs["output_config"] = {"effort": effort}
+            output_config["effort"] = effort
+        if response_format is not None:
+            output_config["format"] = response_format
+        if output_config:
+            kwargs["output_config"] = output_config
         started = time.monotonic()
         try:
             response = self._client().messages.create(**kwargs)
         except anthropic.APIStatusError as exc:
-            self._log.warning("api_call_failed", prompt_id=prompt_id, status=exc.status_code)
-            raise AnthropicError(f"Anthropic API returned HTTP {exc.status_code}") from exc
+            self._log.warning(
+                "api_call_failed",
+                prompt_id=prompt_id,
+                status=exc.status_code,
+                message=str(exc.message)[:LOGGED_REASON_CHARS],
+            )
+            kind = AnthropicBadRequest if exc.status_code == 400 else AnthropicError
+            raise kind(f"Anthropic API returned HTTP {exc.status_code}") from exc
         except anthropic.APIConnectionError as exc:
             self._log.warning("api_call_failed", prompt_id=prompt_id, error=type(exc).__name__)
             raise AnthropicError("Anthropic API could not be reached") from exc
@@ -269,11 +308,16 @@ class AnthropicClient:
 
         `prompt_id` names the prompt in logs and in `api_usage.operation`. `user_content` is text or a
         list of content blocks; `images` are JPEG bytes placed before the text. The static `system`
-        prompt, with the JSON Schema of `schema` appended, is cached when `cache_system` is true. If
-        the reply is not valid for the schema the
-        request is sent once more with the reply and the validation error appended; a reply cut off by
-        `max_tokens` is retried once with twice the limit. Raises `InvalidModelOutput` when the second
-        reply is still unusable and `AnthropicRefusal` when the model declines.
+        prompt is cached when `cache_system` is true.
+
+        The reply shape is enforced by the API (structured outputs: `output_config.format` carries the
+        JSON Schema of `schema`), and the reply is then validated with the Pydantic model, whose
+        validators hold the limits a JSON Schema cannot (word counts, time bounds). A reply that fails
+        is sent back with the reason, up to `REPAIR_ATTEMPTS` times; a reply cut off by `max_tokens` is
+        retried once with twice the limit. If the API rejects the format itself (HTTP 400) the request
+        falls back to the schema written into the system prompt and free-text parsing. Raises
+        `InvalidModelOutput` when the last reply is still unusable and `AnthropicRefusal` when the model
+        declines.
         """
         content: list[dict[str, Any]] = [image_block(image) for image in images or ()]
         if isinstance(user_content, str):
@@ -281,39 +325,86 @@ class AnthropicClient:
         else:
             content.extend(user_content)
         limit = max(max_tokens, MIN_MAX_TOKENS)
-        system = system_with_schema(system, schema)
-
-        text, stop_reason = self._call(prompt_id, model, system, content, limit, cache_system, effort, ref_id)
+        name = _schema_name(schema)
+        response_format: dict[str, Any] | None
         try:
-            return _parse(schema, text)
-        except (ValidationError, ValueError) as first_error:
-            problem = _describe(first_error)
-        if stop_reason == "max_tokens":
-            limit *= 2
-            retry_content = content
-        else:
+            response_format = output_format(schema)
+        except (ValueError, TypeError) as exc:
+            self._log.warning(
+                "structured_output_unavailable", prompt_id=prompt_id, schema=name, error=str(exc)
+            )
+            response_format = None
+
+        def ask(blocks: list[dict[str, Any]], cap: int) -> tuple[str, str | None]:
+            nonlocal response_format
+            if response_format is not None:
+                try:
+                    return self._call(
+                        prompt_id, model, system, blocks, cap, cache_system, effort, ref_id, response_format
+                    )
+                except AnthropicBadRequest:
+                    self._log.warning("structured_output_rejected", prompt_id=prompt_id, model=model)
+                    response_format = None
+            legacy = system_with_schema(system, schema)
+            return self._call(prompt_id, model, legacy, blocks, cap, cache_system, effort, ref_id)
+
+        blocks = content
+        doubled = False
+        problem = ""
+        for attempt in range(1 + REPAIR_ATTEMPTS):
+            text, stop_reason = ask(blocks, limit)
+            try:
+                return _parse(schema, text)
+            except (ValidationError, ValueError) as error:
+                problem = _describe(error)
+            self._log.warning(
+                "invalid_model_output",
+                prompt_id=prompt_id,
+                model=model,
+                schema=name,
+                stop_reason=stop_reason,
+                attempt=attempt + 1,
+                reply_chars=len(text),
+                reason=problem[:LOGGED_REASON_CHARS],
+            )
+            if stop_reason == "max_tokens" and not doubled:
+                limit *= 2
+                doubled = True
+                continue
             repair = (
                 "Your previous reply could not be used.\n\n"
                 f"Previous reply:\n{text[:4000]}\n\n"
                 f"Problem:\n{problem}\n\n"
-                "Reply again with only the corrected JSON object: no prose and no code fence."
+                "Reply again with the whole JSON object, corrected so that this problem is gone. "
+                "Check the corrected value against the limit before you answer."
             )
-            retry_content = [*content, {"type": "text", "text": repair}]
-        self._log.warning("invalid_model_output", prompt_id=prompt_id, model=model, stop_reason=stop_reason)
-        text, _ = self._call(prompt_id, model, system, retry_content, limit, cache_system, effort, ref_id)
-        try:
-            return _parse(schema, text)
-        except (ValidationError, ValueError) as second_error:
-            raise InvalidModelOutput(
-                f"{prompt_id}: reply is not valid for {schema.__name__}: {_describe(second_error)}"
-            ) from second_error
+            blocks = [*content, {"type": "text", "text": repair}]
+        raise InvalidModelOutput(f"{prompt_id}: reply is not valid for {name}: {problem}")
+
+
+def _schema_name(schema: type[BaseModel]) -> str:
+    """The schema's title: the per-call subclasses of `ai.schemas` keep the title of their base model."""
+    return str(schema.model_config.get("title") or schema.__name__)
 
 
 def _parse[T: BaseModel](schema: type[T], text: str) -> T:
+    """Validate the first JSON value of `text`. An answer wrapped the way a JSON Schema is laid out
+    (`{"description": ..., "properties": {<the answer>}}`, seen from the fast model before structured
+    outputs) is unwrapped when the wrapper itself is not valid."""
     if not text.strip():
         raise ValueError("the reply contained no text")
-    data = json.loads(extract_json(text))
-    return schema.model_validate(data)
+    data = first_json(text)
+    try:
+        return schema.model_validate(data)
+    except ValidationError:
+        inner = data.get("properties") if isinstance(data, dict) else None
+        if not isinstance(inner, dict):
+            raise
+        try:
+            return schema.model_validate(inner)
+        except ValidationError:
+            pass
+        raise
 
 
 def _describe(error: Exception) -> str:

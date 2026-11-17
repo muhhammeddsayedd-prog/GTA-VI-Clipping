@@ -246,8 +246,10 @@ def test_render_clip_normal_layout_a(source_30s: Path, creator_id: str, data_dir
     assert row["status"] == "gating" and row["series_no"] >= 1 and str(row["spike_id"]) == spike_id
     assert (row["lane"], row["gate_profile"], row["source_type"]) == ("hourly", "hourly", "vod")
     assert (row["source_platform"], row["source_id"]) == ("youtube", "vid123")
-    # the writer's trim plus the room left around the words, as positions in the original video
-    assert float(row["start_s"]) == pytest.approx(3600.0 + 4.95, abs=0.01), "up to the previous word"
+    # The writer's start (5.0) falls on "dollars.", the last word of "No way, fifty thousand dollars.":
+    # the cut snaps back to the start of that sentence ("No" at 3.25, setting factory.cut_snap) and
+    # keeps the room around the words. Positions are in the original video.
+    assert float(row["start_s"]) == pytest.approx(3600.0 + 3.15, abs=0.01), "up to the previous word"
     assert float(row["end_s"]) == pytest.approx(3600.0 + 27.0, abs=0.35)
     duration = float(row["duration_s"])
     assert duration == pytest.approx(float(row["end_s"]) - float(row["start_s"]), abs=0.05)

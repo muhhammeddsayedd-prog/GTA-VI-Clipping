@@ -1,14 +1,16 @@
 """Pydantic schemas for the structured responses expected from each Claude prompt (docs/15, P1 to P8).
 Implemented in M05.
 
-The Anthropic client appends the JSON Schema of the model to the system prompt and validates the reply
-against it; a reply that fails validation is sent back once with the error. The limits of docs/15 (hook
-length, title length, hashtag shape, score range) are therefore validators here, so a reply that breaks
-one is repaired by the model instead of reaching the renderer.
+The Anthropic client sends the JSON Schema of the model as the structured output format, so the API
+returns JSON of that shape, and then validates the reply with the model; a reply that fails validation is
+sent back with the error. The limits of docs/15 (hook length, title length, hashtag shape, score range)
+cannot be expressed in the API's schema dialect, so they are validators here and a reply that breaks one
+is repaired by the model instead of reaching the renderer. Field order matters: the model writes the
+fields in the order they are declared.
 
 Limits that depend on the call (the window length, the frame size, the spike ids) are added by the
 `*_schema(...)` factories: they return a subclass with the same title and JSON Schema as the base model,
-so the cached system prompt stays byte-identical between calls.
+so the API compiles and caches one output grammar per prompt.
 """
 
 import re
@@ -60,9 +62,14 @@ def _contains(line: Sequence[str], phrase: Sequence[str]) -> bool:
 
 
 def _max_words(value: str, limit: int, name: str) -> str:
-    words = count_words(value)
-    if words > limit:
-        raise ValueError(f"{name} has {words} words, the maximum is {limit}")
+    """The error lists the words as they were counted: sent back to the model, that is what lets it
+    shorten the text instead of rewording it at the same length."""
+    words = [token for token in value.split() if _WORD_RE.search(token)]
+    if len(words) > limit:
+        raise ValueError(
+            f"{name} has {len(words)} words ({' | '.join(words)}), the maximum is {limit}: "
+            f"rewrite it with at least {len(words) - limit} fewer"
+        )
     return value
 
 
@@ -156,6 +163,13 @@ class ScoreParts(Reply):
     rewatch: int = Field(ge=1, le=10)
 
 
+class ClipScore(Reply):
+    """P9: the score of one finished clip, on the same scales as the clip writer's."""
+
+    score_parts: ScoreParts
+    score: int = Field(ge=1, le=10)
+
+
 class ClipWriting(Reply):
     """Everything needed to trim, subtitle, title and post one clip."""
 
@@ -170,8 +184,8 @@ class ClipWriting(Reply):
     keywords: list[KeywordHighlight] = Field(default_factory=list)
     spoiler: bool
     safety: SafetyFlags
-    score: int = Field(ge=1, le=10)
     score_parts: ScoreParts
+    score: int = Field(ge=1, le=10)
     reject: bool
     reject_reason: str | None = None
 
@@ -427,6 +441,34 @@ class VisualVerdict(Reply):
         if not self.readable_subtitles:
             failed.append("unreadable_subtitles")
         return failed
+
+
+# ── P10 sentence_ends ────────────────────────────────────────
+
+
+class SentenceEnds(Reply):
+    """The numbers of the transcript words that end a sentence."""
+
+    ends: list[int]
+
+
+def sentence_ends_schema(word_count: int) -> type[SentenceEnds]:
+    """`SentenceEnds` whose numbers must be word numbers of a transcript of `word_count` words."""
+
+    class Bound(SentenceEnds):
+        model_config = ConfigDict(title="SentenceEnds")
+
+        @model_validator(mode="after")
+        def _in_range(self) -> Self:
+            outside = [number for number in self.ends if not 0 <= number < word_count]
+            if outside:
+                raise ValueError(
+                    f"word numbers go from 0 to {word_count - 1}; these are outside: {outside[:10]}"
+                )
+            self.ends = sorted(set(self.ends))
+            return self
+
+    return Bound
 
 
 # ── P6 permission_read ───────────────────────────────────────

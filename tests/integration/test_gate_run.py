@@ -40,7 +40,8 @@ __all__ = ["black_video", "frozen_video", "good_video", "tables"]  # fixtures
 
 def test_migration_0007_seeds_the_gate_settings() -> None:
     loaded = profiles.load()
-    assert loaded.strict_max_music_ratio == 0.0 and loaded.music_min_run_frames == 1
+    # Seeded as 1 by 0007 and set to 2 by 0011: an isolated flagged second is detector noise.
+    assert loaded.strict_max_music_ratio == 0.0 and loaded.music_min_run_frames == 2
     assert "final mission" in loaded.spoiler_terms and "gambling" in loaded.reject_topics
     assert (loaded.max_black_s, loaded.max_freeze_s, loaded.source_pad_s) == (2.0, 2.0, 30.0)
     assert loaded.express.max_music_ratio == 0.0  # the seeded value is left alone
@@ -340,11 +341,12 @@ def test_isolated_music_frame_follows_the_setting(good_video: Path) -> None:
     frames = [0] * 21
     frames[7] = 1
     creator_id = add_creator()
+    settings.set("gate.music_min_run_frames", 1)
     strict = add_clip(creator_id, good_video, music_ratio=round(1 / 21, 4), music_frames=frames)
     gate.run_gate(strict, deps=Kit().deps)
-    assert clip(strict)["reject_reason"] == "music_strict"  # seeded: every flagged frame counts
+    assert clip(strict)["reject_reason"] == "music_strict"  # 1: every flagged frame counts
 
-    settings.set("gate.music_min_run_frames", 2)
+    settings.set("gate.music_min_run_frames", 2)  # the value seeded by migration 0011
     lenient = add_clip(
         creator_id,
         good_video,

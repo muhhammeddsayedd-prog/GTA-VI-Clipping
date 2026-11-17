@@ -15,11 +15,11 @@ Times are seconds from the start of the window file, the same clock as the subti
 - You may move `start_s` earlier than the proposed start if the setup began sooner, and `end_s` later if the payoff came after, but stay inside the window file.
 - Never start later than `spike_floor_s`: chat reacted to something that happened before that point, and a later start would cut it off.
 - The length `end_s - start_s` must be between the minimum and maximum given.
-- Start and end on a line boundary, not in the middle of a spoken line.
+- Start and end on a line boundary, not in the middle of a spoken line. Open on the line where a sentence or thought begins and close on the line where one ends. The transcript often has no punctuation, and a line is only a few words shown together, not a sentence: read for meaning to find where a sentence begins, and prefer a line that follows a pause (a gap between the end time of one line and the start time of the next).
 
 ## Words on the post
 
-- `hook`: at most 8 words. Hype tone, builds curiosity about what is about to happen, and is true to the clip. Do not give away the payoff, and do not promise something the clip does not deliver. An emoji is welcome and does not count as a word. Examples of the voice: "He did NOT expect that 😭", "Worst getaway driver in Leonida?", "This cop chase went SO wrong".
+- `hook`: at most 8 words; count them before you answer, and cut words rather than go over (an emoji or a lone "..." is not a word; everything else between spaces is). Hype tone, builds curiosity about what is about to happen, and is true to the clip. Do not give away the payoff, and do not promise something the clip does not deliver. An emoji is welcome and does not count as a word. Examples of the voice: "He did NOT expect that 😭", "Worst getaway driver in Leonida?", "This cop chase went SO wrong".
 - `title` (YouTube Shorts): at most 70 characters, no hashtags. Same voice; it can name the creator.
 - `caption`: one punchy line, at most 120 characters, no hashtags and no @handles (code adds the credit and the tags).
 - `hashtags`: 3 to 5 tags specific to this moment: lowercase, no spaces, no "#". Do not include the base tags the channel always adds (gta6, gta5, gta, gaming, fyp, shorts, clips).
@@ -53,13 +53,9 @@ The input also lists topics the channel always rejects. If the kept part of the 
 
 ## Score
 
-`score_parts` are 1 to 10 each:
-- `hook`: would the first two seconds stop a scroll?
-- `clarity`: does a stranger understand what is happening with no context?
-- `payoff`: is there a clear payoff, and does it land?
-- `rewatch`: would someone watch it twice or send it to a friend?
+Clips scoring 7 or more are posted with nobody checking, and the same clip must get the same score every time it is judged. So score with the scales below, not by feel: find the description that fits what is in the lines you kept, and when a clip sits between two numbers, give the lower one. Judge the clip as you cut it, from the transcript and chat you were given; do not assume a visual payoff that nothing in them points to.
 
-`score` is your overall 1 to 10 judgement, not an average. Clips scoring 7 or more are posted with nobody checking, so be a tough editor: 9 or 10 is a moment people will share, 7 or 8 is solid, 5 or 6 is forgettable, and below that it should not go out. A clip with no real payoff, or that is mostly talking with nothing happening, scores 5 or less.
+{score_rubric}
 
 `reject` is true when the clip must not be posted: a safety flag, a rejected topic, a blocked spoiler, or there is simply no moment here (nothing happens, the speech is unintelligible, it is the streamer reading chat). `reject_reason` then says why in a few words; otherwise it is null. Fill in every other field as well as you can even when you reject.
 
