@@ -39,6 +39,10 @@ TOP_N: Final = 10
 # refused creator or a repeated moment near the top does not leave the room unused.
 SHORTLIST_FACTOR: Final = 4
 ERROR_CHARS: Final = 300
+# A row whose job is gone (it failed for good while its worker was dead) is closed after the grace period
+# of the VOD lane, so it does not count against `twitch_clips.max_backlog` for ever.
+ORPHAN_GRACE_KEY: Final = "vod.orphan_grace_s"
+ORPHAN_GRACE_DEFAULT_S: Final = 300.0
 
 _log = get_logger("discovery")
 
@@ -181,6 +185,9 @@ def _run(
     known = store.known_ids([item.clip.id for item in ranked])
     _add(report.skipped, {select.ALREADY_SEEN: sum(1 for item in ranked if item.clip.id in known)})
 
+    orphans = store.close_orphans(settings.get_float(ORPHAN_GRACE_KEY, ORPHAN_GRACE_DEFAULT_S))
+    if orphans:
+        _log.warning("twitch_clips_orphans_closed", count=len(orphans))
     recent, waiting = store.queue_counts()
     room = select.room(clips_config, recent, waiting)
     selection = select.Selection()
@@ -190,7 +197,9 @@ def _run(
             f"{waiting} waiting (backlog limit {clips_config.max_backlog})"
         )
     else:
-        shortlist = select.shortlist(ranked, known, room * SHORTLIST_FACTOR)
+        shortlist = select.shortlist(
+            ranked, known, room * SHORTLIST_FACTOR, clips_config.max_per_creator_per_pass
+        )
         creators = _resolve_creators(shortlist, twitch, config, now, anthropic, report) if shortlist else {}
 
         def verdict(clip: TwitchClip) -> str | None:

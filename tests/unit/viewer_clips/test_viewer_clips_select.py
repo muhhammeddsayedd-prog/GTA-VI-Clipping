@@ -114,6 +114,24 @@ def test_shortlist_leaves_out_clips_seen_before() -> None:
     assert [item.clip.id for item in short] == ["FakeClipSlug1"]
 
 
+def test_one_streamer_with_many_clips_does_not_use_up_the_shortlist() -> None:
+    same = {"broadcaster_id": "user0"}
+    items = ranked(
+        fake_clip(0, view_count=900),
+        fake_clip(1, view_count=850, **same),
+        fake_clip(2, view_count=800, **same),
+        fake_clip(3, view_count=700),
+        fake_clip(4, view_count=600),
+        fake_clip(5, view_count=500),
+    )
+    short = select.shortlist(items, set(), 3, max_per_creator=1)
+    # the two extra clips of user0 stay listed but do not count: three streamers are reached
+    assert [item.clip.id[-1] for item in short] == ["0", "1", "2", "3", "4"]
+    three = select.shortlist(items, set(), 3, max_per_creator=3)
+    assert [item.clip.id[-1] for item in three] == ["0", "1", "2"]
+    assert select.shortlist(items, set(), 0) == []
+
+
 def test_pick_respects_the_total_and_the_per_creator_limit() -> None:
     items = ranked(
         fake_clip(0, view_count=900),

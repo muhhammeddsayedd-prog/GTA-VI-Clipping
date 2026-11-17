@@ -94,6 +94,35 @@ def queue_counts() -> tuple[int, int]:
     return int(row["recent"]), int(row["waiting"])
 
 
+def close_orphans(grace_s: float) -> list[str]:
+    """Close open rows that have no queued or running job and were not touched for `grace_s` seconds:
+    their job ended without closing them (it failed for good while its worker was dead). Each becomes
+    `failed` with a `viewer_clip.failed` event. Returns their ids."""
+    with db.transaction():
+        rows = db.fetch_all(
+            """
+            update viewer_clips v
+            set status = 'failed', skip_reason = 'orphaned: its job ended without closing it'
+            where v.status = any(%s) and v.updated_at < now() - make_interval(secs => %s)
+              and not exists (
+                select 1 from jobs j
+                where j.type = %s and j.status in ('queued', 'running')
+                  and j.payload->>'viewer_clip_id' = v.id::text)
+            returning v.id::text as id
+            """,
+            (list(WAITING), max(0.0, grace_s), JOB_PROCESS),
+        )
+        for row in rows:
+            events.emit(
+                "viewer_clip.failed",
+                level="warn",
+                entity_type=ENTITY,
+                entity_id=str(row["id"]),
+                message="orphaned: its job ended without closing it",
+            )
+    return [str(row["id"]) for row in rows]
+
+
 def taken_ranges(video_ids: Collection[str]) -> dict[str, list[Range]]:
     """Per broadcast video id, the ranges we already have a clip of: our own clips of that video (any
     lane, not rejected) and earlier viewer clips that were queued or rendered."""

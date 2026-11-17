@@ -144,10 +144,27 @@ def room(config: ClipsConfig, queued_last_24h: int, waiting: int) -> int:
     )
 
 
-def shortlist(ranked: Sequence[Ranked], known: Collection[str], limit: int) -> list[Ranked]:
-    """The best `limit` clips we have not stored before: the ones worth looking up creators for."""
-    fresh = [item for item in ranked if item.clip.id not in known]
-    return fresh[: max(0, limit)]
+def shortlist(
+    ranked: Sequence[Ranked], known: Collection[str], limit: int, max_per_creator: int = 1
+) -> list[Ranked]:
+    """The best clips we have not stored before, down to the `limit`-th one that could still be picked:
+    the ones worth looking up creators for. Clips of a broadcaster beyond `max_per_creator` stay on the
+    list (so the summary says why they were passed over) but do not use up the limit, so one streamer
+    with many clips at the top does not push every other streamer off it."""
+    chosen: list[Ranked] = []
+    per_creator: dict[str, int] = {}
+    counted = 0
+    for item in ranked:
+        if counted >= limit:
+            break
+        if item.clip.id in known:
+            continue
+        chosen.append(item)
+        seen = per_creator.get(item.clip.broadcaster_id, 0)
+        per_creator[item.clip.broadcaster_id] = seen + 1
+        if seen < max_per_creator:
+            counted += 1
+    return chosen
 
 
 @dataclass

@@ -237,6 +237,27 @@ def test_one_streamer_cannot_fill_the_pass_and_the_caps_hold() -> None:
     assert world.run(NOW + timedelta(minutes=30)).queued == 1
 
 
+def test_a_row_whose_job_is_gone_is_closed_and_frees_the_backlog() -> None:
+    world = World(clips=4)
+    settings.set("twitch_clips.max_backlog", 2)
+    settings.set("twitch_clips.max_queued_per_pass", 2)
+    assert world.run().queued == 2
+    # one job failed for good without the handler closing its row (the worker was dead)
+    first, second = rows("select id::text as id from viewer_clips order by rank_score desc")
+    db.execute("update jobs set status = 'failed' where payload->>'viewer_clip_id' = %s", (first["id"],))
+    assert world.run(NOW + timedelta(minutes=10)).queued == 0  # inside the grace period: still waiting
+    db.execute("alter table viewer_clips disable trigger trg_viewer_clips_updated")
+    db.execute("update viewer_clips set updated_at = now() - interval '10 minutes'")
+    db.execute("alter table viewer_clips enable trigger trg_viewer_clips_updated")
+    later = world.run(NOW + timedelta(minutes=20))
+    assert later.queued == 1
+    closed = rows("select status, skip_reason from viewer_clips where id = %s", first["id"])[0]
+    assert closed["status"] == "failed" and closed["skip_reason"].startswith("orphaned")
+    # the row whose job is still queued was left alone
+    assert rows("select status from viewer_clips where id = %s", second["id"])[0]["status"] == "new"
+    assert event_types().count("viewer_clip.failed") == 1
+
+
 def test_a_moment_we_already_clipped_from_the_broadcast_is_not_queued_again() -> None:
     world = World(clips=2)
     creator_id = add_creator("user9")
