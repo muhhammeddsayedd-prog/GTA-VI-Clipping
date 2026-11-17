@@ -12,6 +12,7 @@ import { useToast } from "@/components/kit/overlays";
 import { Badge, Card, CardHead, ErrorState, Grid, KV, PageHead, Plat, RefreshBtn, Seg, SkeletonCards, SkeletonTable, When, Dash } from "@/components/kit/primitives";
 import { POLL, useApi } from "@/lib/api/client";
 import type { Guardian, Page, Post, Takedown } from "@/lib/api/types";
+import { takedownSummary } from "@/lib/takedown";
 import { fmtAgo, fmtDay, series } from "@/lib/format";
 import { useListParams } from "@/lib/use-list";
 
@@ -24,15 +25,7 @@ export const DELETE_STEPS: Record<string, string[]> = {
   youtube: ["Open YouTube Studio for the channel", "Content → Shorts → the video → ⋮ → Delete forever", "The guardian sees it gone on its next check and clears this item"],
 };
 
-function tdActions(t: Takedown): string {
-  if (t.status === "ignored") return "not a takedown";
-  if (t.status === "open") return "needs you";
-  const acts = Array.isArray(t.actions) ? (t.actions as Record<string, unknown>[]) : [];
-  const removed = acts.filter((a) => a.action === "remove_post" && a.outcome === "removed").length;
-  const manual = acts.filter((a) => a.action === "remove_post" && a.outcome === "manual").length;
-  const parts = [acts.some((a) => a.action === "block_creator") ? "blocked" : null, removed ? `${removed} removed` : null, manual ? `${manual} manual` : null, acts.some((a) => a.action === "strike") ? "strike" : null].filter(Boolean);
-  return parts.join(" · ") || "—";
-}
+function tdActions(t: Takedown): string { return takedownSummary(t.status, t.actions); }
 
 const TD_COLS: Col<Takedown>[] = [
   { key: "at", head: "Received", render: (t) => <When iso={t.received_at} /> },

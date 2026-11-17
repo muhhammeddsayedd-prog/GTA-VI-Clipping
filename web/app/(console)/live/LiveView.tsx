@@ -8,17 +8,20 @@ import AnimatedContent from "@/components/reactbits/AnimatedContent";
 import { DataTable, Kpi, type Col } from "@/components/kit/data";
 import { Avatar, Badge, Btn, Card, CardHead, Empty, ErrorState, Grid, PageHead, Plat, RefreshBtn, Seg, SkeletonCards, TierChip, When, Who } from "@/components/kit/primitives";
 import { useNow } from "@/components/domain/content/bits";
+import { BlockBanners, readBlocks, type SourceBlock } from "@/components/domain/sources/BlockBanner";
+import { useSettings } from "@/lib/use-settings";
 import { POLL, useApi } from "@/lib/api/client";
 import type { LiveSession, Page } from "@/lib/api/types";
 import { fmtDuration, fmtTime, humanize } from "@/lib/format";
 
-type LivePage = Page<LiveSession> & { meta?: { max_slots?: number; blocked?: Record<string, string> } };
+type LivePage = Page<LiveSession> & { meta?: { max_slots?: number; blocked?: Record<string, string>; source_health?: unknown } };
 const ACTIVE = new Set(["recording", "assigned"]);
 
 export function LiveView() {
   const q = useApi<LivePage>("admin/live-sessions", { limit: 200 }, { interval: POLL.status });
   const [filter, setFilter] = useState("all");
   const now = useNow();
+  const st = useSettings();
   const head = (
     <PageHead title="Live sessions" sub="Streams being recorded right now · 60 s segments, 30 min rolling buffer"
       actions={<RefreshBtn onClick={() => q.refetch()} spinning={q.isFetching} />} />
@@ -30,7 +33,13 @@ export function LiveView() {
   const active = items.filter((s) => ACTIVE.has(s.status));
   const ended = items.filter((s) => !ACTIVE.has(s.status));
   const maxSlots = q.data.meta?.max_slots ?? Math.max(active.length, 6);
-  const blocked = Object.entries(q.data.meta?.blocked ?? {}).filter(([, until]) => until && Date.parse(until) > now);
+  // Prefer the whole health record (a platform stays refused between back-offs); older APIs send only `blocked`.
+  const blocks: SourceBlock[] = q.data.meta?.source_health !== undefined
+    ? readBlocks(q.data.meta.source_health)
+    : Object.entries(q.data.meta?.blocked ?? {}).filter(([, until]) => until && Date.parse(until) > now)
+      .map(([platform, until]) => ({ platform, since: null, error: null, access: null, blocks: null, lastBlockedAt: null, skipUntil: until }));
+  const releaseMin = Math.round((st.num("discovery.release_after_below_s") ?? 1200) / 60);
+  const maxReconnects = st.num("live.max_reconnects");
   const spikesToday = active.reduce((a, s) => a + s.spikes.S + s.spikes.A + s.spikes.B, 0);
   const tierS = active.reduce((a, s) => a + s.spikes.S, 0);
   const clipsLive = active.reduce((a, s) => a + s.clips, 0);
@@ -45,7 +54,7 @@ export function LiveView() {
     { key: "dur", head: "Duration", render: (s) => (s.started_at ? fmtDuration(((s.ended_at ? Date.parse(s.ended_at) : now) - Date.parse(s.started_at)) / 1000) : "—") },
     { key: "sp", head: "Spikes", align: "right", render: (s) => s.spikes.S + s.spikes.A + s.spikes.B },
     { key: "cl", head: "Clips", align: "right", render: (s) => s.clips },
-    { key: "rc", head: "Reconnects", align: "right", render: (s) => <span className={s.reconnects >= 3 ? "down semi" : undefined}>{s.reconnects}</span> },
+    { key: "rc", head: "Reconnects", align: "right", render: (s) => <span className={maxReconnects !== null && s.reconnects >= maxReconnects ? "down semi" : undefined}>{s.reconnects}</span> },
   ];
 
   return (
@@ -55,9 +64,10 @@ export function LiveView() {
         <Kpi label="Slots in use" value={active.length} unit={`/ ${maxSlots}`} icon={<Radio size={15} />} delta={<span>live.max_slots = {maxSlots}</span>} />
         <Kpi label="Spikes · live sessions" value={spikesToday} icon={<Bolt size={15} />} delta={<span>{tierS} tier S in recording sessions</span>} />
         <Kpi label="Clips from live" value={clipsLive} icon={<Film size={15} />} delta={<span>S-tier goes express, A/B to the hourly queue</span>} />
-        <Kpi label="Platform blocks" value={blocked.length} icon={<AlertTriangle size={15} />} iconTone={blocked.length ? "amber" : undefined}
-          delta={blocked.length ? <span className="warn">{blocked.map(([p, u]) => `${humanize(p)} until ${fmtTime(u)}`).join(" · ")}</span> : <span>no platform is blocked</span>} />
+        <Kpi label="Platform blocks" value={blocks.length} icon={<AlertTriangle size={15} />} iconTone={blocks.length ? "amber" : undefined}
+          delta={blocks.length ? <span className="warn">{blocks.map((b) => `${humanize(b.platform)}${b.skipUntil && Date.parse(b.skipUntil) > now ? ` · next try ${fmtTime(b.skipUntil)}` : ""}`).join(" · ")}</span> : <span>no platform is blocked</span>} />
       </Grid>
+      <div className="mt"><BlockBanners blocks={blocks} what="live recordings" /></div>
 
       {active.length === 0 ? (
         <Card style={{ marginTop: 24 }}>
@@ -69,7 +79,7 @@ export function LiveView() {
       ) : (
         <AnimatedContent distance={20} duration={0.5} stagger={0.07} trigger="mount">
           <div className="g g3 mt2">
-            {active.map((s) => <SlotCard key={s.id} s={s} now={now} />)}
+            {active.map((s) => <SlotCard key={s.id} s={s} now={now} releaseMin={releaseMin} />)}
             {Array.from({ length: Math.max(0, maxSlots - active.length) }).map((_, i) => (
               <div key={`free${i}`} className="card slot-free" role="note">
                 <div>
@@ -93,8 +103,8 @@ export function LiveView() {
   );
 }
 
-function SlotCard({ s, now }: { s: LiveSession; now: number }) {
-  const up = s.started_at ? fmtDuration((now - Date.parse(s.started_at)) / 1000) : "not started";
+function SlotCard({ s, now, releaseMin }: { s: LiveSession; now: number; releaseMin: number }) {
+  const up = s.started_at ? fmtDuration((now - Date.parse(s.started_at)) / 1000) : null;
   const below = s.below_cutoff_since ? Math.round((now - Date.parse(s.below_cutoff_since)) / 60000) : null;
   return (
     <Link href={`/live/${s.id}`} aria-label={`${s.creator.handle}: ${s.status}`}>
@@ -103,7 +113,7 @@ function SlotCard({ s, now }: { s: LiveSession; now: number }) {
           <Avatar name={s.creator.handle} size={40} />
           <div style={{ minWidth: 0 }}>
             <div className="semi row" style={{ gap: 6 }}><span className="ellipsis">{s.creator.handle}</span><Plat p={s.platform} /></div>
-            <div className="muted xs">up {up}{s.reconnects ? ` · ${s.reconnects} reconnects` : ""}</div>
+            <div className="muted xs">{up ? `stream up ${up}` : "stream start unknown"}{s.reconnects ? ` · ${s.reconnects} reconnects` : ""}</div>
           </div>
           <span className="right">{s.status === "recording" ? <Badge tone="green"><span className="sr-only">status </span>recording</Badge> : <Badge status={s.status} />}</span>
         </div>
@@ -118,11 +128,11 @@ function SlotCard({ s, now }: { s: LiveSession; now: number }) {
           <div className="right" style={{ textAlign: "right" }}><div className="muted xs">Clips</div><div className="semi num" style={{ fontSize: 22 }}>{s.clips}</div></div>
         </div>
         <div className="row muted xs" style={{ marginTop: 14, gap: 6 }}>
-          <Clock size={13} />{s.started_at ? <>recording since <When iso={s.started_at} /></> : <>assigned <When iso={s.assigned_at} mode="ago" /></>}
+          <Clock size={13} />{s.status === "recording" ? <>recording since <When iso={s.assigned_at} /></> : <>assigned <When iso={s.assigned_at} mode="ago" /></>}
         </div>
         {below !== null && (
           <div className="banner amber" style={{ margin: "12px 0 0", padding: "9px 12px", fontSize: 11.5 }}>
-            <Clock size={14} />Below the live cutoff for {below} min · released after 20 min
+            <Clock size={14} />Below the live cutoff for {below} min · released after {releaseMin} min
           </div>
         )}
       </Card>

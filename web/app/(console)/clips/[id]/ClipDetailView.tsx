@@ -7,11 +7,13 @@ import AnimatedContent from "@/components/reactbits/AnimatedContent";
 import { HBars, SegBar } from "@/components/kit/charts";
 import { DataTable, EventFeed, ExtLink, JsonBlock, TraceBar, type Col } from "@/components/kit/data";
 import { Drawer } from "@/components/kit/overlays";
+import { Safe } from "@/components/kit/Safe";
 import { Badge, Banner, Btn, Card, CardHead, Chip, ErrorState, KV, PageHead, Plat, Seg, SkeletonCards, When } from "@/components/kit/primitives";
 import { ClipPlayer, GateChecklist, firstFailing, laneTone } from "@/components/domain/clips/ClipBits";
 import { POLL, useApi } from "@/lib/api/client";
 import type { ClipDetail, Post } from "@/lib/api/types";
 import { fmtNum, humanize, series } from "@/lib/format";
+import { isRecord, keywordSet, num, numericEntries, showValue, splitReason, str } from "@/lib/shape";
 
 const POST_COLS: Col<Post>[] = [
   { key: "acc", head: "Account", render: (p) => <span className="row" style={{ gap: 8 }}><Plat p={p.platform} />{p.account_id}</span> },
@@ -33,6 +35,12 @@ export function ClipDetailView({ id }: { id: string }) {
   const failCheck = fail ? c.gate_result?.checks?.[fail] : undefined;
   const live = c.posts.find((p) => p.post_url && /^https?:\/\//.test(p.post_url) && p.status === "published");
   const renderS = c.render_ms ? Math.round(c.render_ms / 1000) : null;
+  const timings = renderTimings(c);
+  const reason = splitReason(c.reject_reason);
+  const parts = numericEntries(c.score_parts);
+  const visual = isRecord(c.score_parts?.visual) ? c.score_parts.visual : null;
+  const writer = isRecord(c.score_parts?.writer) ? c.score_parts.writer : null;
+  const scoredFrom = str(c.score_parts?.source);
 
   return (
     <>
@@ -48,16 +56,22 @@ export function ClipDetailView({ id }: { id: string }) {
 
       {c.status === "rejected" && (
         <Banner tone="red" icon={<X size={17} strokeWidth={2.4} />}>
-          <b>Rejected: {humanize(c.reject_reason ?? fail ?? "gate")}.</b>{" "}
-          {failCheck ? <>First failing check <b>{humanize(fail)}</b>: {String(failCheck.value ?? "—")} against {String(failCheck.limit ?? "—")}.</> : null}
-          {c.gate_result?.codes && c.gate_result.codes.length > 1 && <> Also failed: {c.gate_result.codes.filter((x) => x !== c.reject_reason).map(humanize).join(", ")}.</>} Never posted.
+          {reason.kind === "writer" ? (
+            <><b>Rejected by the writer (Claude) before render.</b> {reason.text}{/[.!?]$/.test(reason.text) ? "" : "."} No video was made.</>
+          ) : (
+            <>
+              <b>Rejected: {humanize(c.reject_reason ?? fail ?? "gate")}.</b>{" "}
+              {failCheck ? <>First failing check <b>{humanize(fail)}</b>: {showValue(failCheck.value)} against {showValue(failCheck.limit)}.</> : null}
+              {c.gate_result?.codes && c.gate_result.codes.length > 1 && <> Also failed: {c.gate_result.codes.filter((x) => x !== c.reject_reason).map(humanize).join(", ")}.</>} Never posted.
+            </>
+          )}
         </Banner>
       )}
 
       <AnimatedContent distance={20} duration={0.5} stagger={0.08} trigger="mount">
         <div className="g collapse-md" style={{ gridTemplateColumns: "330px 1fr 1fr", alignItems: "start" }}>
-          <ClipPlayer clip={c} />
-          <div className="col">
+          <Safe label="Video"><ClipPlayer clip={c} /></Safe>
+          <Safe label="Copy and render"><div className="col">
             <Card>
               <CardHead title="Copy written by Claude (P2)" hint="clip_writer · hook, title, caption, hashtags" />
               <KV rows={[
@@ -67,18 +81,27 @@ export function ClipDetailView({ id }: { id: string }) {
                 ["Topic slug", <span key="t" className="mono">{c.topic ?? "—"}</span>],
               ]} />
               {!!c.hashtags?.length && <div className="row" style={{ flexWrap: "wrap", gap: 6, marginTop: 12 }}>{c.hashtags.map((h) => <Chip key={h} accent>#{h.replace(/^#+/, "")}</Chip>)}</div>}
-              {c.score_parts && (
+              {parts.length > 0 && (
                 <>
-                  <div className="flabel" style={{ marginTop: 16 }}>Score parts · {c.score ?? "—"}</div>
-                  <HBars labelWidth={110} items={Object.entries(c.score_parts).map(([k, v]) => ({ label: humanize(k).replace(/^\w/, (x) => x.toUpperCase()), value: v }))} />
+                  <div className="flabel" style={{ marginTop: 16 }}>Score parts · {c.score ?? "—"}{scoredFrom && <span className="muted"> · scored from the {scoredFrom === "visual" ? "rendered frames" : scoredFrom}</span>}</div>
+                  <HBars labelWidth={110} items={parts.map(([k, v]) => ({ label: humanize(k).replace(/^\w/, (x) => x.toUpperCase()), value: v }))} />
+                  {visual && writer && num(writer.score) !== null && num(visual.score) !== null && (
+                    <div className="muted xs mt">Writer scored it {showValue(writer.score)} from the transcript; the frames scored {showValue(visual.score)}{str(visual.model) ? ` (${visual.model})` : ""}.</div>
+                  )}
+                </>
+              )}
+              {visual && str(visual.seen) && (
+                <>
+                  <div className="flabel" style={{ marginTop: 16 }}>What Claude saw in the frames</div>
+                  <p className="small" style={{ margin: 0, lineHeight: 1.6 }}>{str(visual.seen)}</p>
                 </>
               )}
             </Card>
             <Card>
               <CardHead title="Render" hint={`${c.lane === "spike" ? "express.render" : "clip.render"}${renderS ? ` · ${renderS} s total` : ""}`} />
-              {renderS ? (
-                <SegBar height={26} parts={splitRender(renderS)} />
-              ) : <div className="muted small">Render timing not recorded yet.</div>}
+              {timings.length ? (
+                <SegBar height={26} parts={timings} />
+              ) : <div className="muted small">{reason.kind === "writer" ? "Not rendered: the writer rejected it first." : "Render timing not recorded yet."}</div>}
               <div className="mt"><KV rows={[
                 ["Bleeps", c.profanity_count ? `${c.profanity_count} profanity` : "none"],
                 ["Music ratio", c.music_ratio !== null ? c.music_ratio.toFixed(2) : "—"],
@@ -87,8 +110,8 @@ export function ClipDetailView({ id }: { id: string }) {
                 ["Language", c.original_language ?? "—"],
               ]} /></div>
             </Card>
-          </div>
-          <GateChecklist gate={c.gate_result} status={c.status} />
+          </div></Safe>
+          <Safe label="Quality gate"><GateChecklist gate={c.gate_result} status={c.status} rejectReason={c.reject_reason} /></Safe>
         </div>
       </AnimatedContent>
 
@@ -97,11 +120,11 @@ export function ClipDetailView({ id }: { id: string }) {
           <CardHead title="Posts" hint="One row per account" />
           <DataTable caption="Posts of this clip" cols={POST_COLS} rows={c.posts} rowKey={(p) => p.id} href={(p) => `/posts/${p.id}`} dense empty="Not posted anywhere." />
         </Card>
-        <Transcript c={c} />
+        <Safe label="Transcript"><Transcript c={c} /></Safe>
       </div>
       <Card style={{ marginTop: 16 }}>
         <CardHead title="Clip events" hint="Last 50 events for this clip" />
-        <EventFeed events={c.events} />
+        <Safe label="Events"><EventFeed events={c.events} /></Safe>
       </Card>
 
       <Drawer open={raw} onClose={() => setRaw(false)} title="Raw clip JSON" sub={c.id} width={620}>
@@ -111,20 +134,23 @@ export function ClipDetailView({ id }: { id: string }) {
   );
 }
 
-/** The API stores only the total render time; show it as one segment plus the gate. */
-function splitRender(total: number) {
-  return [{ label: "Render", value: Math.max(total - 4, 1), color: "#3A2CC7" }, { label: "Gate", value: Math.min(4, total), color: "#12A150" }];
+const STAGE_COLOR: Record<string, string> = { transcribe: "#7C6CF6", write: "#E9A23B", layout: "#4AA3DF", music: "#12A150", render: "#3A2CC7" };
+/** Per-stage timings from the `clip.rendered` event (`data.timings_ms`), in seconds. */
+function renderTimings(c: ClipDetail) {
+  const ev = c.events.find((e) => e.type === "clip.rendered");
+  const t = ev?.data && isRecord(ev.data.timings_ms) ? numericEntries(ev.data.timings_ms) : [];
+  return t.filter(([, ms]) => ms > 0).map(([k, ms]) => ({ label: humanize(k).replace(/^\w/, (x) => x.toUpperCase()), value: Math.round(ms / 100) / 10, color: STAGE_COLOR[k] ?? "#9A9AB0" }));
 }
 
 function Transcript({ c }: { c: ClipDetail }) {
   const [mode, setMode] = useState("words");
   const words = c.transcript?.words ?? [];
-  const kw = new Set((c.keywords ?? []).flatMap((k) => k.words.map((w) => w.toLowerCase())));
+  const kw = keywordSet(c.keywords);
   return (
     <Card>
       <CardHead title="Transcript" hint={`${c.original_language === "en" || !c.original_language ? "English" : `Translated from ${c.original_language}`} · keywords highlighted`}
         actions={<Seg label="Transcript view" value={mode} onChange={setMode} items={[{ value: "words", label: "Timed" }, { value: "text", label: "Plain" }]} />} />
-      {!words.length && !c.transcript?.text ? <div className="muted small">No transcript stored.</div> : mode === "text" ? (
+      {!words.length && !c.transcript?.text ? <div className="muted small">{splitReason(c.reject_reason).kind === "writer" ? "No transcript kept: the writer rejected the moment before render." : "No transcript stored."}</div> : mode === "text" ? (
         <p style={{ lineHeight: 1.8, margin: 0 }}>{c.transcript?.text ?? words.map((w) => w.w ?? w.word).join(" ")}</p>
       ) : (
         <p style={{ lineHeight: 2, fontSize: 13.5, margin: 0 }}>

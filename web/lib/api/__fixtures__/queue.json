@@ -1,0 +1,633 @@
+{
+ "ranked": {
+  "hourly": [
+   {
+    "clip_id": "25b7eef7-9b3c-4ac8-8ba9-7d6be443ab4f",
+    "series_no": 39,
+    "hook": "Streamer tries to mount a giant jet 😭",
+    "title": "Sentry tries to mount a jet and it goes wrong",
+    "creator": {
+     "id": "5bc067f1-7129-446a-8f1c-a1164adb5582",
+     "tier": "auto",
+     "handle": "sentry",
+     "platform": "twitch",
+     "display_name": "Sentry"
+    },
+    "lane": "hourly",
+    "score": 8.0,
+    "rank_score": 9.06598553713999,
+    "duration_s": 47.933,
+    "created_at": "2026-11-17T20:23:35.639137+00:00",
+    "age_s": 2047,
+    "expires_at": "2026-11-20T20:24:44.597558+00:00"
+   }
+  ],
+  "spike": []
+ },
+ "slots": [
+  {
+   "account_id": "instagram_main",
+   "platform": "instagram",
+   "hours": [
+    {
+     "hour": 0,
+     "state": "empty",
+     "post_id": null
+    },
+    {
+     "hour": 1,
+     "state": "empty",
+     "post_id": null
+    },
+    {
+     "hour": 2,
+     "state": "empty",
+     "post_id": null
+    },
+    {
+     "hour": 3,
+     "state": "empty",
+     "post_id": null
+    },
+    {
+     "hour": 4,
+     "state": "empty",
+     "post_id": null
+    },
+    {
+     "hour": 5,
+     "state": "empty",
+     "post_id": null
+    },
+    {
+     "hour": 6,
+     "state": "empty",
+     "post_id": null
+    },
+    {
+     "hour": 7,
+     "state": "empty",
+     "post_id": null
+    },
+    {
+     "hour": 8,
+     "state": "empty",
+     "post_id": null
+    },
+    {
+     "hour": 9,
+     "state": "empty",
+     "post_id": null
+    },
+    {
+     "hour": 10,
+     "state": "empty",
+     "post_id": null
+    },
+    {
+     "hour": 11,
+     "state": "empty",
+     "post_id": null
+    },
+    {
+     "hour": 12,
+     "state": "empty",
+     "post_id": null
+    },
+    {
+     "hour": 13,
+     "state": "empty",
+     "post_id": null
+    },
+    {
+     "hour": 14,
+     "state": "empty",
+     "post_id": null
+    },
+    {
+     "hour": 15,
+     "state": "empty",
+     "post_id": null
+    },
+    {
+     "hour": 16,
+     "state": "empty",
+     "post_id": null
+    },
+    {
+     "hour": 17,
+     "state": "empty",
+     "post_id": null
+    },
+    {
+     "hour": 18,
+     "state": "empty",
+     "post_id": null
+    },
+    {
+     "hour": 19,
+     "state": "empty",
+     "post_id": null
+    },
+    {
+     "hour": 20,
+     "state": "planned",
+     "post_id": null
+    },
+    {
+     "hour": 21,
+     "state": "planned",
+     "post_id": null
+    },
+    {
+     "hour": 22,
+     "state": "planned",
+     "post_id": null
+    },
+    {
+     "hour": 23,
+     "state": "planned",
+     "post_id": null
+    }
+   ]
+  },
+  {
+   "account_id": "tiktok_live",
+   "platform": "tiktok",
+   "hours": [
+    {
+     "hour": 0,
+     "state": "not_allowed",
+     "post_id": null
+    },
+    {
+     "hour": 1,
+     "state": "not_allowed",
+     "post_id": null
+    },
+    {
+     "hour": 2,
+     "state": "not_allowed",
+     "post_id": null
+    },
+    {
+     "hour": 3,
+     "state": "not_allowed",
+     "post_id": null
+    },
+    {
+     "hour": 4,
+     "state": "not_allowed",
+     "post_id": null
+    },
+    {
+     "hour": 5,
+     "state": "not_allowed",
+     "post_id": null
+    },
+    {
+     "hour": 6,
+     "state": "not_allowed",
+     "post_id": null
+    },
+    {
+     "hour": 7,
+     "state": "not_allowed",
+     "post_id": null
+    },
+    {
+     "hour": 8,
+     "state": "not_allowed",
+     "post_id": null
+    },
+    {
+     "hour": 9,
+     "state": "not_allowed",
+     "post_id": null
+    },
+    {
+     "hour": 10,
+     "state": "not_allowed",
+     "post_id": null
+    },
+    {
+     "hour": 11,
+     "state": "not_allowed",
+     "post_id": null
+    },
+    {
+     "hour": 12,
+     "state": "not_allowed",
+     "post_id": null
+    },
+    {
+     "hour": 13,
+     "state": "not_allowed",
+     "post_id": null
+    },
+    {
+     "hour": 14,
+     "state": "not_allowed",
+     "post_id": null
+    },
+    {
+     "hour": 15,
+     "state": "not_allowed",
+     "post_id": null
+    },
+    {
+     "hour": 16,
+     "state": "not_allowed",
+     "post_id": null
+    },
+    {
+     "hour": 17,
+     "state": "not_allowed",
+     "post_id": null
+    },
+    {
+     "hour": 18,
+     "state": "not_allowed",
+     "post_id": null
+    },
+    {
+     "hour": 19,
+     "state": "not_allowed",
+     "post_id": null
+    },
+    {
+     "hour": 20,
+     "state": "not_allowed",
+     "post_id": null
+    },
+    {
+     "hour": 21,
+     "state": "not_allowed",
+     "post_id": null
+    },
+    {
+     "hour": 22,
+     "state": "not_allowed",
+     "post_id": null
+    },
+    {
+     "hour": 23,
+     "state": "not_allowed",
+     "post_id": null
+    }
+   ]
+  },
+  {
+   "account_id": "tiktok_main",
+   "platform": "tiktok",
+   "hours": [
+    {
+     "hour": 0,
+     "state": "empty",
+     "post_id": null
+    },
+    {
+     "hour": 1,
+     "state": "empty",
+     "post_id": null
+    },
+    {
+     "hour": 2,
+     "state": "empty",
+     "post_id": null
+    },
+    {
+     "hour": 3,
+     "state": "not_allowed",
+     "post_id": null
+    },
+    {
+     "hour": 4,
+     "state": "not_allowed",
+     "post_id": null
+    },
+    {
+     "hour": 5,
+     "state": "not_allowed",
+     "post_id": null
+    },
+    {
+     "hour": 6,
+     "state": "not_allowed",
+     "post_id": null
+    },
+    {
+     "hour": 7,
+     "state": "not_allowed",
+     "post_id": null
+    },
+    {
+     "hour": 8,
+     "state": "not_allowed",
+     "post_id": null
+    },
+    {
+     "hour": 9,
+     "state": "not_allowed",
+     "post_id": null
+    },
+    {
+     "hour": 10,
+     "state": "not_allowed",
+     "post_id": null
+    },
+    {
+     "hour": 11,
+     "state": "empty",
+     "post_id": null
+    },
+    {
+     "hour": 12,
+     "state": "empty",
+     "post_id": null
+    },
+    {
+     "hour": 13,
+     "state": "not_allowed",
+     "post_id": null
+    },
+    {
+     "hour": 14,
+     "state": "empty",
+     "post_id": null
+    },
+    {
+     "hour": 15,
+     "state": "empty",
+     "post_id": null
+    },
+    {
+     "hour": 16,
+     "state": "not_allowed",
+     "post_id": null
+    },
+    {
+     "hour": 17,
+     "state": "empty",
+     "post_id": null
+    },
+    {
+     "hour": 18,
+     "state": "empty",
+     "post_id": null
+    },
+    {
+     "hour": 19,
+     "state": "empty",
+     "post_id": null
+    },
+    {
+     "hour": 20,
+     "state": "planned",
+     "post_id": null
+    },
+    {
+     "hour": 21,
+     "state": "planned",
+     "post_id": null
+    },
+    {
+     "hour": 22,
+     "state": "planned",
+     "post_id": null
+    },
+    {
+     "hour": 23,
+     "state": "planned",
+     "post_id": null
+    }
+   ]
+  },
+  {
+   "account_id": "youtube_main",
+   "platform": "youtube",
+   "hours": [
+    {
+     "hour": 0,
+     "state": "empty",
+     "post_id": null
+    },
+    {
+     "hour": 1,
+     "state": "empty",
+     "post_id": null
+    },
+    {
+     "hour": 2,
+     "state": "empty",
+     "post_id": null
+    },
+    {
+     "hour": 3,
+     "state": "empty",
+     "post_id": null
+    },
+    {
+     "hour": 4,
+     "state": "empty",
+     "post_id": null
+    },
+    {
+     "hour": 5,
+     "state": "empty",
+     "post_id": null
+    },
+    {
+     "hour": 6,
+     "state": "empty",
+     "post_id": null
+    },
+    {
+     "hour": 7,
+     "state": "empty",
+     "post_id": null
+    },
+    {
+     "hour": 8,
+     "state": "empty",
+     "post_id": null
+    },
+    {
+     "hour": 9,
+     "state": "empty",
+     "post_id": null
+    },
+    {
+     "hour": 10,
+     "state": "empty",
+     "post_id": null
+    },
+    {
+     "hour": 11,
+     "state": "empty",
+     "post_id": null
+    },
+    {
+     "hour": 12,
+     "state": "empty",
+     "post_id": null
+    },
+    {
+     "hour": 13,
+     "state": "empty",
+     "post_id": null
+    },
+    {
+     "hour": 14,
+     "state": "empty",
+     "post_id": null
+    },
+    {
+     "hour": 15,
+     "state": "empty",
+     "post_id": null
+    },
+    {
+     "hour": 16,
+     "state": "empty",
+     "post_id": null
+    },
+    {
+     "hour": 17,
+     "state": "empty",
+     "post_id": null
+    },
+    {
+     "hour": 18,
+     "state": "empty",
+     "post_id": null
+    },
+    {
+     "hour": 19,
+     "state": "empty",
+     "post_id": null
+    },
+    {
+     "hour": 20,
+     "state": "planned",
+     "post_id": null
+    },
+    {
+     "hour": 21,
+     "state": "planned",
+     "post_id": null
+    },
+    {
+     "hour": 22,
+     "state": "planned",
+     "post_id": null
+    },
+    {
+     "hour": 23,
+     "state": "planned",
+     "post_id": null
+    }
+   ]
+  }
+ ],
+ "caps": [
+  {
+   "account_id": "instagram_main",
+   "cap_24h": 45,
+   "paused_until": null,
+   "used_24h": 0,
+   "free": 45,
+   "spike_reserve_remaining": 10,
+   "hourly_allowed": true,
+   "spike_allowed": true,
+   "gap_ok": true,
+   "last_post_at": null
+  },
+  {
+   "account_id": "tiktok_live",
+   "cap_24h": 14,
+   "paused_until": null,
+   "used_24h": 0,
+   "free": 14,
+   "spike_reserve_remaining": 14,
+   "hourly_allowed": false,
+   "spike_allowed": true,
+   "gap_ok": true,
+   "last_post_at": null
+  },
+  {
+   "account_id": "tiktok_main",
+   "cap_24h": 14,
+   "paused_until": null,
+   "used_24h": 0,
+   "free": 14,
+   "spike_reserve_remaining": 0,
+   "hourly_allowed": true,
+   "spike_allowed": true,
+   "gap_ok": true,
+   "last_post_at": null
+  },
+  {
+   "account_id": "youtube_main",
+   "cap_24h": 28,
+   "paused_until": null,
+   "used_24h": 0,
+   "free": 28,
+   "spike_reserve_remaining": 4,
+   "hourly_allowed": true,
+   "spike_allowed": true,
+   "gap_ok": true,
+   "last_post_at": null
+  }
+ ],
+ "decisions": [
+  {
+   "id": 587,
+   "created_at": "2026-11-17T20:01:30.089136+00:00",
+   "level": "warn",
+   "type": "posting.slot_empty",
+   "service": "posting",
+   "entity_type": "slot",
+   "entity_id": "2026-11-17T20:00:00+00:00",
+   "message": "no clip could be posted to any account in this hourly slot",
+   "data": null
+  },
+  {
+   "id": 586,
+   "created_at": "2026-11-17T20:01:30.089136+00:00",
+   "level": "info",
+   "type": "posting.slot_skipped",
+   "service": "posting",
+   "entity_type": "account",
+   "entity_id": "youtube_main",
+   "message": "the hourly queue is empty",
+   "data": {
+    "code": "queue_empty",
+    "lane": "hourly",
+    "action": "skip",
+    "clip_id": null,
+    "slot_at": "2026-11-17T20:00:00+00:00",
+    "account_id": "youtube_main"
+   }
+  },
+  {
+   "id": 585,
+   "created_at": "2026-11-17T20:01:30.089136+00:00",
+   "level": "info",
+   "type": "posting.slot_skipped",
+   "service": "posting",
+   "entity_type": "account",
+   "entity_id": "tiktok_main",
+   "message": "the hourly queue is empty",
+   "data": {
+    "code": "queue_empty",
+    "lane": "hourly",
+    "action": "skip",
+    "clip_id": null,
+    "slot_at": "2026-11-17T20:00:00+00:00",
+    "account_id": "tiktok_main"
+   }
+  }
+ ],
+ "next_slot_at": "2026-11-17T21:02:13+00:00"
+}
