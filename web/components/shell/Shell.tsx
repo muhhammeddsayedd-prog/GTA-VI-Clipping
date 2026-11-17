@@ -80,10 +80,10 @@ export function Shell({ env, email, mock, signOut, children }: ShellProps) {
       <a href="#main" className="sr-only" style={{ position: "absolute" }}>Skip to content</a>
       <div className="app">
         {env === "staging" && (
-          <div className="band stg" role="note"><AlertTriangle size={15} /> STAGING · GTA V · posts go to the real accounts as <b>&nbsp;private</b>&nbsp;· Instagram posting is off · Telegram commands are production-only</div>
+          <div className="band stg" role="note"><AlertTriangle size={15} style={{ flex: "none" }} /><span>STAGING · GTA V · posts go to the real accounts as <b>private</b> · Instagram posting is off · Telegram commands are production-only</span></div>
         )}
         {mock && (
-          <div className="band mock" role="note"><Database size={15} /> SAMPLE DATA · no control API is configured, so this console shows generated data. Nothing here is real.</div>
+          <div className="band mock" role="note"><Database size={15} style={{ flex: "none" }} /><span>SAMPLE DATA · no control API is configured, so this console shows generated data. Nothing here is real.</span></div>
         )}
 
         <header className="top">
@@ -252,13 +252,21 @@ function MobileSheet({ onClose, onSearch, signOut }: { onClose: () => void; onSe
         <div style={{ width: 44, height: 5, borderRadius: 5, background: "var(--line2)", margin: "0 auto 12px" }} />
         <div className="row"><h2 style={{ margin: 0, fontSize: 20 }}>All pages</h2><button type="button" className="right ibtn sm" aria-label="Close" onClick={onClose}><X size={15} /></button></div>
         <button type="button" className="field" style={{ width: "100%", marginTop: 12, cursor: "pointer" }} onClick={onSearch}><Search size={15} /><span className="ph" style={{ color: "var(--mute)" }}>Search or paste an id</span></button>
-        {NAV.map((g) => (
+        {[
+          { key: "general", label: "General", items: NAV.filter((g) => g.href).map((g) => ({ href: g.href!, label: g.label, icon: g.icon })) },
+          ...NAV.filter((g) => g.items).map((g) => ({ key: g.key, label: g.label, items: g.items! })),
+        ].map((g) => (
           <div key={g.key}>
-            <div className="ph" style={{ fontSize: 10.5, fontWeight: 700, color: "var(--mute)", letterSpacing: ".06em", textTransform: "uppercase", padding: "14px 4px 6px" }}>{g.label}</div>
-            <div className="g g2" style={{ gap: 8 }}>
-              {(g.items ?? [{ href: g.href!, label: g.label, icon: g.icon }]).map((it) => (
-                <Link key={it.href} href={it.href} className="card" style={{ padding: 12, borderRadius: 16 }}><span className="semi">{it.label}</span></Link>
-              ))}
+            <div className="sheet-h">{g.label}</div>
+            <div className="sheet-grid">
+              {g.items.map((it) => {
+                const I = it.icon;
+                return (
+                  <Link key={it.href} href={it.href} className="sheet-tile" onClick={onClose}>
+                    <span className="pic"><I size={17} /></span><span className="semi">{it.label}</span>
+                  </Link>
+                );
+              })}
             </div>
           </div>
         ))}

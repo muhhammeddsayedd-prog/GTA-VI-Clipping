@@ -2,10 +2,13 @@
 
 Every yt-dlp call of the lane (window downloads, caption tracks, audio for the transcript fallback, video
 metadata for the CLI) goes through `run`: one subprocess with a timeout, the proxy and cookies added when
-they are configured, and a failure turned into one of four kinds:
+they are configured, and a failure turned into one of five kinds:
 
 - `blocked`: the platform refuses this machine for now (YouTube's "Sign in to confirm you're not a bot",
   a rate limit). Nothing is wrong with the video; a proxy or cookies fix it. Never a permanent failure.
+- `proxy`: the proxy itself refused or could not be reached (no balance, suspended account, wrong
+  credentials, a provider policy: 407 / 402 / 403 on the tunnel). Handled like `blocked` (the exception
+  is a `DownloadBlockedError`), but the fix is on the proxy account, not cookies.
 - `forbidden`: the media server answered 403. Often a passing fault, but from a data-centre address it
   can be the same refusal as `blocked`; the caller decides from what else happened.
 - `unavailable`: the video itself cannot be had (private, removed, members only, age gate, region).
@@ -22,10 +25,10 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Final, Literal
 
-from sixstars.chat.net import cookies_file, proxy_for
+from sixstars.chat.net import cookies_file, proxy_for, proxy_refusal, redact_proxy
 from sixstars.logging import get_logger
 
-FailureKind = Literal["blocked", "forbidden", "unavailable", "timeout", "error"]
+FailureKind = Literal["blocked", "proxy", "forbidden", "unavailable", "timeout", "error"]
 # (exit code, stdout, stderr); exit code -1 means the timeout killed the process, -2 that it did not start.
 Runner = Callable[[Sequence[str], float], tuple[int, str, str]]
 
@@ -69,6 +72,7 @@ UNAVAILABLE_MARKERS: Final[tuple[str, ...]] = (
 )
 REASONS: Final[dict[str, str]] = {
     "blocked": "the platform refused this machine (bot check or rate limit)",
+    "proxy": "the proxy refused or could not be reached",
     "forbidden": "the media server answered 403 Forbidden",
     "unavailable": "the video is not available",
     "timeout": "yt-dlp timed out",
@@ -95,6 +99,10 @@ class YtDlpError(RuntimeError):
 
 class DownloadBlockedError(YtDlpError):
     """The platform refuses this machine for now; a proxy or cookies are needed."""
+
+
+class ProxyRefusedError(DownloadBlockedError):
+    """The proxy itself refused or could not be reached; the fix is on the proxy account."""
 
 
 class VideoUnavailableError(YtDlpError):
@@ -141,14 +149,22 @@ def classify_failure(code: int, output: str) -> Failure:
     """Turn the exit code and output of a failed yt-dlp run into a `Failure`. Pure.
 
     The bot check is tested first: its text also says "Sign in", like the age gate, but it is about this
-    machine and not about the video.
+    machine and not about the video. A failure of the proxy is tested before everything when it is the
+    last error (the tunnel's "403 Forbidden" or "429" is the proxy's answer, not the platform's), and
+    again before the media server's 403 when it is anywhere in the output; a proxy hiccup that yt-dlp
+    retried past does not hide a bot check or a video that is gone.
     """
     text = normalise(output)
     detail = last_error_line(output) or f"exit code {code}"
+    if proxy_refusal(detail) is not None:
+        return Failure("proxy", detail)
     if any(marker in text for marker in BLOCKED_MARKERS):
         return Failure("blocked", detail)
     if any(marker in text for marker in UNAVAILABLE_MARKERS):
         return Failure("unavailable", detail)
+    if proxy_refusal(output) is not None:
+        lines = [line.strip() for line in output.splitlines() if proxy_refusal(line) is not None]
+        return Failure("proxy", lines[-1][-STDERR_TAIL_CHARS:] if lines else detail)
     if any(marker in text for marker in FORBIDDEN_MARKERS):
         return Failure("forbidden", detail)
     if code == EXIT_TIMEOUT:
@@ -158,6 +174,8 @@ def classify_failure(code: int, output: str) -> Failure:
 
 def error_for(failure: Failure) -> YtDlpError:
     """The exception that carries `failure`."""
+    if failure.kind == "proxy":
+        return ProxyRefusedError(failure)
     if failure.kind == "blocked":
         return DownloadBlockedError(failure)
     if failure.kind == "unavailable":
@@ -166,8 +184,8 @@ def error_for(failure: Failure) -> YtDlpError:
 
 
 def scrub(text: str, access: Access) -> str:
-    """Remove the proxy URL (it embeds credentials) from text that will be logged or stored."""
-    return text.replace(access.proxy, "<proxy>") if access.proxy else text
+    """Remove the proxy URL and any credentials inside a URL from text that will be logged or stored."""
+    return redact_proxy(text, access.proxy)
 
 
 def base_command(access: Access) -> list[str]:

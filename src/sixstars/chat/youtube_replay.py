@@ -22,7 +22,7 @@ import httpx
 
 from sixstars.chat import youtube_innertube as innertube
 from sixstars.chat.models import ChatMessage, ChatSourceError, ReplayChat, sort_messages
-from sixstars.chat.net import usable_cookies
+from sixstars.chat.net import redact_proxy, usable_cookies
 from sixstars.logging import get_logger
 
 # Request constants (not runtime settings: `docs/16-settings-reference.md` has no keys for them).
@@ -222,7 +222,7 @@ def download_with_ytdlp(
         out_dir = Path(temp_name)
         code, stdout, stderr = runner(build_ytdlp_command(video_id, out_dir, proxy, cookies_file), timeout_s)
         if code != 0:
-            tail = stderr.strip()[-_STDERR_TAIL_CHARS:]
+            tail = redact_proxy(stderr.strip(), proxy)[-_STDERR_TAIL_CHARS:]
             raise ChatSourceError(f"yt-dlp failed for YouTube video {video_id} (exit code {code}): {tail}")
         chat_file = out_dir / f"{video_id}.live_chat.json"
         if not chat_file.exists():

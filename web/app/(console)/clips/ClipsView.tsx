@@ -16,13 +16,13 @@ const DEFAULTS = {};
 const STATUSES = ["rendering", "gating", "precheck_pending", "approved", "posted", "rejected", "expired", "removed"];
 
 const COLS: Col<Clip>[] = [
-  { key: "clip", head: "Clip", render: (c) => <div className="row"><div style={{ width: 34, flex: "none" }}><Thumb seed={c.id} /></div><span className="semi pc">{series(c.series_no)}</span></div> },
-  { key: "hook", head: "Hook / topic", render: (c) => <Two a={<span className="ellipsis" style={{ maxWidth: 320, display: "block" }}>{c.hook ?? c.title ?? "—"}</span>} b={c.topic ? <span className="mono">{c.topic}</span> : "—"} /> },
+  { key: "clip", head: "Clip", mobile: "lead", render: (c) => <div className="row"><div style={{ width: 34, flex: "none" }}><Thumb seed={c.id} /></div><span className="semi pc">{series(c.series_no)}</span></div> },
+  { key: "hook", head: "Hook / topic", mobile: "primary", render: (c) => <Two a={<span className="ellipsis" style={{ maxWidth: 320, display: "block" }}>{c.hook ?? c.title ?? "—"}</span>} b={c.topic ? <span className="mono">{c.topic}</span> : "—"} /> },
   { key: "creator", head: "Creator", render: (c) => <Who name={c.creator.handle} p={c.source_platform} size={26} /> },
-  { key: "lane", head: "Lane", render: (c) => <Badge tone={laneTone(c.lane)}>{c.lane}</Badge> },
+  { key: "lane", head: "Lane", mobile: "hide", render: (c) => <Badge tone={laneTone(c.lane)}>{c.lane}</Badge> },
   { key: "status", head: "Status", render: (c) => <Badge status={c.status} /> },
   { key: "score", head: "Score", align: "right", render: (c) => <b className="num">{c.score ?? "—"}</b> },
-  { key: "len", head: "Length", align: "right", render: (c) => <span className="num">{fmtClock(c.duration_s)}</span> },
+  { key: "len", head: "Length", align: "right", mobile: "hide", render: (c) => <span className="num">{fmtClock(c.duration_s)}</span> },
   { key: "reason", head: "Reject reason", render: (c) => (c.reject_reason ? <span className="down semi">{humanize(c.reject_reason)}</span> : <span className="muted">—</span>) },
   { key: "created", head: "Created", render: (c) => <When iso={c.created_at} /> },
 ];

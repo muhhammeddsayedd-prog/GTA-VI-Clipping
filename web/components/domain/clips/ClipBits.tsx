@@ -88,7 +88,7 @@ export function ClipPlayer({ clip }: { clip: ClipDetail }) {
   const gone = media && (media.reason === "deleted" || media.reason === "no_file" || !media.url);
   const label = `Clip ${series(clip.series_no)}: ${clip.hook ?? clip.title ?? ""}`;
   return (
-    <div id="player" style={{ background: "var(--dark)", borderRadius: 30, padding: 12 }}>
+    <div id="player" className="clip-player" style={{ background: "var(--dark)", borderRadius: 30, padding: 12 }}>
       {media?.reason === "ok" && media.url ? (
         <div className="thumb" style={{ width: "100%", background: "#000" }}>
           <video src={media.url} controls playsInline preload="metadata" aria-label={label} style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover" }} />

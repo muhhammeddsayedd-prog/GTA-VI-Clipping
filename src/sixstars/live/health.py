@@ -25,6 +25,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any, Final
 
 from sixstars import events, notify, settings
+from sixstars.chat.net import PROXY_FIX, proxy_refusal
 from sixstars.logging import get_logger
 
 STATE_KEY: Final = "live.source_health"
@@ -123,11 +124,12 @@ def note_blocked(
     if count >= notify_after and not updated["notified"]:
         updated["notified"] = True
         started = _time(updated["since"]) or now
+        # A refusal of the proxy itself is fixed on the proxy account, not with a proxy or cookies.
+        fix = PROXY_FIX if proxy_refusal(updated["error"]) else FIXES.get(platform, DEFAULT_FIX)
         body = (
             f"{count} refused stream starts in a row since {started:%Y-%m-%d %H:%M} UTC. "
             f"Error: {updated['error'] or 'unknown'}. The live lane released the {platform} slots and "
-            f"tries one stream again every {int(backoff_s // 60)} minutes. Fix: "
-            f"{FIXES.get(platform, DEFAULT_FIX)}"
+            f"tries one stream again every {int(backoff_s // 60)} minutes. Fix: {fix}"
         )
         notices.append(
             Notice("warn", platform, f"Live source {platform} is blocked", body, "live.source_blocked")
