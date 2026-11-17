@@ -22,6 +22,7 @@ import httpx
 
 from sixstars.chat import youtube_innertube as innertube
 from sixstars.chat.models import ChatMessage, ChatSourceError, ReplayChat, sort_messages
+from sixstars.chat.net import usable_cookies
 from sixstars.logging import get_logger
 
 # Request constants (not runtime settings: `docs/16-settings-reference.md` has no keys for them).
@@ -186,6 +187,7 @@ def build_ytdlp_command(
     ]
     if proxy:
         command += ["--proxy", proxy]
+    cookies_file = usable_cookies(cookies_file)  # a path without a file means "no cookies"
     if cookies_file is not None:
         command += ["--cookies", str(cookies_file)]
     command.append(f"https://www.youtube.com/watch?v={video_id}")

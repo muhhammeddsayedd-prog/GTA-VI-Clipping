@@ -25,8 +25,7 @@ from sixstars.chat.models import (
     Platform,
     ReplayChat,
 )
-from sixstars.chat.net import proxy_for
-from sixstars.config import env
+from sixstars.chat.net import cookies_file, proxy_for
 
 __all__ = [
     "ChatConnectionError",
@@ -47,14 +46,15 @@ def open_live(
     """Return the live chat of a stream as an async generator of `ChatMessage` (close it with `aclose()`).
 
     `channel` is a Twitch login, or a YouTube video id or URL of the live stream. The proxy (if any) and
-    the YouTube cookies file come from the environment and settings. Twitch: the iterator never ends by
+    the YouTube cookies file come from the environment and settings (a cookies path that names no file
+    means no cookies). Twitch: the iterator never ends by
     itself. YouTube: it ends when the stream ends and raises `ChatSourceError` if there is no live chat.
     """
     proxy = proxy_for(platform)
     if platform == "twitch":
         return twitch_irc.stream(channel, proxy=proxy, max_reconnects=max_reconnects)
     return youtube_live.stream(
-        channel, proxy=proxy, cookies_file=env().YOUTUBE_COOKIES_FILE, max_reconnects=max_reconnects
+        channel, proxy=proxy, cookies_file=cookies_file(), max_reconnects=max_reconnects
     )
 
 
@@ -68,4 +68,4 @@ def download_replay(platform: Platform, source_id: str, *, raw_path: Path | None
     proxy = proxy_for(platform)
     if platform == "twitch":
         return twitch_replay.download(source_id, raw_path, proxy=proxy)
-    return youtube_replay.download(source_id, proxy=proxy, cookies_file=env().YOUTUBE_COOKIES_FILE)
+    return youtube_replay.download(source_id, proxy=proxy, cookies_file=cookies_file())

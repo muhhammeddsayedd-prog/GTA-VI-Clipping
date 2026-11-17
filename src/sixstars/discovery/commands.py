@@ -1,6 +1,7 @@
 """Implementation of the `sixstars discovery` commands (M09): `run-once` runs one pass and prints the
 summary with the best live streams and videos, `permissions` runs the permission check (P6) for creators
-that are due, `set-tier` is the owner's override (for example to block a creator).
+that are due, `set-tier` is the owner's override (for example to block a creator), `doctor` checks every
+source path once from this machine.
 """
 
 import json
@@ -70,10 +71,13 @@ def format_summary(summary: DiscoverySummary) -> str:
         f"{widened})",
         f"  permission checks: {summary.permission_checked} made, {summary.permission_jobs} jobs queued",
         f"  cost: {summary.youtube_searches} yt-dlp searches, {summary.youtube_quota_units} YouTube quota "
-        f"units ({summary.youtube_quota_units_today:.0f} today), Apify {summary.apify_cost_usd:.3f} USD "
-        f"({summary.apify_spent_today_usd:.2f} today, {summary.apify_spent_month_usd:.2f} this month)",
+        f"units ({summary.youtube_quota_units_today:.0f} today), {summary.youtube_search_api_calls} Data "
+        f"API searches ({summary.youtube_search_api_calls_today} today), Apify "
+        f"{summary.apify_cost_usd:.3f} USD ({summary.apify_spent_today_usd:.2f} today, "
+        f"{summary.apify_spent_month_usd:.2f} this month)",
         f"  sources: {sources}",
     ]
+    lines += [f"  note: {note}" for note in summary.notes]
     if summary.skipped:
         lines.append("  skipped: " + ", ".join(f"{k} {v}" for k, v in sorted(summary.skipped.items())))
 
@@ -147,4 +151,21 @@ def set_tier(platform: str, channel: str, tier: str, reason: str) -> int:
         )
         return EXIT_ERROR
     typer.echo(f"{creator.platform} {creator.handle} ({creator.channel_id}): {creator.tier}")
+    return 0
+
+
+def doctor(video: str = "", search_api: bool = False, as_json: bool = False) -> int:
+    """Check every source path once from this machine and print which work (read-only, cheap)."""
+    from sixstars.discovery import doctor as checks
+
+    _safe_stdout()
+    try:
+        results = checks.run_doctor(video=video or None, search_api=search_api)
+    except ValueError as exc:  # --video is not a YouTube id or URL
+        typer.echo(str(exc), err=True)
+        return EXIT_USAGE
+    if as_json:
+        typer.echo(json.dumps(checks.as_rows(results), ensure_ascii=False, indent=2))
+    else:
+        typer.echo(checks.format_table(results))
     return 0

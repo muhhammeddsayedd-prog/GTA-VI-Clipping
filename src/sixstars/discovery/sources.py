@@ -12,9 +12,27 @@ uses free or nearly free sources:
 2. Channel RSS feeds of creators we already know (a rotating slice per pass). Free.
 3. YouTube Data API `videos.list`, 1 quota unit per 50 videos, for what the listings lack: start and
    publish times, likes, comments, language, live state. Capped by `discovery.youtube_quota_daily_units`.
-   `search.list` (100 units per call) is never used.
 4. Apify: one small run every `discovery.apify_interval_s`, alternating live and recent, started in one
    pass and read in a later one, behind a daily and a monthly spend guard. Discovery works without it.
+
+Sources added by the hardening task (the staging server's address cannot run yt-dlp searches: YouTube
+closes the connection on every one):
+
+5. Data API `search.list` (`search_api_step`): the official search, used by default only when the yt-dlp
+   search failed, found nothing or is backing off in this pass (`discovery.search_api_mode` = `fallback`).
+   Since 2026-06-01 `search.list` has its own quota bucket of 100 calls a day, one unit per call
+   (https://developers.google.com/youtube/v3/determine_quota_cost); it no longer draws on the 10,000
+   units of `videos.list`. The budget is counted in calls: at most `search_api_calls_per_pass` per pass,
+   one call per `search_api_interval_s`, `search_api_daily_calls` per UTC day. Calls alternate between
+   the modes (`live`, `recent`). Measured on 2026-11-17 with the GTA 5 terms: for videos of the last 48
+   hours one OR query over all terms works well (50 of 50 results usable with `videoDuration=long`,
+   against 24 of 50 without the filter, the rest being Shorts), but for live streams the OR query found
+   4 streams with 50 or more viewers where the single term "GTA 5" found 17. So the modes in
+   `search_api_combined_modes` use the OR query and the others take one term per call, in turn.
+6. Known live streams (`known_live_stubs`): streams seen live within `discovery.live_recheck_window_s`
+   and every stream that holds a live slot are looked up again with `videos.list` (1 unit per 50), so a
+   stream found by an hourly search is still tracked every pass (viewers, growth, "still live?") and a
+   stream that has just ended becomes a video candidate.
 
 Data API fields used (checked against real responses on 2026-11-17):
 https://developers.google.com/youtube/v3/docs/videos#resource : `snippet.publishedAt`, `snippet.channelId`,
@@ -24,20 +42,21 @@ https://developers.google.com/youtube/v3/docs/videos#resource : `snippet.publish
 actualEndTime|concurrentViewers` (absent for a normal upload).
 """
 
+import html
 import re
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from typing import Any, Final
 
 from sixstars import db, settings, usage
-from sixstars.clients._http import ClientError
+from sixstars.clients._http import ApiError, ClientError
 from sixstars.clients.apify import ApifyClient, build_youtube_search_input, normalise_youtube_item
 from sixstars.clients.twitch import TwitchClient
 from sixstars.clients.youtube import CATEGORY_GAMING, IDS_PER_REQUEST_MAX, YouTubeClient
 from sixstars.config import env
-from sixstars.discovery import scoring, store
+from sixstars.discovery import health, scoring, store
 from sixstars.discovery.config import DiscoveryConfig
 from sixstars.discovery.models import FORBIDDEN_TIERS, Candidate
 from sixstars.discovery.ytsearch import FlatVideo, YtDlpSearch
@@ -48,6 +67,13 @@ APIFY_GIVE_UP_S: Final = 3600  # a run still unfinished after this is forgotten
 APIFY_STATE_KEY: Final = "discovery.apify_last_run"
 RSS_CURSOR_KEY: Final = "discovery.rss_cursor"
 TWITCH_GAME_KEY: Final = "discovery.twitch_game_cache"
+SEARCH_API_STATE_KEY: Final = "discovery.search_api_state"
+SEARCH_API_SOURCE: Final = "youtube_search_api"
+SEARCH_API_MODES: Final[tuple[str, ...]] = ("live", "recent", "completed")
+SEARCH_API_JITTER_S: Final = 30  # a pass that comes this much early still counts as "interval reached"
+QUOTA_RESET_UTC: Final = (8, 10)  # midnight Pacific is 07:00 or 08:00 UTC; wait until 08:10 to be sure
+ERROR_CHARS: Final = 300
+RECHECK_ORIGIN: Final = "recheck"
 VIDEO_PARTS: Final = ("snippet", "contentDetails", "statistics", "liveStreamingDetails")
 _ISO_DURATION = re.compile(r"^P(?:(\d+)D)?(?:T(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?)?$")
 
@@ -77,6 +103,8 @@ class Gathered:
     youtube_quota_units: int = 0
     apify_cost_usd: float = 0.0
     searches: int = 0
+    search_api_calls: int = 0
+    notes: list[str] = field(default_factory=list)  # things the summary says once (budget spent, ...)
 
     def skip(self, reason: str, count: int = 1) -> None:
         if count:
@@ -101,6 +129,7 @@ class Stub:
     followers: int | None = None
     origin: str = "ytdlp"
     needs_title_match: bool = False  # found through a channel feed: keep only when the title names the game
+    description: str = ""  # only the Data API search gives one (used by the language check)
 
 
 # ── small parsers ────────────────────────────────────────────
@@ -231,6 +260,9 @@ def _merge(stubs: dict[str, Stub], new: Stub) -> None:
     old.followers = old.followers if old.followers is not None else new.followers
     old.title = old.title or new.title
     old.channel_name = old.channel_name or new.channel_name
+    old.description = old.description or new.description
+    if old.origin == RECHECK_ORIGIN:
+        old.origin = new.origin  # a source that found it now is the better label
     if new.live_status == "is_live" or old.live_status is None:
         old.live_status = new.live_status or old.live_status
     old.needs_title_match = old.needs_title_match and new.needs_title_match
@@ -251,14 +283,22 @@ def _from_flat(video: FlatVideo) -> Stub:
 
 
 def search_youtube(
-    search: YtDlpSearch, config: DiscoveryConfig, pool: ThreadPoolExecutor
+    search: YtDlpSearch,
+    config: DiscoveryConfig,
+    pool: ThreadPoolExecutor,
+    gate: health.Gate | None = None,
 ) -> tuple[list[Stub], SourceReport, int]:
     """Run the yt-dlp searches of one pass in parallel: per term one live search and one recent-video
-    search per sort order. Returns the stubs, the report and the number of searches made."""
+    search per sort order. Returns the stubs, the report and the number of searches made.
+
+    `gate` comes from the source health: while the source backs off nothing is run, and while it is known
+    to be failing one search is tried first and the others only run when that one works."""
     tasks: list[tuple[str, bool, str]] = []
     for term in config.search_terms:
         tasks.append((term, True, "relevance"))
         tasks.extend((term, False, sort) for sort in config.youtube_recent_sorts)
+    if gate is not None and gate.skip:
+        return [], SourceReport("youtube_search", "skipped", 0, gate.detail), 0
 
     def one(task: tuple[str, bool, str]) -> list[FlatVideo] | Exception:
         term, live, sort = task
@@ -273,7 +313,17 @@ def search_youtube(
         except Exception as exc:  # one failed search must not lose the others
             return exc
 
-    results = list(pool.map(one, tasks))
+    results: list[list[FlatVideo] | Exception] = []
+    if gate is not None and gate.probe and tasks:
+        probe = one(tasks[0])
+        if isinstance(probe, Exception):
+            detail = f"{str(probe)[:ERROR_CHARS]} (probe: 1 search instead of {len(tasks)})"
+            return [], SourceReport("youtube_search", "error", 0, detail), 1
+        results.append(probe)
+        tasks_left = tasks[1:]
+    else:
+        tasks_left = tasks
+    results.extend(pool.map(one, tasks_left))
     stubs: list[Stub] = []
     failures = 0
     for result in results:
@@ -283,7 +333,7 @@ def search_youtube(
         stubs.extend(_from_flat(video) for video in result)
     if tasks and failures == len(tasks):
         first = next(result for result in results if isinstance(result, Exception))
-        return [], SourceReport("youtube_search", "error", 0, str(first)[:200]), len(tasks)
+        return [], SourceReport("youtube_search", "error", 0, str(first)[:ERROR_CHARS]), len(tasks)
     detail = f"{len(tasks)} searches" + (f", {failures} failed" if failures else "")
     status = "ok" if stubs else "empty"
     return stubs, SourceReport("youtube_search", status, len(stubs), detail), len(tasks)
@@ -350,6 +400,208 @@ def read_feeds(
     if failures == len(channels):
         return [], SourceReport("youtube_rss", "error", 0, detail)
     return stubs, SourceReport("youtube_rss", "ok" if stubs else "empty", len(stubs), detail)
+
+
+# ── YouTube: Data API search (search.list) ───────────────────
+
+
+def search_api_modes(config: DiscoveryConfig) -> list[str]:
+    return [mode for mode in config.search_api_modes if mode in SEARCH_API_MODES]
+
+
+def search_api_queries(config: DiscoveryConfig, mode: str) -> list[str]:
+    """The `q` values `mode` rotates through: one OR query over every term (each term quoted, joined with
+    the documented `|` operator) for the modes in `discovery.search_api_combined_modes`, else one query
+    per term."""
+    terms = [term.strip() for term in config.search_terms if term.strip()]
+    if mode in config.search_api_combined_modes and len(terms) > 1:
+        return ["|".join(f'"{term}"' for term in terms)]
+    return terms
+
+
+def search_api_pick(config: DiscoveryConfig, number: int) -> tuple[str, str] | None:
+    """The `(mode, query)` of call number `number` (0, 1, 2, ...): the modes alternate, and each mode walks
+    through its own queries. None when there is nothing to search."""
+    modes = search_api_modes(config)
+    if not modes:
+        return None
+    mode = modes[number % len(modes)]
+    queries = search_api_queries(config, mode)
+    if not queries:
+        return None
+    return mode, queries[(number // len(modes)) % len(queries)]
+
+
+def search_api_plan(config: DiscoveryConfig, calls: int) -> list[tuple[str, str]]:
+    """The first `calls` picks of the rotation (for tests and the notes)."""
+    picks = [search_api_pick(config, number) for number in range(calls)]
+    return [pick for pick in picks if pick is not None]
+
+
+def next_quota_reset(now: datetime) -> datetime:
+    """The first moment after `now` at which Google has certainly reset the daily quota."""
+    hour, minute = QUOTA_RESET_UTC
+    reset = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
+    return reset if reset > now else reset + timedelta(days=1)
+
+
+def search_api_may_call(
+    config: DiscoveryConfig,
+    state: Mapping[str, Any],
+    now: datetime,
+    calls_today: int,
+    primary_working: bool,
+) -> tuple[bool, str]:
+    """Pure guard: may one `search.list` call be made now? Returns `(yes, reason when no)`.
+
+    The reason starts with "daily budget" exactly when the day's calls are used up."""
+    if config.search_api_mode == "off" or config.search_api_calls_per_pass <= 0:
+        return False, "switched off"
+    if search_api_pick(config, 0) is None:
+        return False, "no search terms or modes"
+    if config.search_api_mode == "fallback" and primary_working:
+        return False, "not needed: the yt-dlp search works"
+    paused = parse_time(state.get("quota_until"))
+    if paused is not None and now < paused:
+        return False, f"Google reported the quota as used up; next try after {paused:%H:%M} UTC"
+    if calls_today >= config.search_api_daily_calls:
+        return False, f"daily budget spent ({calls_today} of {config.search_api_daily_calls} calls)"
+    last = parse_time(state.get("last_call_at"))
+    if last is not None:
+        waited = (now - last).total_seconds()
+        if 0 <= waited < config.search_api_interval_s - SEARCH_API_JITTER_S:
+            left = config.search_api_interval_s - waited
+            return False, f"interval not reached (next call in about {left / 60:.0f} min)"
+    return True, ""
+
+
+def _stub_from_search(item: Mapping[str, Any]) -> Stub | None:
+    """A stub from a `search.list` result (https://developers.google.com/youtube/v3/docs/search#resource).
+    Titles arrive HTML-escaped in search results."""
+    video_id = (item.get("id") or {}).get("videoId")
+    snippet = item.get("snippet") or {}
+    if not isinstance(video_id, str) or not video_id:
+        return None
+    state = snippet.get("liveBroadcastContent")
+    return Stub(
+        video_id=video_id,
+        title=html.unescape(str(snippet.get("title") or "")),
+        channel_id=str(snippet.get("channelId") or "") or None,
+        channel_name=html.unescape(str(snippet.get("channelTitle") or "")),
+        live_status={"live": "is_live", "upcoming": "is_upcoming"}.get(str(state)),
+        published_at=parse_time(snippet.get("publishedAt")),
+        origin="ytapi",
+        description=html.unescape(str(snippet.get("description") or "")),
+    )
+
+
+def is_quota_error(exc: Exception) -> bool:
+    """Did Google refuse the call because the quota is used up? (403 `quotaExceeded` /
+    `dailyLimitExceeded`, or 429 `rateLimitExceeded`: https://developers.google.com/youtube/v3/docs/errors)"""
+    if not isinstance(exc, ApiError) or exc.status not in (403, 429):
+        return False
+    text = str(exc).casefold()
+    return "quota" in text or "limit" in text
+
+
+def search_api_step(
+    client: YouTubeClient | None,
+    config: DiscoveryConfig,
+    now: datetime,
+    primary_working: bool,
+    calls_today: Callable[[], int] = store.youtube_search_calls_today,
+) -> tuple[list[Stub], SourceReport | None, int, str | None]:
+    """One step of the Data API search: make the calls this pass may make and advance the rotation.
+
+    Returns the stubs, the report (None when the source is switched off), the number of calls made and a
+    note for the summary. The note is given once per UTC day, on the first pass that finds the daily
+    budget spent; after that the report alone says so and nothing is notified again.
+    """
+    if config.search_api_mode == "off":
+        return [], None, 0, None
+    if client is None or not client.is_configured():
+        report = SourceReport(SEARCH_API_SOURCE, "not_configured", 0, "YOUTUBE_API_KEY is not set")
+        return [], report, 0, None
+    raw = settings.get(SEARCH_API_STATE_KEY, None)
+    state: dict[str, Any] = dict(raw) if isinstance(raw, dict) else {}
+    before = dict(state)
+    used = calls_today()
+    stubs: list[Stub] = []
+    made: list[str] = []
+    reason = ""
+    error: str | None = None
+    for _ in range(config.search_api_calls_per_pass):
+        allowed, reason = search_api_may_call(config, state, now, used + len(made), primary_working)
+        if not allowed:
+            break
+        number = int(state.get("index") or 0)
+        pick = search_api_pick(config, number)
+        if pick is None:
+            break
+        mode, query = pick
+        state.update({"index": number + 1, "last_call_at": now.isoformat(), "last_mode": mode})
+        try:
+            items = client.search_list(
+                query,
+                event_type=mode if mode in ("live", "completed") else None,
+                order=config.search_api_orders.get(mode, "relevance"),
+                published_after=None if mode == "live" else now - timedelta(hours=config.vod_lookback_h),
+                video_category_id=config.search_api_category_id or None,
+                relevance_language=config.search_api_relevance_language or None,
+                video_duration=config.search_api_durations.get(mode) or None,
+                max_results=IDS_PER_REQUEST_MAX,
+            )
+        except ClientError as exc:
+            made.append(mode)
+            error = str(exc)[:ERROR_CHARS]
+            if is_quota_error(exc):
+                state["quota_until"] = next_quota_reset(now).isoformat()
+            _log.warning("discovery_search_list_failed", mode=mode, error=error)
+            break
+        made.append(mode)
+        found = [stub for stub in (_stub_from_search(item) for item in items) if stub is not None]
+        stubs.extend(found)
+        _log.info("discovery_search_list", mode=mode, results=len(found), calls_today=used + len(made))
+    note: str | None = None
+    today = now.strftime("%Y-%m-%d")
+    if not made and reason.startswith("daily budget") and state.get("budget_noted_day") != today:
+        state["budget_noted_day"] = today
+        note = (
+            f"search.list {reason}: no more Data API searches today (UTC); discovery continues on channel "
+            "feeds, Apify and, when it works, yt-dlp"
+        )
+    if state != before:
+        settings.set(SEARCH_API_STATE_KEY, state)
+    total = used + len(made)
+    budget = f"{total} of {config.search_api_daily_calls} calls today"
+    if error is not None:
+        report = SourceReport(SEARCH_API_SOURCE, "error", len(stubs), f"{error} ({budget})")
+    elif made:
+        detail = f"{' + '.join(made)} search, {budget}"
+        report = SourceReport(SEARCH_API_SOURCE, "ok" if stubs else "empty", len(stubs), detail)
+    else:
+        detail = reason if reason.startswith("daily budget") else f"{reason}; {budget}"
+        report = SourceReport(SEARCH_API_SOURCE, "skipped", 0, detail)
+    return stubs, report, len(made), note
+
+
+# ── YouTube: streams we already know are live ────────────────
+
+
+def known_live_stubs(config: DiscoveryConfig, now: datetime) -> list[Stub]:
+    """Stubs for the YouTube streams to look at again in this pass (see point 6 of the module docstring).
+    They carry no live state: only `videos.list` can say whether the stream still runs."""
+    rows = store.recent_live_sources(now, config.live_recheck_window_s, config.live_recheck_max)
+    return [
+        Stub(
+            video_id=str(row["source_id"]),
+            title=str(row.get("title") or ""),
+            channel_id=str(row["channel_id"]),
+            channel_name=str(row.get("channel_name") or ""),
+            origin=RECHECK_ORIGIN,
+        )
+        for row in rows
+    ]
 
 
 # ── YouTube: Apify supplement ────────────────────────────────
@@ -463,7 +715,32 @@ def quota_needed(count: int) -> int:
     return -(-count // IDS_PER_REQUEST_MAX)
 
 
-def candidate_from_api(item: dict[str, Any], stub: Stub | None, now: datetime) -> Candidate | None:
+def language_of(
+    reported: str | None,
+    *,
+    title: str,
+    channel_name: str,
+    description: str = "",
+    tags: Sequence[str] = (),
+    config: DiscoveryConfig | None = None,
+) -> tuple[str | None, str | None]:
+    """`(language, signal)`: the reported language corrected by the script and term check of
+    `scoring.language_signal` (settings `discovery.non_latin_share`, `discovery.non_english_terms`)."""
+    signal = scoring.language_signal(
+        title=title,
+        channel_name=channel_name,
+        description=description,
+        tags=tags,
+        terms=config.non_english_terms if config is not None else (),
+        share_threshold=config.non_latin_share if config is not None else scoring.NON_LATIN_SHARE,
+    )
+    language = scoring.detect_language(reported, signal)
+    return language, signal if language == "und" else None
+
+
+def candidate_from_api(
+    item: dict[str, Any], stub: Stub | None, now: datetime, config: DiscoveryConfig | None = None
+) -> Candidate | None:
     """Build a candidate from a `videos.list` item (the stub only supplies what the API lacks). Upcoming
     broadcasts give None."""
     snippet = item.get("snippet") or {}
@@ -476,10 +753,17 @@ def candidate_from_api(item: dict[str, Any], stub: Stub | None, now: datetime) -
         return None
     title = str(snippet.get("title") or (stub.title if stub else ""))
     name = str(snippet.get("channelTitle") or (stub.channel_name if stub else ""))
-    language = short_language(snippet.get("defaultAudioLanguage")) or short_language(
-        snippet.get("defaultLanguage")
+    # `defaultAudioLanguage` is what the uploader typed once, not what is spoken: Hindi streams marked
+    # `en` were seen live. The script and term check may overrule a reported English.
+    tags = snippet.get("tags")
+    language, signal = language_of(
+        short_language(snippet.get("defaultAudioLanguage")) or short_language(snippet.get("defaultLanguage")),
+        title=title,
+        channel_name=name,
+        description=str(snippet.get("description") or ""),
+        tags=[str(tag) for tag in tags] if isinstance(tags, list) else (),
+        config=config,
     )
-    language = language or scoring.title_language(title)
     started = parse_time(live_details.get("actualStartTime"))
     common: dict[str, Any] = {
         "platform": "youtube",
@@ -491,6 +775,7 @@ def candidate_from_api(item: dict[str, Any], stub: Stub | None, now: datetime) -
         "channel_name": name,
         "origin": stub.origin if stub else "ytdlp",
         "language": language,
+        "language_signal": signal,
         "likes": _count(statistics.get("likeCount")),
         "comments": _count(statistics.get("commentCount")),
         "published_at": parse_time(snippet.get("publishedAt")),
@@ -516,12 +801,20 @@ def candidate_from_api(item: dict[str, Any], stub: Stub | None, now: datetime) -
     )
 
 
-def candidate_from_stub(stub: Stub) -> Candidate | None:
+def candidate_from_stub(stub: Stub, config: DiscoveryConfig | None = None) -> Candidate | None:
     """Build a candidate from the listing alone (used when the Data API is off budget or failing).
-    Upcoming broadcasts and rows without a channel id give None."""
-    if not stub.channel_id or stub.live_status == "is_upcoming":
+    Upcoming broadcasts, rows without a channel id and streams that were only due for a second look
+    (nothing but the API can say whether they still run) give None."""
+    if not stub.channel_id or stub.live_status == "is_upcoming" or stub.origin == RECHECK_ORIGIN:
         return None
     live = stub.live_status == "is_live"
+    language, signal = language_of(
+        None,
+        title=stub.title,
+        channel_name=stub.channel_name,
+        description=stub.description,
+        config=config,
+    )
     return Candidate(
         platform="youtube",
         source_type="live" if live else "vod",
@@ -532,7 +825,8 @@ def candidate_from_stub(stub: Stub) -> Candidate | None:
         channel_handle=stub.channel_name or stub.channel_id,
         channel_name=stub.channel_name,
         origin=stub.origin,
-        language=scoring.title_language(stub.title),
+        language=language,
+        language_signal=signal,
         viewers=stub.viewers if live else None,
         views=None if live else stub.views,
         likes=stub.likes,
@@ -556,7 +850,9 @@ def enrich_youtube(
     report, the quota units spent and the number of off-topic videos dropped."""
     if not stubs:
         return [], SourceReport("youtube_api", "skipped", 0, "nothing to look up"), 0, 0
-    fallback = [candidate for stub in stubs.values() if (candidate := candidate_from_stub(stub)) is not None]
+    fallback = [
+        candidate for stub in stubs.values() if (candidate := candidate_from_stub(stub, config)) is not None
+    ]
     if client is None or not client.is_configured():
         return fallback, SourceReport("youtube_api", "not_configured", 0, "YOUTUBE_API_KEY is not set"), 0, 0
     needed = quota_needed(len(stubs))
@@ -568,13 +864,13 @@ def enrich_youtube(
     try:
         items = client.videos_list(list(stubs), parts=VIDEO_PARTS)
     except ClientError as exc:
-        _log.warning("discovery_videos_list_failed", error=str(exc)[:200])
-        return fallback, SourceReport("youtube_api", "error", 0, str(exc)[:200]), 0, 0
+        _log.warning("discovery_videos_list_failed", error=str(exc)[:ERROR_CHARS])
+        return fallback, SourceReport("youtube_api", "error", 0, str(exc)[:ERROR_CHARS]), 0, 0
     found = []
     off_topic = 0
     for item in items:
         stub = stubs.get(str(item.get("id")))
-        candidate = candidate_from_api(item, stub, now)
+        candidate = candidate_from_api(item, stub, now, config)
         if candidate is None:
             continue
         if on_topic(item, stub, config):
@@ -624,17 +920,36 @@ def youtube_candidates(
     config: DiscoveryConfig,
     now: datetime,
     gathered: Gathered,
+    source_health: Mapping[str, Mapping[str, Any]] | None = None,
 ) -> None:
-    """Run the whole YouTube route and add its candidates and reports to `gathered`."""
+    """Run the whole YouTube route and add its candidates and reports to `gathered`. `source_health` is
+    the stored health state (`health.load()`): it lets the yt-dlp search back off after repeated failures."""
     stubs: dict[str, Stub] = {}
+    primary_working = False
     with ThreadPoolExecutor(max_workers=config.ytdlp_workers, thread_name_prefix="discovery") as pool:
         if search is not None and config.search_terms:
-            found, report, searches = search_youtube(search, config, pool)
+            gate = health.gate(source_health or {}, health.YTDLP_SOURCE, now, search.access)
+            found, report, searches = search_youtube(search, config, pool, gate)
             gathered.searches += searches
             gathered.reports.append(report)
-            usage.record("ytdlp", "youtube_search", units=searches)
+            if searches:
+                usage.record("ytdlp", "youtube_search", units=searches)
+            primary_working = report.status == "ok"
             for stub in found:
                 _merge(stubs, stub)
+        # The official search: by default only when the yt-dlp search gave nothing in this pass.
+        try:
+            found, api_report, calls, note = search_api_step(youtube, config, now, primary_working)
+        except Exception as exc:  # a broken state row or database hiccup must not lose the pass
+            found, calls, note = [], 0, None
+            api_report = SourceReport(SEARCH_API_SOURCE, "error", 0, str(exc)[:ERROR_CHARS])
+        gathered.search_api_calls += calls
+        if api_report is not None:
+            gathered.reports.append(api_report)
+        if note:
+            gathered.notes.append(note)
+        for stub in found:
+            _merge(stubs, stub)
         if youtube is not None:
             try:
                 channels = rss_channels(config.rss_max_channels_per_run)
@@ -655,6 +970,13 @@ def youtube_candidates(
     else:
         report = SourceReport("apify", "not_configured", 0, "APIFY_TOKEN is not set")
     gathered.reports.append(report)
+    # Streams seen live before get a second look (only the Data API can give it).
+    if config.live_recheck_max > 0 and youtube is not None and youtube.is_configured():
+        try:
+            for stub in known_live_stubs(config, now):
+                _merge(stubs, stub)
+        except Exception as exc:
+            _log.warning("discovery_live_recheck_failed", error=type(exc).__name__)
     # Videos already queued need no second look (a stream that is live now is never in `videos`).
     finished = [("youtube", stub.video_id) for stub in stubs.values() if stub.live_status != "is_live"]
     known = store.known_videos(finished)

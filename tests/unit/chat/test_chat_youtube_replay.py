@@ -176,6 +176,7 @@ def test_ytdlp_fallback_parses_the_live_chat_file(fixtures_dir: Path) -> None:
 
 
 def test_ytdlp_command_takes_proxy_and_cookies(tmp_path: Path) -> None:
+    (tmp_path / "c.txt").write_text("# Netscape HTTP Cookie File", encoding="utf-8")
     command = youtube_replay.build_ytdlp_command(VIDEO_ID, tmp_path, "http://u:p@proxy:1", tmp_path / "c.txt")
     assert command[command.index("--proxy") + 1] == "http://u:p@proxy:1"
     assert command[command.index("--cookies") + 1] == str(tmp_path / "c.txt")

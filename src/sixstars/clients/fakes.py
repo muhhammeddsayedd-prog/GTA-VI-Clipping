@@ -156,6 +156,9 @@ class FakeYouTubeClient(_Recorder, YouTubeClient):
         self.videos: dict[str, dict[str, Any]] = {}
         self.channels: dict[str, dict[str, Any]] = {}
         self.feeds: dict[str, list[FeedEntry]] = {}
+        self.search_live: list[dict[str, Any]] = []  # `search_list` results with event_type "live"
+        self.search_recent: list[dict[str, Any]] = []  # ... and for every other search
+        self.search_error: Exception | None = None
         self.statuses: dict[str, YouTubeVideoStatus] = {}
         self.uploaded: dict[str, dict[str, Any]] = {}
         self.channel = YouTubeChannel(id="UCfake0000000000000000000", title="6 Stars Clips (fake)")
@@ -175,6 +178,34 @@ class FakeYouTubeClient(_Recorder, YouTubeClient):
         return [
             self.channels.get(channel_id, _fake_channel_item(channel_id)) for channel_id in dict.fromkeys(ids)
         ]
+
+    def search_list(
+        self,
+        q: str,
+        *,
+        event_type: str | None = None,
+        order: str = "relevance",
+        published_after: datetime | None = None,
+        video_category_id: str | None = "20",
+        relevance_language: str | None = None,
+        video_duration: str | None = None,
+        max_results: int = 50,
+    ) -> list[dict[str, Any]]:
+        self._record(
+            "search_list",
+            q=q,
+            event_type=event_type,
+            order=order,
+            published_after=published_after,
+            video_category_id=video_category_id,
+            relevance_language=relevance_language,
+            video_duration=video_duration,
+            max_results=max_results,
+        )
+        if self.search_error is not None:
+            raise self.search_error
+        found = self.search_live if event_type == "live" else self.search_recent
+        return list(found)[:max_results]
 
     def channel_feed(self, channel_id: str) -> list[FeedEntry]:
         self._record("channel_feed", channel_id=channel_id)
@@ -235,6 +266,24 @@ def _fake_video_item(video_id: str) -> dict[str, Any]:
         "status": {"uploadStatus": "processed", "privacyStatus": "public", "embeddable": True},
         "contentDetails": {"duration": "PT2H", "licensedContent": False},
         "statistics": {"viewCount": "120000", "likeCount": "4000", "commentCount": "300"},
+    }
+
+
+def fake_search_item(
+    video_id: str, channel_id: str = "UCfakechannel", title: str | None = None, live: bool = False
+) -> dict[str, Any]:
+    """A `search.list` result item in the documented shape."""
+    return {
+        "kind": "youtube#searchResult",
+        "id": {"kind": "youtube#video", "videoId": video_id},
+        "snippet": {
+            "publishedAt": "2026-11-17T10:00:00Z",
+            "channelId": channel_id,
+            "title": title or f"Video {video_id}",
+            "description": "",
+            "channelTitle": f"Name {channel_id}",
+            "liveBroadcastContent": "live" if live else "none",
+        },
     }
 
 

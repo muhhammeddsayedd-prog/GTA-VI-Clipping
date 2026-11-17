@@ -18,8 +18,8 @@ import typer
 
 from sixstars.chat import twitch_irc, twitch_replay, youtube_innertube, youtube_live, youtube_replay
 from sixstars.chat.models import ChatError, ChatMessage, ReplayChat, write_jsonl
-from sixstars.chat.net import proxy_for
-from sixstars.config import MissingConfigError, env
+from sixstars.chat.net import cookies_file, proxy_for
+from sixstars.config import MissingConfigError
 
 EXIT_ERROR: Final = 1
 EXIT_USAGE: Final = 2
@@ -79,7 +79,7 @@ def dump(source: str, seconds: float) -> int:
     try:
         if youtube_innertube.is_youtube_reference(source):
             stream = youtube_live.stream(
-                source, proxy=proxy_for("youtube"), cookies_file=env().YOUTUBE_COOKIES_FILE, max_reconnects=3
+                source, proxy=proxy_for("youtube"), cookies_file=cookies_file(), max_reconnects=3
             )
             since: float | None = time.time()
         else:
@@ -105,9 +105,7 @@ def _download(source: str) -> ReplayChat | None:
         _TWITCH_VOD_RE.match(source.strip()) or "twitch.tv/" in source
     ):
         return twitch_replay.download(source, proxy=proxy_for("twitch"))
-    return youtube_replay.download(
-        source, proxy=proxy_for("youtube"), cookies_file=env().YOUTUBE_COOKIES_FILE
-    )
+    return youtube_replay.download(source, proxy=proxy_for("youtube"), cookies_file=cookies_file())
 
 
 def replay(source: str, output: Path) -> int:

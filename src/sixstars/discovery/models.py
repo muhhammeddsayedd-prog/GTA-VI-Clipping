@@ -26,7 +26,7 @@ class Candidate:
     channel_id: str  # Twitch user id / YouTube channel id
     channel_handle: str  # Twitch login / YouTube channel name
     channel_name: str
-    origin: str  # which fetcher found it: twitch, ytdlp, rss, apify
+    origin: str  # which fetcher found it: twitch, ytdlp, ytapi, rss, apify, recheck
     language: str | None = None  # ISO 639-1 when known
     viewers: int | None = None  # live audience now
     views: int | None = None
@@ -37,6 +37,7 @@ class Candidate:
     duration_s: int | None = None
     has_chat: bool | None = None  # a chat replay exists (Twitch archive, YouTube past live stream)
     followers: int | None = None  # only when the source reports it (Apify)
+    language_signal: str | None = None  # why `language` was set to "und" (script:title, term:hindi, ...)
 
     @property
     def key(self) -> tuple[str, str]:

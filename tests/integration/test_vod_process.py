@@ -232,6 +232,9 @@ def lane(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Lane]:
         return tools.MediaInfo(width=1920, height=1080, duration_s=65.0, has_video=True, has_audio=True)
 
     monkeypatch.setattr(sections.tools, "probe", probe)
+    # Migration 0010 raised the default to 3 (the fallback also tops up a thin chat). These tests each
+    # exercise one path, so they keep the M08 value; the default has its own test below.
+    settings.set("vod.fallback_below_spikes", 1)
     world = Lane(tmp_path)
     yield world
     world.cleanup()
@@ -597,6 +600,38 @@ def test_a_blocked_backlog_drains_once_downloads_work(lane: Lane) -> None:
     assert "video.failed" not in video_events(video_id)
 
 
+def test_a_proxy_or_cookies_added_after_a_refusal_let_the_next_video_start_at_once(
+    lane: Lane, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The gate only honours a refusal recorded under the access this process has. After the owner mounts
+    the cookies file (or sets the proxy) and restarts, a new video is tried right away."""
+    lane.ytdlp.section_results = [(1, "", BOT_CHECK)] * 2
+    first = lane.video()
+    lane.enqueue(first)
+    assert lane.run_next().status == "deferred"
+    event = db.fetch_one("select data from events where type = 'vod.download_blocked' limit 1")
+    assert event is not None
+    assert event["data"]["access"] == "PROXY_URL not set, YOUTUBE_COOKIES_FILE not set"
+
+    # same access: the next video waits at the gate, nothing is downloaded
+    waiting = lane.video(source_id="vodtest0002")
+    lane.enqueue(waiting)
+    commands_before = len(lane.ytdlp.commands)
+    outcome = lane.run_next()
+    assert outcome.status == "deferred" and outcome.kind == "download_blocked"
+    assert len(lane.ytdlp.commands) == commands_before
+
+    # the cookies file arrives
+    cookies = tmp_path / "youtube_cookies.txt"
+    cookies.write_text("# Netscape HTTP Cookie File", encoding="utf-8")
+    monkeypatch.setenv("YOUTUBE_COOKIES_FILE", str(cookies))
+    config.env.cache_clear()
+    make_due()
+    outcome = lane.run_next()
+    assert outcome.status == "done" and outcome.queued == 2
+    assert any("--cookies" in command for command in lane.ytdlp.commands)
+
+
 def test_a_second_notification_is_sent_after_the_interval(lane: Lane) -> None:
     video_id = lane.video()
     lane.ytdlp.section_results = [(1, "", BOT_CHECK)] * 2
@@ -869,6 +904,34 @@ def test_a_chat_without_spikes_falls_back_to_the_transcript(lane: Lane) -> None:
     outcome = lane.run_next()
     assert outcome.source == "transcript (captions)" and outcome.queued == 1
     assert lane.claude.asked(calls.P1) == 0 and lane.claude.asked(calls.P3) == 2
+
+
+def test_by_default_a_chat_with_fewer_than_three_spikes_is_topped_up_from_the_transcript(lane: Lane) -> None:
+    """Migration 0010: `vod.fallback_below_spikes` = 3. The fixture chat confirms two spikes; the
+    transcript adds its moments to them instead of the video ending with two clips."""
+    settings.set("vod.fallback_below_spikes", DEFAULTS["vod.fallback_below_spikes"])
+    assert VodConfig.load().fallback_below_spikes == 3
+    lane.ytdlp.captions = caption_track()
+    lane.claude.moments = MOMENTS
+    video_id = lane.video()
+    lane.enqueue(video_id)
+
+    outcome = lane.run_next()
+
+    assert outcome.status == "done" and outcome.source == "chat"
+    stored = spikes(video_id)
+    assert sorted(row["mode"] for row in stored) == ["replay"] * 2 + ["transcript"] * 3
+    confirmed = [row["mode"] for row in stored if row["status"] != "rejected"]
+    assert sorted(confirmed) == ["replay", "replay", "transcript", "transcript"]
+    assert (outcome.spikes, outcome.confirmed, outcome.queued) == (5, 4, 4)
+    assert lane.claude.asked(calls.P3) >= 1 and len(render_jobs()) == 4
+
+    # with the M08 value the same video ends with the two chat clips and no transcript request
+    settings.set("vod.fallback_below_spikes", 1)
+    other = lane.video(source_id="vodtest0002")
+    lane.enqueue(other)
+    asked = lane.claude.asked(calls.P3)
+    assert lane.run_next().queued == 2 and lane.claude.asked(calls.P3) == asked
 
 
 def test_no_chat_no_captions_and_no_transcription_allowed_ends_without_clips(lane: Lane) -> None:
