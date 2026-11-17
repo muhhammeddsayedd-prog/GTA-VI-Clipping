@@ -17,17 +17,17 @@ const STATUSES = ["published", "pending", "failed", "removed", "remove_failed", 
 const COLS: Col<Post>[] = [
   { key: "clip", head: "Clip", render: (p) => <div className="row"><div style={{ width: 30, flex: "none" }}><Thumb seed={p.clip_id} /></div><div style={{ minWidth: 0 }}><div className="semi pc">{series(p.clip_series_no)}</div><div className="sub ellipsis" style={{ maxWidth: 200 }}>{p.clip_hook ?? ""}</div></div></div> },
   { key: "acc", head: "Account", render: (p) => <span className="row" style={{ gap: 8 }}><Plat p={p.platform} /><span className="semi">{p.account_id}</span></span> },
-  { key: "lane", head: "Lane", render: (p) => <Badge tone={laneTone(p.lane)}>{p.lane}</Badge> },
-  { key: "st", head: "Status", render: (p) => <Badge status={p.status} /> },
-  { key: "pub", head: "Published", render: (p) => <When iso={p.published_at} /> },
+  { key: "lane", head: "Lane", mobile: "hide", render: (p) => <Badge tone={laneTone(p.lane)}>{p.lane}</Badge> },
+  { key: "st", head: "Status", mobile: "aside", render: (p) => <Badge status={p.status} /> },
+  { key: "pub", head: "Published", mobile: "meta", render: (p) => <When iso={p.published_at} /> },
   {
-    key: "link", head: "Link", render: (p) => p.post_url && /^https?:\/\//.test(p.post_url) ? <ExtLink href={p.post_url}>open</ExtLink>
+    key: "link", head: "Link", mobile: "meta", render: (p) => p.post_url && /^https?:\/\//.test(p.post_url) ? <ExtLink href={p.post_url}>open</ExtLink>
       : p.error ? <span className="down xs">{humanize(p.error)}</span>
       : <span className="muted">{p.dry_run ? "dry run" : p.status === "pending" ? (p.platform === "tiktok" ? "no URL yet (TikTok)" : "no URL yet") : p.post_url ?? "—"}</span>,
   },
-  { key: "v", head: "Views", align: "right", render: (p) => <span className="num">{fmtNum(p.views)}</span> },
-  { key: "l", head: "Likes", align: "right", render: (p) => <span className="num">{fmtNum(p.likes)}</span> },
-  { key: "c", head: "Claim", render: (p) => (p.claim_status ? <Badge status={p.claim_status} /> : <span className="muted">—</span>) },
+  { key: "v", head: "Views", align: "right", mobile: "meta", render: (p) => <span className="num">{fmtNum(p.views)}</span> },
+  { key: "l", head: "Likes", align: "right", mobile: "hide", render: (p) => <span className="num">{fmtNum(p.likes)}</span> },
+  { key: "c", head: "Claim", mobile: "hide", render: (p) => (p.claim_status ? <Badge status={p.claim_status} /> : <span className="muted">—</span>) },
 ];
 
 export function PostsView() {

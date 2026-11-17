@@ -55,11 +55,11 @@ export function SpendView() {
 
   const opCols: Col<Op>[] = [
     { key: "p", head: "Provider", render: (o) => NAMES[o.provider] ?? o.provider },
-    { key: "o", head: "Operation", render: (o) => <Mono className="semi">{o.operation}</Mono> },
+    { key: "o", head: "Operation", mobile: "primary", render: (o) => <Mono className="semi">{o.operation}</Mono> },
     { key: "m", head: "Model", render: (o) => o.model ?? <span className="muted">—</span> },
     { key: "c", head: "Calls", align: "right", render: (o) => <span className="num">{fmtNum(o.calls)}</span> },
     { key: "t", head: "Tokens in / out", align: "right", render: (o) => o.input_tokens !== null ? <span className="num">{fmtCompact(o.input_tokens)} / {fmtCompact(o.output_tokens)}</span> : o.units !== null ? <span className="num muted">{fmtCompact(o.units)} units</span> : "—" },
-    { key: "u", head: `Cost · ${rangeLabel}`, align: "right", render: (o) => <b className="num">{fmtUsd(o.usd)}</b> },
+    { key: "u", head: `Cost · ${rangeLabel}`, align: "right", mobile: "aside", render: (o) => <b className="num">{fmtUsd(o.usd)}</b> },
   ];
   const qd = u.quotas;
   const quota = (label: string, used?: number, limit?: number, unit = "") => used !== undefined && limit ? (

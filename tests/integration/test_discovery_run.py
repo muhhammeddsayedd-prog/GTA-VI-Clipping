@@ -24,9 +24,11 @@ from sixstars.clients.fakes import (
     FakeApifyClient,
     FakeTwitchClient,
     FakeYouTubeClient,
+    fake_clip,
     fake_video,
 )
 from sixstars.clients.youtube import FeedEntry
+from sixstars.discovery import commands as discovery_commands
 from sixstars.discovery import config as discovery_config
 from sixstars.discovery import run as discovery_run
 from sixstars.discovery import sources, tiers
@@ -215,7 +217,37 @@ def test_pass_creates_creators_candidates_sessions_and_video_jobs() -> None:
         "youtube_rss": "skipped",
         "apify": "ok",
         "youtube_api": "ok",
+        "twitch_clips": "empty",  # the fake lists no viewer clips
     }
+    assert body["twitch_clips"]["queued"] == 0 and body["top_clips"] == []
+
+
+def test_viewer_clips_are_part_of_the_pass_and_of_its_summary() -> None:
+    world = World()
+    # streamers the pass already knows (user0, user1) and one it does not (user7)
+    world.twitch.clips = [fake_clip(0), fake_clip(1, view_count=700), fake_clip(7, view_count=400)]
+    summary = world.run()
+
+    assert summary.errors == []
+    clips = next(source for source in summary.sources if source["name"] == "twitch_clips")
+    assert clips == {"name": "twitch_clips", "status": "ok", "found": 3, "detail": ""}
+    assert summary.twitch_clips["eligible"] == 3 and summary.twitch_clips["queued"] == 3
+    assert summary.twitch_clips["skipped"] == {}
+    assert [row["channel"] for row in summary.top_clips] == ["Streamer0", "Streamer1", "Streamer7"]
+    assert all(row["picked"] and row["parts"]["views_per_hour"] > 0 for row in summary.top_clips)
+    assert count("viewer_clips") == 3 and count("jobs", "type = 'viewer_clip.process'") == 3
+    # the broadcaster of a clip is the same creator row as the streamer of the live stream
+    assert count("creators", "platform = 'twitch' and channel_id = 'user0'") == 1
+    assert one("select handle from creators where channel_id = 'user7'")["handle"] == "user7"
+    # the event keeps the numbers and leaves the clip list out; the CLI prints the table
+    data = one("select data, message from events where type = 'discovery.run'")
+    assert data["data"]["twitch_clips"]["queued"] == 3 and "top_clips" not in data["data"]
+    assert data["message"].endswith("viewer clips queued 3")
+    text = discovery_commands.format_summary(summary)
+    assert "Twitch clips: 3 fit, 3 queued" in text and "PICKED" in text
+    # a second pass queues nothing twice
+    again = world.run(NOW + timedelta(minutes=10))
+    assert again.twitch_clips["queued"] == 0 and again.twitch_clips["skipped"] == {"already_seen": 3}
 
 
 def test_second_pass_ten_minutes_later_computes_growth_and_duplicates_nothing() -> None:

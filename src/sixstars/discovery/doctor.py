@@ -16,7 +16,9 @@ system itself would (same clients, same proxy and cookies rules) and reports `ok
 | `apify` | only whether the token is set (a run costs money) | free |
 
 `blocked` means the platform refused this machine (bot check, rate limit, a connection closed without an
-answer): the fix is the owner's `PROXY_URL` or `YOUTUBE_COOKIES_FILE`, never a workaround in code.
+answer): the fix is the owner's `PROXY_URL` or `YOUTUBE_COOKIES_FILE`, never a workaround in code. It also
+means the proxy itself refused or could not be reached (detail `proxy refused: <code> <text>`): that is
+fixed on the proxy account.
 Nothing is written except the usual `api_usage` rows of the clients.
 """
 
@@ -31,7 +33,7 @@ from typing import Any, Final
 from sixstars import db
 from sixstars.chat import youtube_innertube as innertube
 from sixstars.chat.models import ChatSourceError
-from sixstars.chat.net import proxy_for
+from sixstars.chat.net import PROXY_FIX, proxy_for, proxy_refusal, redact_proxy
 from sixstars.clients._http import ApiError, NotConfiguredError
 from sixstars.clients.apify import ApifyClient
 from sixstars.clients.twitch import TwitchClient
@@ -59,6 +61,7 @@ WINDOW_MAX_HEIGHT: Final = 360
 WINDOW_TIMEOUT_S: Final = 120.0
 SEARCH_RESULTS: Final = 5
 DETAIL_CHARS: Final = 300
+PROXY_DETAIL: Final = "proxy refused: "
 # Text of a refusal that is about this machine, not about the request (lower case). The first three are
 # what the staging server got on every yt-dlp search.
 BLOCK_MARKERS: Final[tuple[str, ...]] = (
@@ -94,10 +97,14 @@ def looks_blocked(text: str) -> bool:
 
 def failure(name: str, exc: BaseException) -> Check:
     """Turn an exception into a `blocked`, `not configured` or `error` check."""
-    text = " ".join(str(exc).split())[:DETAIL_CHARS]
+    full = redact_proxy(" ".join(str(exc).split()))
+    text = full[:DETAIL_CHARS]
     kind = type(exc).__name__
     if isinstance(exc, NotConfiguredError):
         return Check(name, NOT_CONFIGURED, text, kind)
+    refusal = proxy_refusal(full)
+    if refusal is not None:  # the proxy itself, not the platform: say what it answered first
+        return Check(name, BLOCKED, f"{refusal.described} ({text})"[:DETAIL_CHARS], kind)
     if isinstance(exc, ytdlp.DownloadBlockedError) or looks_blocked(text):
         return Check(name, BLOCKED, text, kind)
     if isinstance(exc, ApiError):
@@ -325,7 +332,13 @@ def format_table(checks: list[Check]) -> str:
         label = check.status.upper() if check.status in (OK, BLOCKED, ERROR) else check.status
         error = f"[{check.error_class}] " if check.error_class else ""
         lines.append(f"{check.name:<{width}}  {label:<14}  {check.seconds:>5.1f}s  {error}{check.detail}")
-    refused = [check.name for check in checks if check.status == BLOCKED]
+    by_proxy = [
+        check.name for check in checks if check.status == BLOCKED and check.detail.startswith(PROXY_DETAIL)
+    ]
+    refused = [check.name for check in checks if check.status == BLOCKED and check.name not in by_proxy]
+    if by_proxy:
+        lines.append("")
+        lines.append(f"Refused by the proxy (PROXY_URL): {', '.join(by_proxy)}. {PROXY_FIX}")
     if refused:
         lines.append("")
         lines.append(

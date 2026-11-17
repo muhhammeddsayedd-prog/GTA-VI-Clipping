@@ -15,16 +15,16 @@ const KEYS = ["status", "tier", "mode"];
 const STATUSES = ["detected", "confirmed", "rendering", "clipped", "rejected", "merged", "failed"];
 
 const cols: Col<Spike>[] = [
-  { key: "t", head: "Tier", render: (s) => <TierChip tier={s.tier} /> },
+  { key: "t", head: "Tier", mobile: "lead", render: (s) => <TierChip tier={s.tier} /> },
   { key: "c", head: "Creator", render: (s) => <Who name={s.creator.handle} p={s.creator.platform} size={28} sub={<ModeBadge mode={s.mode} />} /> },
-  { key: "at", head: "At", render: (s) => <span className="num">{spikeAt(s)}</span> },
-  { key: "z", head: "z", align: "right", render: (s) => <b className="num">{s.score_z ?? "—"}</b> },
-  { key: "p", head: "Parts", render: (s) => <PartsMini parts={s.parts} /> },
-  { key: "cf", head: "Conf.", align: "right", render: (s) => (s.claude_confidence !== null ? s.claude_confidence.toFixed(2) : "—") },
-  { key: "m", head: "Moment", render: (s) => <span className="ink2 clamp2" style={{ maxWidth: 260 }}>{s.claude_reason ?? "—"}</span> },
+  { key: "at", head: "At", mobile: "meta", render: (s) => <span className="num">{spikeAt(s)}</span> },
+  { key: "z", head: "z", align: "right", mobile: "meta", render: (s) => <b className="num">{s.score_z ?? "—"}</b> },
+  { key: "p", head: "Parts", mobile: "hide", render: (s) => <PartsMini parts={s.parts} /> },
+  { key: "cf", head: "Conf.", align: "right", mobile: "meta", render: (s) => (s.claude_confidence !== null ? s.claude_confidence.toFixed(2) : "—") },
+  { key: "m", head: "Moment", mobile: "meta", render: (s) => <span className="ink2 clamp2" style={{ maxWidth: 260 }}>{s.claude_reason ?? "—"}</span> },
   { key: "st", head: "Status", render: (s) => <Badge status={s.status} /> },
-  { key: "cl", head: "Clip", render: (s) => <ClipLink id={s.clip_id} no={s.clip_series_no} /> },
-  { key: "sp", head: "Spike→post", align: "right", render: (s) => (s.spike_to_post_s !== null ? `${s.spike_to_post_s} s` : "—") },
+  { key: "cl", head: "Clip", mobile: "hide", render: (s) => <ClipLink id={s.clip_id} no={s.clip_series_no} /> },
+  { key: "sp", head: "Spike→post", align: "right", mobile: "hide", render: (s) => (s.spike_to_post_s !== null ? `${s.spike_to_post_s} s` : "—") },
 ];
 
 export function SpikesView() {

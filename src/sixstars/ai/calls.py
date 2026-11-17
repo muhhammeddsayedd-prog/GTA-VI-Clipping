@@ -91,6 +91,8 @@ VISUAL_FRAMES_MAX = 8
 # own text stay readable), and chat is shown from this window around the peak.
 VISUAL_SCORE_MAX_SIDE_PX = 768
 VISUAL_SCORE_CHAT_MAX = 30
+# A viewer-given clip title is shown to P9V cut to this many characters.
+AUDIENCE_TITLE_MAX = 140
 VISUAL_SCORE_CHAT_BEFORE_S = 15.0
 VISUAL_SCORE_CHAT_AFTER_S = 25.0
 
@@ -235,8 +237,20 @@ class ChatReaction:
 
 
 @dataclass(frozen=True, slots=True)
+class AudienceEvidence:
+    """What is known about a clip that a viewer made on Twitch (decision D110), given to P9V in place
+    of a chat spike: there is none. `views` and `age_h` are the Twitch clip's view count and its age when
+    discovery read it; `title` is the name the viewer gave it."""
+
+    views: int | None = None
+    age_h: float | None = None
+    title: str = ""
+
+
+@dataclass(frozen=True, slots=True)
 class RenderedClip:
-    """What P9V sees about one rendered clip besides its frames. Line times are clip time."""
+    """What P9V sees about one rendered clip besides its frames. Line times are clip time. `audience` is
+    read only for a clip without a chat spike."""
 
     hook: str
     length_s: float
@@ -244,6 +258,7 @@ class RenderedClip:
     commentary: str | None = None
     chat: ChatReaction | None = None
     clip_id: str | None = None
+    audience: AudienceEvidence | None = None
 
 
 # ── Shared plumbing ──────────────────────────────────────────
@@ -584,6 +599,26 @@ def chat_summary(chat: ChatReaction | None) -> str:
     return "; ".join(facts) + "." if facts else "(no chat counts for this clip)"
 
 
+def audience_summary(audience: AudienceEvidence) -> str:
+    """The audience evidence of a viewer-made clip, in words the model can use. It says plainly that
+    there is no chat spike, and that views are evidence about the moment, not a score."""
+    facts = ["No chat spike: this clip was not cut around a chat peak, and there are no chat messages."]
+    made = "A viewer of the stream clipped this moment on Twitch by hand"
+    title = _one_line(audience.title)[:AUDIENCE_TITLE_MAX]
+    facts.append(f'{made} and named the clip "{title}".' if title else f"{made}.")
+    if audience.views is not None:
+        age = ""
+        if audience.age_h is not None:
+            hours = max(1, round(audience.age_h))
+            age = f" about {hours} hour{'s' if hours != 1 else ''} after it was made"
+        facts.append(f"That Twitch clip had {audience.views} views{age}.")
+    facts.append(
+        "This is evidence that people who watched thought the moment worth keeping, not a score: "
+        "judge what the frames and the lines show."
+    )
+    return " ".join(facts)
+
+
 def _reaction_block(chat: ChatReaction | None) -> str:
     """The messages near the peak, in clip time when the peak position is known."""
     if chat is None:
@@ -650,7 +685,11 @@ def score_clip_visual(
         "count": len(images),
         "frame_times": ", ".join(f"{time_s:.1f}" for time_s in frame_times_s),
         "lines": lines or "(nobody speaks)",
-        "chat_summary": chat_summary(clip.chat),
+        "chat_summary": (
+            audience_summary(clip.audience)
+            if clip.chat is None and clip.audience is not None
+            else chat_summary(clip.chat)
+        ),
         "chat": _reaction_block(clip.chat),
     }
     asked: list[VisualClipScore] = []

@@ -90,7 +90,7 @@ function PaletteBody({ onClose }: { onClose: () => void }) {
                 )];
               })}
             </ul>
-            <div className="row muted xs" style={{ marginTop: 10, borderTop: "1px solid var(--line)", paddingTop: 12, gap: 14 }}>
+            <div className="row muted xs kbd-hints" style={{ marginTop: 10, borderTop: "1px solid var(--line)", paddingTop: 12, gap: 14 }}>
               <span><span className="kbd">↑↓</span> move</span><span><span className="kbd">Enter</span> open</span><span><span className="kbd">Ctrl K</span> toggle</span>
             </div>
           </motion.div>

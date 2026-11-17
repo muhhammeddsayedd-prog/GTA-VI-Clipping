@@ -1,5 +1,6 @@
 """The fakes: deterministic, no network, no environment, and usable wherever the real client is expected."""
 
+from datetime import timedelta
 from pathlib import Path
 
 import pytest
@@ -154,3 +155,17 @@ def test_fake_upload_post(tmp_path: Path) -> None:
     failed = client.get_upload_status("req-3")
     failed_result = failed.result_for("tiktok")
     assert failed.status == "failed" and failed_result is not None and failed_result.error_kind == "auth"
+
+
+def test_fake_twitch_clips() -> None:
+    client = fakes.FakeTwitchClient()
+    start = fakes.FIXED_TIME - timedelta(hours=1)
+    assert client.get_clips(fakes.FAKE_GAME_ID, start) == []  # none unless a test adds them
+    old = fakes.fake_clip(3, created_at=start - timedelta(hours=1), view_count=5000)
+    client.clips = [fakes.fake_clip(1), fakes.fake_clip(0), old, fakes.fake_clip(2, is_featured=True)]
+    found = client.get_clips(fakes.FAKE_GAME_ID, start, fakes.FIXED_TIME, max_items=2)
+    assert [clip.id for clip in found] == ["FakeClipSlug0", "FakeClipSlug1"]  # most viewed first
+    assert found[0].broadcaster_id == "user0" and found[0].creator_name == "Viewer0"
+    assert [c.id for c in client.get_clips(fakes.FAKE_GAME_ID, start, is_featured=True)] == ["FakeClipSlug2"]
+    assert client.get_clips("other-game", start) == []
+    assert client.calls_to("get_clips")[0]["max_items"] == 100

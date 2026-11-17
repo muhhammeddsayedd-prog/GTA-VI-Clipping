@@ -17,10 +17,10 @@ const KEYS = ["status", "platform"];
 
 const cols: Col<Video>[] = [
   { key: "c", head: "Creator", render: (v) => <Who name={v.creator.handle} p={v.platform} size={30} sub={`${fmtDuration(v.duration_s)}${v.has_chat ? "" : " · no chat"}`} /> },
-  { key: "v", head: "Video", render: (v) => <Two a={<span className="clamp2">{v.title ?? v.source_id}</span>} b={<>published <When iso={v.published_at} /></>} /> },
-  { key: "s", head: "Status", render: (v) => <Badge status={v.status} /> },
+  { key: "v", head: "Video", mobile: "primary", render: (v) => <Two a={<span className="clamp2">{v.title ?? v.source_id}</span>} b={<>published <When iso={v.published_at} /></>} /> },
+  { key: "s", head: "Status", mobile: "aside", render: (v) => <Badge status={v.status} /> },
   { key: "a", head: "Attempts", align: "right", render: (v) => <span className={v.attempts >= 3 ? "down semi" : undefined}>{v.attempts}</span> },
-  { key: "ch", head: "Chat", render: (v) => (v.has_chat === null ? "—" : <Badge tone={v.has_chat ? "green" : "gray"}>{v.has_chat ? "yes" : "no"}</Badge>) },
+  { key: "ch", head: "Chat", mobile: "hide", render: (v) => (v.has_chat === null ? "—" : <Badge tone={v.has_chat ? "green" : "gray"}>{v.has_chat ? "yes" : "no"}</Badge>) },
   { key: "t", head: "Trend", align: "right", render: (v) => <b className="num">{v.trend_score ?? "—"}</b> },
   {
     key: "r", head: "Result", render: (v) =>

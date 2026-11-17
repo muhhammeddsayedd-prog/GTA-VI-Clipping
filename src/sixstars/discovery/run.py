@@ -11,9 +11,11 @@ database. Implemented in M09.
    other new or stale creators;
 5. store every observation in `candidates`;
 6. plan live slots and queue videos for the VOD lane;
-7. heartbeat `trigger:discovery`, event `discovery.run`, return the summary.
+7. queue the best viewer-made Twitch Clips of the game (`viewer_clips.source`, decision D110);
+8. heartbeat `trigger:discovery`, event `discovery.run`, return the summary.
 
-Discovery never posts anything, so `control.emergency_stop` and `launch.dry_run` do not change it.
+Discovery never posts anything, so `control.emergency_stop` and `launch.dry_run` do not change steps 1
+to 6. Step 7 queues render work directly, so it does nothing while `control.emergency_stop` is set.
 """
 
 import time
@@ -38,6 +40,7 @@ from sixstars.discovery.tiers import ChannelInfo
 from sixstars.discovery.ytsearch import YtDlpSearch
 from sixstars.live import health as live_health
 from sixstars.logging import get_logger
+from sixstars.viewer_clips import source as clips_source
 from sixstars.vod import health as vod_health
 from sixstars.vod.ytdlp import access_for
 
@@ -109,6 +112,9 @@ class DiscoverySummary:
     timings_s: dict[str, float] = field(default_factory=dict)
     top_live: list[dict[str, Any]] = field(default_factory=list)
     top_videos: list[dict[str, Any]] = field(default_factory=list)
+    # Twitch Clips source: `eligible`, `queued`, `skipped` by reason, permission checks; and its best ten
+    twitch_clips: dict[str, Any] = field(default_factory=dict)
+    top_clips: list[dict[str, Any]] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
         """JSON-serialisable form."""
@@ -121,6 +127,7 @@ class DiscoverySummary:
         data = self.to_dict()
         data.pop("top_live")
         data.pop("top_videos")
+        data.pop("top_clips")
         return data
 
 
@@ -669,6 +676,12 @@ def _run(clients: DiscoveryClients | None, now: datetime) -> DiscoverySummary:
         )
     timed("store_and_assign")
 
+    clips = clips_source.run(clients.twitch, config, now, clients.anthropic)
+    gathered.reports.append(SourceReport(**clips.as_source()))
+    summary.twitch_clips = clips.counts()
+    summary.top_clips = clips.top
+    timed("twitch_clips")
+
     live = [item for item in scored if item.candidate.source_type == "live"]
     vods = [item for item in scored if item.candidate.source_type == "vod"]
     summary.sources = [report.as_dict() for report in gathered.reports]
@@ -717,7 +730,7 @@ def run_discovery(clients: DiscoveryClients | None = None, now: datetime | None 
         message=(
             f"live {summary.live_seen}, videos {summary.videos_seen}, new creators {summary.new_creators}, "
             f"assigned {summary.sessions_assigned}, released {summary.sessions_released}, "
-            f"queued {summary.videos_queued}"
+            f"queued {summary.videos_queued}, viewer clips queued {summary.twitch_clips.get('queued', 0)}"
         ),
         data=summary.counts(),
     )
@@ -729,6 +742,7 @@ def run_discovery(clients: DiscoveryClients | None = None, now: datetime | None 
             + ", ".join(f"{s['name']}={s['status']}" for s in summary.sources),
         )
     _log.info(
-        "discovery_run", **{k: v for k, v in summary.counts().items() if k not in ("sources", "skipped")}
+        "discovery_run",
+        **{k: v for k, v in summary.counts().items() if k not in ("sources", "skipped", "twitch_clips")},
     )
     return summary

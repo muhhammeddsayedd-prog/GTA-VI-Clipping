@@ -7,6 +7,7 @@ every call in `calls` as `(method_name, arguments)`. Canned data is held in publ
 may replace before the call.
 """
 
+import dataclasses
 from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime
 from pathlib import Path
@@ -17,7 +18,7 @@ from pydantic import BaseModel
 from sixstars.clients.anthropic_client import AnthropicClient, Effort
 from sixstars.clients.apify import ApifyClient, ApifyRun, YouTubeItem, normalise_youtube_item
 from sixstars.clients.transcribe import Mode, Transcriber, Transcript, Word
-from sixstars.clients.twitch import TwitchClient, TwitchStream, TwitchUser, TwitchVideo
+from sixstars.clients.twitch import TwitchClient, TwitchClip, TwitchStream, TwitchUser, TwitchVideo
 from sixstars.clients.upload_post import (
     NO_DELETE_PLATFORMS,
     NotSupported,
@@ -87,8 +88,32 @@ def fake_video(index: int, user_id: str | None = None) -> TwitchVideo:
     )
 
 
+def fake_clip(index: int, game_id: str = FAKE_GAME_ID, **changes: Any) -> TwitchClip:
+    """A 30-second English viewer clip of `user<index>`'s broadcast `video<index>`, made at `FIXED_TIME`."""
+    clip = TwitchClip(
+        id=f"FakeClipSlug{index}",
+        url=f"https://www.twitch.tv/streamer{index}/clip/FakeClipSlug{index}",
+        broadcaster_id=f"user{index}",
+        broadcaster_name=f"Streamer{index}",
+        creator_id=f"viewer{index}",
+        creator_name=f"Viewer{index}",
+        video_id=f"video{index}",
+        game_id=game_id,
+        language="en",
+        title=f"GTA clip {index}",
+        view_count=1000 - index * 100,
+        created_at=FIXED_TIME,
+        thumbnail_url=f"https://example.test/clip/{index}.jpg",
+        duration_s=30.0,
+        vod_offset_s=600.0 + index * 100,
+        is_featured=False,
+    )
+    return dataclasses.replace(clip, **changes)
+
+
 class FakeTwitchClient(_Recorder, TwitchClient):
-    """Twitch without the network: three streams and three VODs of one game."""
+    """Twitch without the network: three streams and three VODs of one game, and the viewer clips a test
+    puts in `clips`."""
 
     def __init__(self, configured: bool = True) -> None:
         self.calls = []
@@ -96,6 +121,7 @@ class FakeTwitchClient(_Recorder, TwitchClient):
         self.game_ids: dict[str, str] = {"Grand Theft Auto V": FAKE_GAME_ID, "Grand Theft Auto VI": "999999"}
         self.streams: list[TwitchStream] = [fake_stream(index) for index in range(3)]
         self.videos: list[TwitchVideo] = [fake_video(index) for index in range(3)]
+        self.clips: list[TwitchClip] = []  # none by default: a test adds `fake_clip(...)` rows
         self.followers: dict[str, int | None] = {}
 
     def is_configured(self) -> bool:
@@ -123,6 +149,33 @@ class FakeTwitchClient(_Recorder, TwitchClient):
     def get_videos_by_user(self, user_id: str, type: str = "archive", first: int = 5) -> list[TwitchVideo]:  # noqa: A002
         self._record("get_videos_by_user", user_id=user_id, type=type, first=first)
         return [video for video in self.videos if video.user_id == user_id and video.type == type][:first]
+
+    def get_clips(
+        self,
+        game_id: str,
+        started_at: datetime,
+        ended_at: datetime | None = None,
+        max_items: int = 100,
+        is_featured: bool | None = None,
+    ) -> list[TwitchClip]:
+        """Clips of the game made inside the window, most viewed first, like the real endpoint."""
+        self._record(
+            "get_clips",
+            game_id=game_id,
+            started_at=started_at,
+            ended_at=ended_at,
+            max_items=max_items,
+            is_featured=is_featured,
+        )
+        found = [
+            clip
+            for clip in self.clips
+            if clip.game_id == game_id
+            and clip.created_at >= started_at
+            and (ended_at is None or clip.created_at <= ended_at)
+            and (is_featured is None or clip.is_featured == is_featured)
+        ]
+        return sorted(found, key=lambda clip: -clip.view_count)[:max_items]
 
     def get_users(self, ids: Sequence[str]) -> list[TwitchUser]:
         self._record("get_users", ids=list(ids))

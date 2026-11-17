@@ -49,7 +49,7 @@ export function HealthView() {
   });
   const histCols: Col<{ e: Event; rec?: Event }>[] = [
     { key: "o", head: "Opened", render: (r) => <When iso={r.e.created_at} /> },
-    { key: "i", head: "Incident", render: (r) => <span className="semi">{r.e.message}</span> },
+    { key: "i", head: "Incident", mobile: "primary", render: (r) => <span className="semi">{r.e.message}</span> },
     { key: "d", head: "Duration", render: (r) => fmtDuration(((r.rec ? Date.parse(r.rec.created_at) : now) - Date.parse(r.e.created_at)) / 1000) },
     { key: "s", head: "State", render: (r) => <Badge status={r.rec ? "recovered" : "open"} /> },
   ];
@@ -62,15 +62,18 @@ export function HealthView() {
       <AnimatedContent distance={20} duration={0.5} stagger={0.06} trigger="mount">
         <Grid cols={5}>
           {groups.map(([kind, beats]) => {
-            const stale = beats.filter((b) => b.stale).length;
+            // Restarted workers leave old per-process rows that stay stale; the service is down only if none is fresh.
+            const live = beats.filter((b) => !b.stale).length;
+            const down = live === 0;
             const newest = beats.reduce((a, b) => (a.age_s < b.age_s ? a : b));
-            const info = beats[0].info ?? {};
-            const sub = kind === "live-manager" ? `${info.active ?? "?"} sessions · max ${info.max_slots ?? "?"}` : beats.length > 1 ? `${beats.length} replicas` : kind === "api" ? "FastAPI · /v1/health" : "1 replica";
+            const info = newest.info ?? {};
+            const sub = kind === "live-manager" ? `${info.active ?? "?"} sessions · max ${info.max_slots ?? "?"}` : kind.startsWith("worker-") ? `${live} running` : kind === "api" ? "FastAPI · /v1/health" : "1 replica";
+            const old = beats.length - live;
             return (
               <Card key={kind} as="div">
                 <div className="row"><span className="cic" aria-hidden><Server size={15} /></span><span className="semi">{kind}</span>
-                  <span className={`right sdot ${stale ? "red" : "green"}`} role="img" aria-label={stale ? `${stale} stale` : "up"} /></div>
-                <div className="muted xs" style={{ marginTop: 10 }}>{sub}{stale ? <span className="down"> · {stale} stale</span> : null}</div>
+                  <span className={`right sdot ${down ? "red" : "green"}`} role="img" aria-label={down ? "down" : "up"} /></div>
+                <div className="muted xs" style={{ marginTop: 10 }}>{sub}{down ? <span className="down"> · no fresh heartbeat</span> : old > 0 && kind.startsWith("worker-") ? ` · ${old} old process rows` : null}</div>
                 <div className="row" style={{ marginTop: 12 }}><span className="muted xs">last seen</span><span className="right semi">{fmtDuration(newest.age_s)} ago</span></div>
               </Card>
             );

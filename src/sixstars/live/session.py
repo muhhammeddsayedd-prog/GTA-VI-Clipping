@@ -41,7 +41,7 @@ from sixstars.ai import calls, spike_confirm
 from sixstars.ai.calls import ChatLine, SpikeContext
 from sixstars.ai.schemas import SpikeVerdict
 from sixstars.chat.models import ChatMessage, ChatSourceError, Platform
-from sixstars.chat.net import cookies_file, proxy_for
+from sixstars.chat.net import cookies_file, proxy_for, proxy_refusal
 from sixstars.clients.anthropic_client import AnthropicClient
 from sixstars.factory.pipeline import JOB_CLIP_RENDER, JOB_EXPRESS_RENDER, RenderInput
 from sixstars.live import buffer, store
@@ -248,7 +248,7 @@ def render_input(
 
 def looks_blocked(text: str) -> bool:
     lowered = normalise(text)
-    return any(marker in lowered for marker in BLOCKED_MARKERS)
+    return any(marker in lowered for marker in BLOCKED_MARKERS) or proxy_refusal(text) is not None
 
 
 # ── the session ──────────────────────────────────────────────

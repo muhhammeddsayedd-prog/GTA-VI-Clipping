@@ -22,7 +22,7 @@ const CAP_COLS: Col<CapRow>[] = [
   { key: "r", head: "Reserve", align: "right", render: (r) => <span className="num">{r.spike_reserve_remaining}</span> },
   { key: "g", head: "Gap ok", render: (r) => <Badge tone={r.gap_ok ? "green" : "amber"}>{r.gap_ok ? "yes" : "no"}</Badge> },
   {
-    key: "al", head: "Allowed", render: (r) => r.paused_until && Date.parse(r.paused_until) > Date.now()
+    key: "al", head: "Allowed", mobile: "aside", render: (r) => r.paused_until && Date.parse(r.paused_until) > Date.now()
       ? <Badge tone="amber">paused until {fmtTime(r.paused_until)}</Badge>
       : r.hourly_allowed && r.spike_allowed ? <Badge tone="purple">both</Badge> : r.hourly_allowed ? <Badge tone="blue">hourly</Badge> : r.spike_allowed ? <Badge tone="amber">spike only</Badge> : <Badge tone="red">none</Badge>,
   },
@@ -30,8 +30,8 @@ const CAP_COLS: Col<CapRow>[] = [
 
 const DEC_COLS: Col<Event>[] = [
   { key: "t", head: "Slot", render: (e) => <When iso={(e.data?.slot_at as string | undefined) ?? e.created_at} /> },
-  { key: "a", head: "Account", render: (e) => String(e.data?.account_id ?? e.entity_id ?? "—") },
-  { key: "d", head: "Decision", render: (e) => <Badge status={e.type === "posting.slot_empty" ? "empty" : e.type.startsWith("post.failed") ? "failed" : "skipped"}>{e.type === "posting.slot_empty" ? "empty" : e.type.startsWith("post.failed") ? "failed" : "skipped"}</Badge> },
+  { key: "a", head: "Account", mobile: "primary", render: (e) => String(e.data?.account_id ?? e.entity_id ?? "—") },
+  { key: "d", head: "Decision", mobile: "aside", render: (e) => <Badge status={e.type === "posting.slot_empty" ? "empty" : e.type.startsWith("post.failed") ? "failed" : "skipped"}>{e.type === "posting.slot_empty" ? "empty" : e.type.startsWith("post.failed") ? "failed" : "skipped"}</Badge> },
   { key: "r", head: "Rule", render: (e) => <span className="mono">{String(e.data?.rule ?? "—")}</span> },
   { key: "w", head: "Why", render: (e) => e.message ?? "—" },
 ];
@@ -91,8 +91,8 @@ export function QueueView() {
             <CardHead title="Hourly slots · today (UTC)" hint="Each cell is one slot · jitter 0–5 min"
               actions={<Legend items={[{ color: "var(--p)", label: "posted" }, { color: "var(--ps2)", label: "planned" }, { color: "#F6D7A4", label: "skipped / empty" }, { color: "var(--red)", label: "failed" }, { color: "#E6E6EE", label: "not allowed" }]} />} />
             {d.slots.map((s, i) => (
-              <div key={s.account_id} className="row" style={{ gap: 14, padding: "10px 0", borderBottom: i < d.slots.length - 1 ? "1px solid var(--line)" : 0 }}>
-                <Link href={`/accounts/${s.account_id}`} className="row" style={{ width: 160, flex: "none" }}><Plat p={s.platform} /><span className="semi">{s.account_id}</span></Link>
+              <div key={s.account_id} className="row slot-row" style={{ gap: 14, padding: "10px 0", borderBottom: i < d.slots.length - 1 ? "1px solid var(--line)" : 0 }}>
+                <Link href={`/accounts/${s.account_id}`} className="row slot-label" style={{ width: 160, flex: "none" }}><Plat p={s.platform} /><span className="semi">{s.account_id}</span></Link>
                 <div className="grow" style={{ minWidth: 0 }}>
                   <Hours labels={i === d.slots.length - 1} cells={s.hours.map((h) => ({
                     cls: `${SLOT_CLS[h.state] ?? ""}${h.hour === nowH ? " now" : ""}`,

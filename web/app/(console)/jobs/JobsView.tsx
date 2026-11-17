@@ -26,13 +26,13 @@ export function JobsView() {
 
   const cols: Col<Job>[] = [
     { key: "id", head: "Job", render: (j) => <span className="mono semi">#{j.id}</span> },
-    { key: "t", head: "Type", render: (j) => <Badge tone={j.queue === "express" ? "purple" : "blue"} dot={false}>{j.type}</Badge> },
-    { key: "q", head: "Queue", render: (j) => j.queue },
-    { key: "p", head: "Priority", align: "right", render: (j) => <span className="num">{j.priority}</span> },
+    { key: "t", head: "Type", mobile: "primary", render: (j) => <Badge tone={j.queue === "express" ? "purple" : "blue"} dot={false}>{j.type}</Badge> },
+    { key: "q", head: "Queue", mobile: "hide", render: (j) => j.queue },
+    { key: "p", head: "Priority", align: "right", mobile: "hide", render: (j) => <span className="num">{j.priority}</span> },
     { key: "s", head: "Status", render: (j) => <Badge status={j.status} /> },
     { key: "a", head: "Attempts", render: (j) => <span className="num">{j.attempts} / {j.max_attempts}</span> },
     { key: "w", head: "Worker", render: (j) => j.locked_by ? <Mono>{j.locked_by}</Mono> : j.status === "queued" && j.run_after && Date.parse(j.run_after) > Date.now() ? <span className="muted">runs {fmtAgo(j.run_after)}</span> : <span className="muted">—</span> },
-    { key: "e", head: "Last error", render: (j) => j.last_error ? <span className="down xs ellipsis" style={{ display: "inline-block", maxWidth: 280 }} title={j.last_error}>{j.last_error.split("\n")[0]}</span> : <span className="muted">—</span> },
+    { key: "e", head: "Last error", mobile: "meta", render: (j) => j.last_error ? <span className="down xs ellipsis" style={{ display: "inline-block", maxWidth: 280 }} title={j.last_error}>{j.last_error.split("\n")[0]}</span> : <span className="muted">—</span> },
     { key: "c", head: "Created", render: (j) => <When iso={j.created_at} /> },
   ];
 

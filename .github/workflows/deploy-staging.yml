@@ -12,6 +12,8 @@ name: Deploy staging
 on:
   push:
     branches: [develop]
+    # The admin console (web/) deploys to Vercel on its own; docs and plans need no server roll.
+    paths-ignore: ["web/**", "docs/**", "development-plan/**", "**/*.md"]
   workflow_dispatch:
 
 concurrency:

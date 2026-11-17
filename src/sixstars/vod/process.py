@@ -47,7 +47,8 @@ from sixstars.ai import calls, spike_confirm
 from sixstars.ai.calls import BudgetExceededError, ChatLine, SpikeContext
 from sixstars.ai.schemas import MomentType, SpikeVerdict
 from sixstars.chat import twitch_replay, youtube_replay
-from sixstars.chat.models import ReplayChat, read_jsonl, write_jsonl
+from sixstars.chat.models import ChatSourceError, ReplayChat, read_jsonl, write_jsonl
+from sixstars.chat.net import PROXY_FIX, ProxyRefusal, proxy_refusal, redact_proxy
 from sixstars.factory.commands import input_from_spike
 from sixstars.factory.pipeline import next_budget_reset
 from sixstars.logging import get_logger
@@ -70,6 +71,7 @@ REQUEUE_SUFFIX: Final = ":again"
 RENDER_LANE: Final = "hourly"  # replay spikes never go to the spike lane: an S is routed like an A
 RENDER_MODE: Final = "normal"
 BLOCKED_TITLE: Final = "Video downloads are blocked"
+PROXY_TITLE: Final = "Video downloads are blocked: the proxy refused"
 FAILED_TITLE: Final = "VOD processing failed"
 # Shape of the confirmation prompt, not runtime settings.
 CONFIRMED_STATUSES: Final = ("confirmed", "rendering", "clipped")
@@ -239,21 +241,41 @@ def blocked_message(platform: str, waiting: int, backoff_s: float, access: Acces
     )
 
 
+def proxy_message(platform: str, waiting: int, backoff_s: float, refusal: ProxyRefusal) -> str:
+    """The body of the notification when the proxy itself refused: what it answered and where the fix is."""
+    minutes = max(1, round(backoff_s / 60))
+    return (
+        f"The proxy (PROXY_URL) refused the {platform} download: {refusal.summary}.\n"
+        f"{waiting} video(s) are waiting. They are not failed; they are tried again every {minutes} min "
+        f"and the backlog drains by itself once the proxy works.\n"
+        f"{PROXY_FIX} No restart is needed unless PROXY_URL itself changes."
+    )
+
+
 # ── Steps ────────────────────────────────────────────────────
 
 
 def _blocked(video: Video, cfg: VodConfig, access: Access, detail: str, deps: Deps) -> NoReturn:
-    """The platform refused a download: remember it, tell the owner at most once per interval, defer."""
+    """A download was refused, by the platform or by the proxy itself: remember it, tell the owner at
+    most once per interval, defer. Never a failure of the video."""
+    detail = redact_proxy(detail, access.proxy)
+    refusal = proxy_refusal(detail)
+    if refusal is not None:
+        detail = refusal.described  # "proxy refused: 407 Proxy Authentication Required"
     store.note_block(video, detail, access.described)
     health.record_blocked(video.platform, deps.now(), detail, access.described)  # read by discovery
     if store.claim_block_notification(video.platform, cfg.blocked_notify_interval_s):
-        notify.send(
-            "warn",
-            BLOCKED_TITLE,
-            blocked_message(
-                video.platform, store.waiting_videos(video.platform), cfg.blocked_backoff_s, access, detail
-            ),
-        )
+        waiting = store.waiting_videos(video.platform)
+        if refusal is not None:
+            notify.send(
+                "warn", PROXY_TITLE, proxy_message(video.platform, waiting, cfg.blocked_backoff_s, refusal)
+            )
+        else:
+            notify.send(
+                "warn",
+                BLOCKED_TITLE,
+                blocked_message(video.platform, waiting, cfg.blocked_backoff_s, access, detail),
+            )
     raise DeferredError(
         "download_blocked", detail[:300], deps.now() + timedelta(seconds=cfg.blocked_backoff_s)
     )
@@ -336,12 +358,15 @@ def _load_chat(video: Video, cfg: VodConfig, access: Access, deps: Deps) -> Repl
             # Right after a stream ends the replay may not be there yet: one more try before falling back.
             deps.sleep(cfg.chat_retry_delay_s)
             replay = download(video.platform, video.source_id, None)
-    except youtube_replay.VideoUnavailableError as exc:
-        failure = ytdlp.classify_failure(1, str(exc))
-        if failure.kind == "blocked":
+    except ChatSourceError as exc:
+        failure = ytdlp.classify_failure(1, redact_proxy(str(exc), access.proxy))
+        if failure.kind == "proxy":  # the proxy refused the chat request: wait, like a refused download
             _blocked(video, cfg, access, failure.detail, deps)
-        if failure.kind == "unavailable":
-            raise VideoGoneError(str(exc)) from exc
+        if isinstance(exc, youtube_replay.VideoUnavailableError):
+            if failure.kind == "blocked":
+                _blocked(video, cfg, access, failure.detail, deps)
+            if failure.kind == "unavailable":
+                raise VideoGoneError(str(exc)) from exc
         raise
     if replay is None:
         return None
