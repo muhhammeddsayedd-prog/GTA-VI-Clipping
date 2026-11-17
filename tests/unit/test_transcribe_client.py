@@ -1,0 +1,182 @@
+"""Transcription: provider choice and fallback, the OpenAI-style response, costs and the local model."""
+
+from pathlib import Path
+from types import SimpleNamespace
+from typing import Any
+
+import httpx
+import pytest
+import respx
+
+from sixstars.clients import transcribe
+from sixstars.clients._http import NotConfiguredError
+from sixstars.clients.transcribe import Transcriber, TranscriptionError
+
+VERBOSE = {
+    "task": "transcribe",
+    "language": "english",
+    "duration": 5.0,
+    "text": "No way he landed that",
+    "words": [
+        {"word": "No", "start": 0.0, "end": 0.3},
+        {"word": " way", "start": 0.3, "end": 0.62},
+        {"word": "he", "start": 0.9, "end": 1.0},
+        {"word": "landed", "start": 1.0, "end": 1.4},
+        {"word": "that", "start": 1.4, "end": 1.7},
+    ],
+}
+
+
+@pytest.fixture
+def clip(tmp_path: Path) -> Path:
+    path = tmp_path / "clip.flac"
+    path.write_bytes(b"fLaC-not-really")
+    return path
+
+
+@pytest.fixture
+def usage_rows(monkeypatch: pytest.MonkeyPatch) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    monkeypatch.setattr(
+        transcribe.usage,
+        "record",
+        lambda provider, operation, **kw: rows.append({"provider": provider, **kw}),
+    )
+    return rows
+
+
+def test_provider_order() -> None:
+    assert transcribe.provider_order("groq", {"openai", "groq"}) == ["groq", "openai"]
+    assert transcribe.provider_order("openai", {"openai", "groq"}) == ["openai", "groq"]
+    assert transcribe.provider_order("groq", {"openai"}) == ["openai"]
+    assert transcribe.provider_order("groq", set()) == []
+
+
+@respx.mock
+def test_openai_is_used_when_groq_is_preferred_but_has_no_key(
+    clip: Path, usage_rows: list[dict[str, Any]]
+) -> None:
+    openai = respx.post(transcribe.OPENAI_URL).mock(return_value=httpx.Response(200, json=VERBOSE))
+    groq = respx.post(transcribe.GROQ_URL).mock(return_value=httpx.Response(500))
+    transcriber = Transcriber(openai_api_key="sk-openai", express_provider="groq")
+    assert transcriber.configured_providers() == {"openai"}
+
+    transcript = transcriber.transcribe(clip, mode="hosted", language="en")
+
+    assert groq.call_count == 0
+    assert (
+        transcript.provider == "openai" and transcript.language == "english" and transcript.duration_s == 5.0
+    )
+    assert [word.w for word in transcript.words] == ["No", "way", "he", "landed", "that"]
+    assert transcript.words[1].s == 0.3 and transcript.words[1].e == 0.62
+    assert transcript.text == "No way he landed that"
+    request = openai.calls[0].request
+    assert request.headers["Authorization"] == "Bearer sk-openai"
+    body = request.content
+    assert b'name="model"\r\n\r\nwhisper-1' in body
+    assert b'name="response_format"\r\n\r\nverbose_json' in body
+    assert b'name="timestamp_granularities[]"\r\n\r\nword' in body
+    assert b'name="language"\r\n\r\nen' in body
+    assert b"fLaC-not-really" in body
+    assert usage_rows == [
+        {"provider": "openai", "model": "whisper-1", "units": 5.0, "cost_usd": pytest.approx(5 / 60 * 0.006)}
+    ]
+
+
+@respx.mock
+def test_groq_is_used_when_preferred_and_configured(clip: Path, usage_rows: list[dict[str, Any]]) -> None:
+    groq = respx.post(transcribe.GROQ_URL).mock(return_value=httpx.Response(200, json=VERBOSE))
+    openai = respx.post(transcribe.OPENAI_URL).mock(return_value=httpx.Response(200, json=VERBOSE))
+    transcript = Transcriber(openai_api_key="o", groq_api_key="g", express_provider="groq").transcribe(
+        clip, mode="hosted"
+    )
+    assert transcript.provider == "groq" and transcript.model == "whisper-large-v3-turbo"
+    assert openai.call_count == 0
+    assert b"whisper-large-v3-turbo" in groq.calls[0].request.content
+    assert b'name="language"' not in groq.calls[0].request.content
+    # Groq bills at least 10 seconds per request.
+    assert usage_rows[0]["cost_usd"] == pytest.approx(10 / 3600 * 0.04)
+
+
+@respx.mock
+def test_falls_back_to_the_other_provider_when_the_first_fails(clip: Path, sleeps: list[float]) -> None:
+    groq = respx.post(transcribe.GROQ_URL).mock(return_value=httpx.Response(503))
+    respx.post(transcribe.OPENAI_URL).mock(return_value=httpx.Response(200, json=VERBOSE))
+    transcript = Transcriber(openai_api_key="o", groq_api_key="g", express_provider="groq").transcribe(
+        clip, mode="hosted"
+    )
+    assert groq.call_count == 3 and transcript.provider == "openai"
+
+
+@respx.mock
+def test_every_provider_failing_raises(clip: Path) -> None:
+    respx.post(transcribe.OPENAI_URL).mock(
+        return_value=httpx.Response(401, json={"error": {"message": "bad key"}})
+    )
+    with pytest.raises(TranscriptionError, match="openai"):
+        Transcriber(openai_api_key="o", express_provider="openai").transcribe(clip, mode="hosted")
+
+
+def test_no_hosted_provider_configured(clip: Path) -> None:
+    transcriber = Transcriber(express_provider="openai")
+    assert transcriber.is_configured() is False
+    with pytest.raises(NotConfiguredError):
+        transcriber.transcribe(clip, mode="hosted")
+
+
+def test_parse_verbose_json_without_duration_or_words() -> None:
+    empty = transcribe.parse_verbose_json({"text": ""}, "openai", "whisper-1")
+    assert empty.words == () and empty.duration_s == 0.0 and empty.language is None
+    no_duration = transcribe.parse_verbose_json(
+        {"words": [{"word": "hi", "start": 0.1, "end": 0.4}]}, "openai", "whisper-1"
+    )
+    assert no_duration.duration_s == 0.4
+
+
+def test_hosted_cost() -> None:
+    assert transcribe.hosted_cost_usd("openai", 60) == pytest.approx(0.006)
+    assert transcribe.hosted_cost_usd("groq", 3600) == pytest.approx(0.04)
+    assert transcribe.hosted_cost_usd("groq", 2) == pytest.approx(10 / 3600 * 0.04)
+
+
+def test_local_mode_loads_the_model_once(clip: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(transcribe, "_models", {})
+    loads: list[str] = []
+    calls: list[dict[str, Any]] = []
+
+    class FakeWhisper:
+        def transcribe(self, path: str, **kwargs: Any) -> tuple[Any, Any]:
+            calls.append({"path": path, **kwargs})
+            segment = SimpleNamespace(
+                words=[
+                    SimpleNamespace(word=" clip", start=0.5, end=0.9),
+                    SimpleNamespace(word=" it", start=0.9, end=1.1),
+                ]
+            )
+            return iter([segment, SimpleNamespace(words=None)]), SimpleNamespace(language="en", duration=5.0)
+
+    def factory(name: str) -> FakeWhisper:
+        loads.append(name)
+        return FakeWhisper()
+
+    transcriber = Transcriber(whisper_model="medium", model_factory=factory)
+    first = transcriber.transcribe(clip)
+    transcriber.transcribe(clip, mode="local", language="en")
+
+    assert loads == ["medium"]
+    assert first.provider == "local" and first.language == "en" and first.duration_s == 5.0
+    assert [(word.w, word.s, word.e) for word in first.words] == [("clip", 0.5, 0.9), ("it", 0.9, 1.1)]
+    assert (
+        calls[0]["word_timestamps"] is True
+        and calls[0]["vad_filter"] is True
+        and calls[0]["language"] is None
+    )
+    assert calls[1]["language"] == "en"
+
+
+def test_too_large_file_is_refused(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(transcribe, "HOSTED_MAX_BYTES", 4)
+    big = tmp_path / "big.flac"
+    big.write_bytes(b"12345")
+    with pytest.raises(TranscriptionError, match="25 MB"):
+        Transcriber(openai_api_key="o", express_provider="openai").transcribe(big, mode="hosted")

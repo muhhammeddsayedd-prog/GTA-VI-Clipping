@@ -1,6 +1,6 @@
 # 14 — API Integrations
 
-**Rule for Claude Code:** before writing each client, read the linked current docs. Facts marked ✅ were checked during planning (16 Nov 2026). Facts marked ⚠️ must be confirmed when coding.
+**Rule for Claude Code:** before writing each client, read the linked current docs. Facts marked ✅ were checked during planning (16 Nov 2026) or while building the clients in M02 (17 Nov 2026, marked "M02"). Facts marked ⚠️ must be confirmed when coding.
 
 ## 1. Upload-Post (posting + analytics)
 Docs: https://docs.upload-post.com (machine-readable index: https://docs.upload-post.com/llm.txt; any page + `.md` gives raw markdown)
@@ -9,15 +9,16 @@ Docs: https://docs.upload-post.com (machine-readable index: https://docs.upload-
 |---|---|
 | Upload | ✅ `POST https://api.upload-post.com/api/upload`, multipart. Header `Authorization: Apikey <key>`. Required: `user`, `platform[]`, `video` (file or URL), `title` (required for YouTube). |
 | Idempotency | ✅ `Idempotency-Key` header (also `X-Idempotency-Key`); send your own `request_id`. If the HTTP client times out, **do not resend** without the same idempotency key. |
-| Async | ✅ `async_upload=true` returns a `request_id`; uploads > 59 s become async automatically. Poll the upload status endpoint (⚠️ confirm path and method: `/api/uploadposts/status` or `/api/upload-status`). |
+| Async | ✅ `async_upload=true` returns a `request_id`; uploads > 59 s become async automatically. ✅ M02: poll `GET /api/uploadposts/status?request_id=<id>`. Top-level `status`: `pending`, `queued`, `processing`, `in_progress`, `completed`, `failed`, `not_found` (HTTP 404). `results` is a list with one entry per platform (`platform`, `success`, `message`, `platform_post_id`, `post_url`, `error_code`, ...). Poll every 10 s, not faster than 5 s. A synchronous upload answers HTTP 200 with `results` as an object keyed by platform; a failed platform has `success: false` there, so always read the per-platform flag. |
 | TikTok fields | ✅ `privacy_level` (`PUBLIC_TO_EVERYONE`, `MUTUAL_FOLLOW_FRIENDS`, `FOLLOWER_OF_CREATOR`, `SELF_ONLY`), `disable_duet`, `disable_comment`, `disable_stitch`, `post_mode`, `tiktok_title`, `tiktok_first_comment` |
 | YouTube fields | ✅ `youtube_title`, `youtube_description`, `tags`, `categoryId` (use `"20"` Gaming), `privacyStatus` (`public`/`unlisted`/`private`), `selfDeclaredMadeForKids` (false) |
 | Instagram fields | ✅ `media_type` (`REELS`), `share_to_feed`, `cover_url` |
 | First comment | ✅ `first_comment` or `<platform>_first_comment` |
-| Limits | ✅ TikTok 6 posts/min and 15 posts/day per TikTok account. ✅ Instagram capped at 50 posts/24 h by Upload-Post. ⚠️ Check your plan's monthly upload allowance (need ~1,500–2,000/month) and extra profiles. |
-| Profiles | Each profile (`user`) groups connected accounts. Create `6stars-main`, `6stars-live`, `6stars-staging` in the Upload-Post dashboard. |
-| Analytics | ✅ `GET /api/analytics/{profile}?platforms=tiktok,instagram,youtube` (followers, reach, views). ✅ Per post: `GET /api/uploadposts/post-analytics/{id}` (⚠️ confirm whether the id is the request id or platform post id). |
-| Delete | ⚠️ No delete endpoint for published posts was visible. Check again; if absent, see `docs/12` §3. |
+| Limits | ✅ TikTok 6 posts/min and 15 posts/day per TikTok account. ✅ Instagram capped at 50 posts/24 h by Upload-Post. ✅ M02: **YouTube is capped at 30 posts/24 h per account by Upload-Post** (hourly posting alone uses 24). ✅ M02: API rate limit on the Basic plan is 60 requests/min and 300 per 10 min (+2/min per profile); over it: HTTP 429 with `X-RateLimit-Reset`. ⚠️ Check your plan's monthly upload allowance (need ~1,500–2,000/month): over it, upload answers HTTP 429 with `usage`. |
+| Profiles | Each profile (`user`) groups connected accounts. One profile exists: `default` (decision D101). ✅ M02: `GET /api/uploadposts/users` returns `{"profiles": [{"username": ..., "social_accounts": ...}]}` and is read-only. |
+| Analytics | ✅ `GET /api/analytics/{profile}?platforms=tiktok,instagram,youtube` (followers, reach, views). ✅ M02: per post `GET /api/uploadposts/post-analytics/{request_id}` takes the **request id of the upload** (optional `?platform=`); the answer has `platforms.<name>.platform_post_id`, `post_url`, `post_metrics`. By platform id: `GET /api/uploadposts/post-analytics?platform_post_id=&platform=&user=` (100 requests per 5 minutes, cached 5 minutes). |
+| Delete | ✅ M02: `POST /api/uploadposts/posts/unpublish` with JSON `{platform, user, post_id}` deletes a live post on YouTube (and Facebook, X, LinkedIn, ...). **Not available for Instagram or TikTok**: those still need `docs/12` §3. |
+| Errors | ✅ M02: non-200 bodies are `{"success": false, "message": ...}`. 400 invalid request; 401 bad key; 403 plan does not allow it; 404 user not found; 429 monthly or daily cap; 5xx server. Per-platform failures carry `error` and often `error_code` (`account_reauth_required`, `account_restricted`, `content_rejected`, `tiktok_privacy_unavailable`, `youtube_channel_daily_limit`, ...). TikTok may deliver to the inbox instead of publishing (`fallback_to_inbox: true`) and may give the public post id hours later (`post_url: null`). |
 | Webhooks | ⚠️ Account/profile webhooks exist (HMAC `X-Upload-Post-Signature`); optional, polling is enough. |
 
 ## 2. Twitch
@@ -25,13 +26,13 @@ Docs: https://dev.twitch.tv/docs/api/reference , https://dev.twitch.tv/docs/chat
 
 | Item | Detail |
 |---|---|
-| App token | `POST https://id.twitch.tv/oauth2/token?client_id=&client_secret=&grant_type=client_credentials`; cache until expiry |
+| App token | ✅ M02: `POST https://id.twitch.tv/oauth2/token` with `client_id`, `client_secret`, `grant_type=client_credentials` in a form body (`application/x-www-form-urlencoded`); answer `access_token`, `expires_in`; no refresh token; cache until expiry |
 | Headers | `Client-Id: <id>`, `Authorization: Bearer <app token>` |
 | Game id | `GET /helix/games?name=Grand%20Theft%20Auto%20VI` (⚠️ confirm the exact category name once GTA 6 is listed; staging uses `Grand Theft Auto V`) |
 | Live streams | `GET /helix/streams?game_id=&first=100&after=` |
-| VODs | `GET /helix/videos?game_id=&type=archive&period=day&sort=views&first=50`; per user `GET /helix/videos?user_id=&type=archive&first=5` (`stream_id` links a VOD to a stream) |
+| VODs | `GET /helix/videos?game_id=&type=archive&period=day&sort=views&first=50`; per user `GET /helix/videos?user_id=&type=archive&first=5` (`stream_id` links a VOD to a stream). ✅ M02: `first` max 100; a `game_id` query returns at most 500 videos; `duration` is text such as `1h0m5s` |
 | Users | `GET /helix/users?id=` → `description`, `profile_image_url` |
-| Followers | `GET /helix/channels/followers?broadcaster_id=` (total only needs app token ⚠️ confirm) |
+| Followers | `GET /helix/channels/followers?broadcaster_id=`. ⚠️ M02: the reference lists only a **user** access token (scope `moderator:read:followers` for the list; without it only `total`). Whether an app token gets `total` could not be tested (no Twitch keys): the client returns `None` on 401/403 |
 | Rate limit | ~800 points/min per app token; discovery uses < 20 calls per run |
 | Chat (live) | IRC over `wss://irc-ws.chat.twitch.tv:443`, anonymous `NICK justinfan<digits>`, capabilities `twitch.tv/tags twitch.tv/commands` |
 | Chat (replay) | TwitchDownloaderCLI (https://github.com/lay295/TwitchDownloader, MIT). ⚠️ confirm current CLI flags: `chatdownload --id <vod> -o chat.json` |
@@ -42,30 +43,33 @@ Docs: https://developers.google.com/youtube/v3
 | Item | Detail |
 |---|---|
 | Public data | API key: `videos.list` (status, contentDetails, statistics, liveStreamingDetails), `channels.list` (snippet, statistics) |
-| Quota | ⚠️ Default 10,000 units/day per project. `videos.list` = 1 unit. Upload cost is reported as 1 unit in a separate 100/day bucket by some sources and 1,600 units by others — check the Cloud Console quota page. |
+| Quota | ✅ M02 (quota cost page): 10,000 units/day per project for everything except `search.list` and `videos.insert`. `videos.list` and `channels.list` = 1 unit; `videos.delete` = 50 units; `videos.insert` = 1 unit per call **in its own bucket, 100 calls/day by default**. ⚠️ The real limits of this project are on the Cloud Console quota page (not checked). |
 | Unaudited uploads | ✅ Videos uploaded via `videos.insert` from unverified API projects created after 28 July 2020 are restricted to private. That's why all public posting goes through Upload-Post and our own project only does **private** pre-check uploads. |
-| OAuth | Owner's Google account; scopes `youtube.upload` (pre-check) and `youtube` (delete, read private status). Set the OAuth consent screen publishing status to **In production** (accepting the "unverified app" screen for the owner's own use); in "Testing" status refresh tokens expire after 7 days. ⚠️ Confirm this behaviour when setting up. `sixstars youtube auth` runs the one-time local OAuth flow and prints the refresh token. |
+| OAuth | Owner's Google account; scopes `youtube.upload` (pre-check) and `youtube` (delete, read private status). Set the OAuth consent screen publishing status to **In production** (accepting the "unverified app" screen for the owner's own use); in "Testing" status refresh tokens expire after 7 days. ⚠️ Confirm this behaviour when setting up. `sixstars youtube auth` runs the one-time local OAuth flow and prints the refresh token. ✅ M02: desktop-app flow = loopback redirect `http://127.0.0.1:<port>`, PKCE S256, authorization endpoint `https://accounts.google.com/o/oauth2/v2/auth`, token endpoint `https://oauth2.googleapis.com/token`; a refresh token is always returned for desktop apps, so the OAuth client must be of type "Desktop app". |
 | RSS | `https://www.youtube.com/feeds/videos.xml?channel_id=<id>` (no quota) |
 | Live chat | `chat-downloader` (https://github.com/xenova/chat-downloader) for live and replay; no API quota |
 | Downloads | yt-dlp; YouTube often blocks data-centre IPs → residential proxy (`--proxy`) and/or cookies (`--cookies`) |
 
 ## 4. Apify (YouTube discovery)
 Docs: https://docs.apify.com/api/v2 ; actor page in Apify Store.
-- Actor: `streamers/youtube-scraper` (⚠️ confirm input schema with the Apify actor details: search terms, upload date filter, live filter, max results).
-- Run async: `POST /v2/acts/<actor>/runs?token=` → poll `GET /v2/actor-runs/<id>` → `GET /v2/datasets/<datasetId>/items?clean=true`.
+- Actor: `streamers/youtube-scraper`. ✅ M02 input (schema + real runs): `searchQueries` (list), `maxResults` (finished videos per term), `maxResultsShorts`, `maxResultStreams` (streams per term), `isLive` (bool), `dateFilter` (`hour`, `today`, `week`, `month`, `year`), `sortingOrder` (`relevance`, `rating`, `date`, `views`). **A live search needs `isLive: true` with `maxResultStreams`**; with `maxResults` alone it returns nothing. Output fields: `id`, `title`, `type` (`video`/`stream`), `streamType` (`live`), `viewCount` (current viewers for a live stream), `date`, `likes`, `commentsCount`, `duration` (`HH:MM:SS`, null when live), `channelId`, `channelName`, `numberOfSubscribers`. A search that finds nothing writes one row `{"error": "NO_VIDEOS"}`; this also happened once at random, so an empty result is not an error.
+- ✅ M02 price: pay per event, $0.003 per video written (17 Nov 2026). Every run is started with `maxTotalChargeUsd`.
+- Run async: `POST /v2/acts/<user>~<actor>/runs` (HTTP 201) → poll `GET /v2/actor-runs/<id>` until `status` is `SUCCEEDED`, `FAILED`, `TIMED-OUT` or `ABORTED` → `GET /v2/datasets/<datasetId>/items?clean=true`. ✅ M02: the token goes in `Authorization: Bearer`, not in the URL.
 - Budget: keep max results ~50 per term per run.
 
 ## 5. Anthropic
 Docs: https://docs.claude.com
 - SDK `anthropic`; models from settings (`claude-sonnet-5-5`, `claude-haiku-5-5`).
+- ✅ M02 prices per million tokens (pricing page, 17 Nov 2026): Sonnet 5.5 input $2, output $10, 5-minute cache write $2.50, cache read $0.10. Haiku 5.5 input $0.10, output $0.50, cache write $0.125, cache read $0.01 for prompts up to 100,000 tokens; above that $0.50 / $2.50 / $0.625 / $0.05.
+- ✅ M02: both models think by default and thinking counts toward `max_tokens`; depth is set with `output_config.effort`; `temperature`/`top_p`/`top_k` and assistant prefill are rejected. A policy decline is HTTP 200 with `stop_reason: "refusal"`.
 - Use structured outputs: give the JSON schema in the prompt and validate with Pydantic; on invalid JSON retry once with the validation error appended.
 - Vision: send JPEG frames (≤ 1568 px long side) as base64 image blocks.
 - Use prompt caching for the long static system prompts (P2, P3).
 - Log tokens and cost to `api_usage` on every call.
 
 ## 6. Transcription
-- **Groq** (express): OpenAI-compatible audio transcription endpoint; model `whisper-large-v3-turbo` (⚠️ confirm current model name and that `timestamp_granularities[]=word` is supported).
-- **OpenAI** (fallback): `POST /v1/audio/transcriptions` with `response_format=verbose_json`, `timestamp_granularities[]=word` (⚠️ confirm model name).
+- **Groq** (not configured, decision D104): ✅ M02 docs: `POST https://api.groq.com/openai/v1/audio/transcriptions`, model `whisper-large-v3-turbo` ($0.04 per audio hour, at least 10 s billed per request), `response_format=verbose_json` with `timestamp_granularities[]=word` gives `words[{word,start,end}]`. Not tested live (no key).
+- **OpenAI** (the hosted provider in use): ✅ M02: `POST https://api.openai.com/v1/audio/transcriptions` with `model=whisper-1`, `response_format=verbose_json`, `timestamp_granularities[]=word`. **Word timestamps exist only on `whisper-1`** (not on the `gpt-*-transcribe` models); `whisper-1` shuts down on 26 Feb 2027. $0.006 per minute, 25 MB file limit. Tested live: `language` comes back as a name (`english`).
 - **Local**: faster-whisper `medium`, `compute_type=int8`.
 
 ## 7. Telegram (via n8n only)

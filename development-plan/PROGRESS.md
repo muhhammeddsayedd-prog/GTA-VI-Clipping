@@ -163,3 +163,213 @@ Use `127.0.0.1`, not `localhost`: on this Windows machine with Docker Desktop, a
 - **`api_usage`** has no helper yet: M02 should add one (for example `usage.record(provider, operation, model=None, input_tokens=None, output_tokens=None, units=None, cost_usd=0, ref_id=None)`) and call it from every client.
 - **Tests**: integration tests get the database from the autouse `database` fixture in `tests/integration/conftest.py`; it truncates `jobs`, `events`, `notify_outbox`, `heartbeats` before each test and restores `settings` after it. A test that writes to another table must clean it up (or add the table to `MUTABLE_TABLES`). Test file basenames must be unique across `tests/unit` and `tests/integration` (there are no `__init__.py` files).
 - No new environment variables were added. `TEST_DATABASE_URL` is read only by the test fixtures and is not an `Env` field.
+
+---
+
+## M02 — External API clients + fakes
+
+**Date:** 2026-11-17 UTC (finished ~02:15 UTC) · **Branch:** `m02-api-clients` (based on M01)
+
+### What was built
+
+- `src/sixstars/clients/_http.py`: shared timeouts (connect 10 s, read 60 s, uploads 600 s), the retry policy (`send()`: 3 attempts, backoff 2→30 s, only network errors, 429 and 5xx, honours `Retry-After` and `X-RateLimit-Reset`, capped at 120 s), call logging (service, endpoint, status, duration; never query strings, headers or bodies), and the base errors `ClientError`, `NotConfiguredError`, `ApiError`.
+- `src/sixstars/usage.py`: `record(...)` writes one `api_usage` row and never raises (no database configured: silently skipped); `spent_today(provider)` sums today's cost (UTC). Every client calls `record`.
+- Clients: `twitch.py`, `youtube.py` (+ `youtube_oauth.py` for the local sign-in), `apify.py`, `anthropic_client.py`, `transcribe.py`, `upload_post.py`. Fakes for all six in `fakes.py`.
+- CLI: `sixstars youtube auth [--port N] [--no-browser] [--timeout S]` and `sixstars youtube whoami`.
+- Migration `supabase/migrations/0003_intake_overrides.sql` (idempotent updates): `transcribe.express_provider = "openai"`; `@6starsclips` → `@6starsclipping` inside `posting.first_comment` and `factory.watermark` (wording kept; a value without the placeholder, such as the staging first comment, is left alone). **Applied to the local test database only. Not pushed to Supabase: the orchestrator does that** (`npx supabase@latest db push --remote --yes` per project).
+- Tests: 134 new unit tests (`test_http_retry`, `test_twitch_client`, `test_youtube_client`, `test_apify_client`, `test_anthropic_client`, `test_transcribe_client`, `test_upload_post_client`, `test_fakes`), 9 new integration tests (`tests/integration/test_usage.py`: usage rows, budget guards, posting guard, migration 0003) and 10 live smoke tests in `tests/live/`.
+- `docs/14-api-integrations.md` corrected with every fact below; `docs/16-settings-reference.md` shows the new defaults of the three settings changed by migration 0003.
+
+### Local results
+
+`uv run ruff check .`, `uv run ruff format --check .`, `uv run mypy --strict src/` (96 files) green. `TEST_DATABASE_URL=... uv run pytest`: 226 passed, 10 skipped (the live tests). `uv run pytest tests/unit` without a database: 175 passed.
+
+Live run (`RUN_LIVE_TESTS=1 uv run pytest tests/live -v`, keys from `.env`, 2026-11-17): **7 passed, 3 skipped**.
+
+| Test | Result |
+|---|---|
+| Twitch game id | skipped: no Twitch keys (D100) |
+| YouTube `channels.list` (API key) | passed |
+| YouTube channel RSS feed | passed |
+| YouTube OAuth `whoami` | skipped: no refresh token (D103) |
+| Apify search, 5 results, charge cap $0.05 | passed |
+| Anthropic tiny JSON on `claude-haiku-5-5` | passed (146 input, 90 output tokens, $0.00006) |
+| Anthropic tiny JSON on `claude-sonnet-5-5` | passed (146 input, 27 output tokens, $0.0006) |
+| OpenAI transcription of a 5 s ffmpeg speech clip, word timestamps | passed (9 words, all with start and end) |
+| Groq transcription | skipped: no key (D104) |
+| Upload-Post `GET /api/uploadposts/users` + analytics for `default` (tiktok, instagram, youtube) | passed |
+
+Nothing was uploaded, posted or deleted anywhere. Apify spend for schema discovery plus the live tests was under $0.15 (about 10 runs of 3 to 5 videos at $0.003 each).
+
+### Verified API facts (the ⚠️ items)
+
+**Upload-Post** (raw docs at `https://docs.upload-post.com/<page>.md`)
+- Upload status: `GET /api/uploadposts/status?request_id=<id>` (also `job_id=` for scheduled posts). Statuses `pending`, `queued`, `processing`, `in_progress`, `completed`, `failed`, `not_found` (HTTP 404). Poll every 10 s; never faster than 5 s (the status is cached 2 to 3 s).
+- Post analytics: `GET /api/uploadposts/post-analytics/{request_id}` takes the **request id of the upload**, optional `?platform=`. A second form takes the platform post id: `GET /api/uploadposts/post-analytics?platform_post_id=&platform=&user=` (100 requests per 5 minutes).
+- Delete: a delete endpoint now exists, `POST /api/uploadposts/posts/unpublish` with JSON `{platform, user, post_id}`. It works for YouTube. **Instagram and TikTok are not supported** (`delete_post` raises `NotSupported` for them).
+- Idempotency: `Idempotency-Key` (or `X-Idempotency-Key`) lasts 24 hours; resending the key returns the original job; a simultaneous duplicate gets HTTP 409 `IDEMPOTENCY_KEY_IN_USE`. Your own `request_id` goes in the form field `request_id` (or header `X-Request-Id`).
+- An upload answers HTTP 200 even when a platform failed: read `results.<platform>.success`. An unconnected platform is `skipped: true`, not an error.
+- **Limits per account per 24 h set by Upload-Post: TikTok 15, Instagram 50, YouTube 30.** API rate limit on Basic: 60 requests/min, 300 per 10 min.
+- TikTok specifics that M10 must handle: `fallback_to_inbox: true` (the video went to the drafts inbox, not public); `post_url: null` with a temporary `platform_post_id` when TikTok releases the post id late (read the status again later); `privacy_level` values are per account (`tiktok_privacy_unavailable` when the account lacks one).
+- `GET /api/uploadposts/users` returns `{"profiles": [{"username": "default", "social_accounts": {...}}]}` (verified live).
+- Profile analytics (verified live) has keys such as `followers`, `impressions`, `reach`, `likes`, `comments`, `profileViews`, `reach_timeseries` per platform.
+
+**Twitch** (not testable live: no keys)
+- Token: `POST https://id.twitch.tv/oauth2/token` with the three parameters in a **form body**; response `access_token`, `expires_in`; no refresh token.
+- Get Videos: exactly one of `id`, `user_id`, `game_id`; `first` 1 to 100; `period` all|day|week|month; `sort` time|trending|views; `type` all|archive|highlight|upload; at most 500 videos for a `game_id`; `duration` like `1h0m5s`.
+- Get Streams: `first` 1 to 100, sorted by viewers descending, pages can repeat or miss streams (the client de-duplicates by id).
+- Get Channel Followers: the reference lists **only a user access token**. Whether an app token returns `total` is unverified, so `get_followers_total` returns `None` on 401/403 and remembers the denial.
+
+**YouTube**
+- Quota: 10,000 units/day for everything except `search.list` and `videos.insert`; list = 1 unit; `videos.delete` = 50; **`videos.insert` = 1 unit per call in its own bucket, default 100 calls per day.** The project's actual limits on the Cloud Console quota page were not checked.
+- Resumable upload: `POST https://www.googleapis.com/upload/youtube/v3/videos?uploadType=resumable&part=snippet,status` with `X-Upload-Content-Length` and `X-Upload-Content-Type`, session URL in the `Location` header, then `PUT` the bytes (201 with the video resource).
+- OAuth desktop flow: loopback redirect `http://127.0.0.1:<port>`, PKCE S256, `state`; refresh tokens are always returned for desktop apps.
+- The API key is accepted in the `X-goog-api-key` header (verified live), so it never appears in a URL.
+
+**Apify** (`streamers/youtube-scraper`, schema from `GET /v2/acts/streamers~youtube-scraper/builds/default`, behaviour from real runs)
+- Input: `searchQueries`, `maxResults` (finished videos per term), `maxResultsShorts`, `maxResultStreams`, `isLive`, `dateFilter` (hour|today|week|month|year), `sortingOrder` (relevance|rating|date|views).
+- **Live search = `isLive: true` + `maxResultStreams`.** With `isLive` and only `maxResults` the actor returns no videos.
+- Output: `id`, `title`, `type`, `streamType`, `viewCount` (current viewers when live), `date`, `likes`, `commentsCount`, `duration` (`HH:MM:SS`, null when live), `channelId`, `channelName`, `numberOfSubscribers`, `url`.
+- A search with no result writes one row `{"error": "NO_VIDEOS", ...}`. One of six test runs returned that for a query that worked seconds later: empty results are normal and are not raised as errors.
+- Price: pay per event, **$0.003 per video written**. 50 results × 4 terms × 2 searches (live, finished) per discovery pass = up to $1.20 per pass; at one pass every 10 minutes that is far over a $19/month plan. **M09 must use small `max_results` and a long interval for Apify, or rely on RSS and the Data API between Apify runs.** Every run carries `maxTotalChargeUsd` (default $1, argument `max_charge_usd`).
+- Run: `POST /v2/acts/<user>~<actor>/runs` → 201; statuses `READY`, `RUNNING`, `SUCCEEDED`, `FAILED`, `TIMING-OUT`, `TIMED-OUT`, `ABORTING`, `ABORTED`. Bearer token header works.
+
+**Anthropic** (SDK `anthropic` 2.9.0, which is built on `httpx2`, not `httpx`)
+- Prices per million tokens: `claude-sonnet-5-5` input $2, output $10, 5-minute cache write $2.50, cache read $0.10. `claude-haiku-5-5` input $0.10, output $0.50, cache write $0.125, cache read $0.01 up to 100,000 prompt tokens; above that $0.50 / $2.50 / $0.625 / $0.05.
+- Both models think by default; thinking counts toward `max_tokens`; `thinking: disabled`, `budget_tokens`, non-default `temperature`/`top_p`/`top_k` and assistant prefill are rejected or limited. Depth is controlled with `output_config.effort`.
+- A policy decline is HTTP 200 with `stop_reason: "refusal"` and a category in `stop_details`.
+
+**Transcription**
+- OpenAI: word timestamps only on **`whisper-1`** (`response_format=verbose_json`, `timestamp_granularities[]=word`); $0.006/min; 25 MB; `whisper-1` shuts down on 2027-02-26. Live result: `language` is `"english"` (a name, not a code), `duration` present, words `{word, start, end}`.
+- Groq (docs only): `https://api.groq.com/openai/v1/audio/transcriptions`, `whisper-large-v3-turbo`, $0.04 per hour, minimum 10 s billed, word timestamps with `verbose_json`.
+
+### Differences from the kit and deviations from the milestone file
+
+1. **Upload-Post profile is `default`**, not `6stars-staging` (D101). The live test uses `default` and is read-only.
+2. **`delete_post` is implemented for YouTube** (the docs now have an unpublish endpoint) and raises `NotSupported` for Instagram and TikTok.
+3. **`get_post_analytics(request_id, platform=None)`** uses the request id; `get_post_analytics_by_platform_id(user, platform, platform_post_id)` was added for the second form.
+4. **`upload_video` returns an `UploadStatus`** (usually `pending`), not a bare id, because a fast synchronous upload already carries per-platform results.
+5. **`upload_video` refuses to run when `control.emergency_stop` or `launch.dry_run` is true** (`PostingBlocked`). This is a last line of defence under the posting engine; M10 still implements dry-run behaviour itself. Pass `posting_guard=None` to switch it off in a test.
+6. **A 429 on upload is not retried** (daily and monthly caps do not clear in seconds; the 50 MB body would be sent three times): it is raised as `RateLimited` at once. 5xx and network errors are retried with the same `Idempotency-Key` and `request_id`. GET requests retry 429 as the milestone says.
+7. **Apify `start_run` is not retried on 5xx or network errors** (a retry could start a second paid run); 429 is retried.
+8. **The Anthropic client uses the SDK's own retries** (`max_retries=2` = three attempts, same conditions, honours `retry-after`) instead of tenacity on top. respx cannot intercept the SDK (httpx2), so its unit tests inject a stand-in SDK object.
+9. **`complete_json` appends the JSON Schema of the Pydantic model to the system prompt** (deterministic text, so the cached prefix is stable). M05 prompts need not repeat the schema. Extra arguments: `effort="low"` (default; pass `None` for the model default) and `ref_id`. `max_tokens` below 1024 is raised to 1024 to leave room for thinking. A reply cut off by `max_tokens` is retried once with twice the limit instead of the "append the error" retry. The repair retry is a fresh single-turn request (previous reply and error appended as text), not a multi-turn conversation, so no thinking blocks are replayed.
+10. **Server-side refusal fallback is not used.** For Sonnet 5.5 it only rescues `cyber` and `frontier_llm` declines, which are not what game clips would trigger; a refusal raises `AnthropicRefusal(category)` and M05 decides (skip the clip or use a neutral caption).
+11. **Hosted transcription defaults to OpenAI** (setting, D104). Order: the provider in `transcribe.express_provider`, then the other one; providers without a key are skipped; a provider that fails after its retries falls back to the next.
+12. **YouTube lists return the raw API items** (`list[dict]`), not dataclasses: discovery and the gate read different parts.
+13. **Constants that are not settings** (the milestone fixes them or no key exists): timeouts and retry counts, poll intervals (Apify 5 s, Upload-Post 5 s then 10 s), hosted model names (`whisper-1`, `whisper-large-v3-turbo`), price tables, token refresh margin (5 minutes).
+14. **Usage rows**: `provider` is `anthropic`, `openai`, `groq`, `local`, `apify`, `upload_post`, `youtube` or `twitch`. For Anthropic `input_tokens` is the total prompt (uncached + cache writes + cache reads); the cost uses the three rates separately. One row per logical call (a paginated Twitch call is one row with `units` = requests).
+15. **Ruff**: `N818` (exception names must end in `Error`) is ignored for `src/sixstars/clients/*.py`, because the milestone names the exceptions `RateLimited`, `PostRejected`, `NotSupported`. Mypy: `faster_whisper` has no type stubs (`ignore_missing_imports`).
+16. No new environment variables. `UPLOAD_POST_PROFILE` in `.env` is still not an `Env` field: the profile name lives in `platform_accounts`.
+
+### Open issues
+
+- **YouTube refresh token (acceptance item not met).** `sixstars youtube auth` is built and unit-tested (including an end-to-end run of the loopback server against a mocked token endpoint) but was never run against Google: it needs the owner to sign in in a browser. Until then `whoami`, `upload_private`, `get_status` and `delete_video` are unverified against the real API and the pre-check stays deferred (D103). The owner must: create or confirm an OAuth client of type "Desktop app", set the consent screen to "In production", run `uv run sixstars youtube auth`, paste the printed line into `.env`. If the existing client is of type "Web application", Google rejects the loopback redirect with `redirect_uri_mismatch`.
+- **Twitch client is untested against the real API** (no keys). In particular `get_followers_total` with an app token.
+- **Groq is untested against the real API** (no key).
+- **Upload-Post upload, status polling and delete were not exercised live** (forbidden in this milestone). The request shape follows the docs and is unit-tested; the first real upload happens in M10/M15. The response of `post-analytics?platform_post_id=` was not read in full, so the fake's shape for `get_post_analytics_by_platform_id` is an approximation.
+- **Upload-Post caps YouTube at 30 posts per 24 h** per account: 24 hourly posts leave 6 for spikes. `platform_accounts` caps for `youtube_main` should be checked against this (M10).
+- **Upload-Post monthly upload allowance on the Basic plan is still unknown.** The synchronous upload response and the 429 body carry `usage: {count, limit}`; reading it needs an upload. The dashboard shows it.
+- **Apify cost** (see above): at $0.003 per video the discovery design in `docs/06` does not fit a $19/month plan. Decision for the orchestrator or M09.
+- **`whisper-1` is deprecated** (shutdown 2027-02-26) and the newer OpenAI transcription models have no word timestamps. Not urgent.
+- Migration 0003 must be pushed to both Supabase projects by the orchestrator.
+- Local faster-whisper was not run for real in this milestone (the model download is large); `_load_whisper` and the call arguments are covered by a unit test with a stand-in model. M08 runs it.
+
+### Notes for M03, M05, M07, M09, M10
+
+Import the classes; create one instance per process (they hold an httpx client and token caches). Every client has `is_configured() -> bool`; a method called without credentials raises `NotConfiguredError`. All client errors derive from `sixstars.clients._http.ClientError`; an unexpected HTTP status is `ApiError(service, endpoint, status, message)`. Tests: use `sixstars.clients.fakes.*` (each fake is a subclass of the real client, has `calls` and `calls_to(name)`), or respx for httpx-based clients. The root `tests/conftest.py` has an autouse fixture `sleeps` that replaces `clients._http.sleep` (retries and polling do not wait in tests).
+
+```python
+# sixstars.usage
+record(provider, operation, model=None, input_tokens=None, output_tokens=None, units=None, cost_usd=0.0, ref_id=None) -> bool
+spent_today(provider: str | tuple[str, ...]) -> float
+
+# sixstars.clients.twitch
+is_configured() -> bool                      # module level, reads the environment
+TwitchClient(client_id=None, client_secret=None, http=None)
+  .is_configured() -> bool
+  .get_game_id(name) -> str | None
+  .get_streams(game_id, max_items=300) -> list[TwitchStream]
+  .get_videos_by_game(game_id, period="day", sort="views", type="archive", first=50) -> list[TwitchVideo]
+  .get_videos_by_user(user_id, type="archive", first=5) -> list[TwitchVideo]
+  .get_users(ids) -> list[TwitchUser]
+  .get_followers_total(broadcaster_id) -> int | None
+TwitchStream(id, user_id, user_login, user_name, game_id, game_name, title, viewer_count, started_at, language, tags, thumbnail_url)
+TwitchVideo(id, stream_id, user_id, user_login, user_name, title, description, created_at, published_at, url, thumbnail_url, view_count, language, type, duration_s)
+TwitchUser(id, login, display_name, description, profile_image_url, broadcaster_type, created_at)
+
+# sixstars.clients.youtube
+YouTubeClient(api_key=None, oauth_client_id=None, oauth_client_secret=None, oauth_refresh_token=None, http=None, upload_http=None)
+  .is_configured() -> bool                   # API key present
+  .has_oauth() -> bool                       # refresh token present
+  .videos_list(ids, parts=("snippet","status","contentDetails","statistics","liveStreamingDetails")) -> list[dict]
+  .channels_list(ids, parts=("snippet","statistics")) -> list[dict]
+  .channel_feed(channel_id) -> list[FeedEntry]
+  .whoami() -> YouTubeChannel
+  .upload_private(path: Path, title, description) -> str          # video id
+  .get_status(video_id) -> YouTubeVideoStatus | None
+  .delete_video(video_id) -> bool
+FeedEntry(video_id, channel_id, title, published_at, updated_at)
+YouTubeChannel(id, title)
+YouTubeVideoStatus(video_id, upload_status, privacy_status, rejection_reason, failure_reason, license, licensed_content, region_blocked, region_allowed, raw)  + .is_restricted
+
+# sixstars.clients.apify
+ApifyClient(token=None, youtube_actor=None, http=None)
+  .start_run(actor_id, input, max_charge_usd=1.0, timeout_s=300) -> str
+  .get_run(run_id) -> ApifyRun
+  .wait_for_run(run_id, timeout_s=360.0, poll_s=5.0, operation="run") -> ApifyRun      # raises ApifyRunFailed
+  .get_items(dataset_id, limit=1000) -> list[dict]
+  .youtube_search(terms, live=False, uploaded_within_hours=None, max_results=50, sort=None, max_charge_usd=1.0) -> list[YouTubeItem]
+ApifyRun(id, status, dataset_id, cost_usd, started_at, finished_at)  + .finished, .succeeded
+YouTubeItem(video_id, channel_id, channel_name, title, is_live, viewers, views, published_at, duration_s, likes, comments, subscribers, url, raw)
+
+# sixstars.clients.anthropic_client
+AnthropicClient(api_key=None, sdk=None)
+  .complete_json(prompt_id, system, user_content, schema, model, max_tokens, images=None, cache_system=True, effort="low", ref_id=None) -> schema instance
+budget_ok(kind: "vod" | "express" = "vod") -> bool
+image_block(data: bytes, media_type="image/jpeg") -> dict;  cost_usd(model, input_tokens, output_tokens, cache_write=0, cache_read=0) -> float
+errors: AnthropicError, AnthropicRefusal(.category), InvalidModelOutput
+
+# sixstars.clients.transcribe
+Transcriber(openai_api_key=None, groq_api_key=None, http=None, express_provider=None, whisper_model=None, model_factory=None)
+  .transcribe(audio_path: Path, mode: "local" | "hosted" = "local", language=None) -> Transcript
+  .configured_providers() -> set[str];  .is_configured() -> bool
+transcribe(audio_path, mode="local", language=None) -> Transcript       # module-level shortcut
+extract_audio(source: Path, destination: Path, ffmpeg="ffmpeg") -> Path  # 16 kHz mono
+budget_ok() -> bool                                                      # transcribe.daily_budget_usd
+Transcript(language, words: tuple[Word, ...], duration_s, provider, model)  + .text;   Word(w, s, e)
+errors: TranscriptionError
+
+# sixstars.clients.upload_post
+UploadPostClient(api_key=None, http=None, upload_http=None, posting_guard=default_posting_guard)
+  .upload_video(user, platform, video_path: Path, fields: Mapping, idempotency_key, request_id) -> UploadStatus
+  .get_upload_status(request_id) -> UploadStatus
+  .wait_for_upload(request_id, timeout_s=600.0, poll_s=10.0) -> UploadStatus   # check .finished
+  .list_profiles() -> list[dict]
+  .get_profile_analytics(user, platforms) -> dict
+  .get_post_analytics(request_id, platform=None) -> dict
+  .get_post_analytics_by_platform_id(user, platform, platform_post_id) -> dict
+  .delete_post(user, platform, post_id) -> bool            # NotSupported for instagram, tiktok
+UploadStatus(request_id, status, completed, total, results: tuple[PlatformResult, ...], message)  + .finished, .result_for(platform)
+PlatformResult(platform, success, status, post_id, post_url, error, error_code, skipped, raw)  + .error_kind ("rate_limited" | "auth" | "rejected" | None)
+errors: UploadPostError > RateLimited(.account, .retry_after), AccountAuthError, PostRejected, NotSupported, PostingBlocked
+
+# sixstars.clients.fakes
+FakeTwitchClient(configured=True)      .game_ids .streams .videos .followers
+FakeYouTubeClient(oauth=True)          .videos .channels .feeds .statuses .uploaded .channel
+FakeApifyClient()                      .runs .datasets .search_results
+FakeAnthropicClient(responses=None, default=None)   # responses[prompt_id] = dict | model | list | Exception
+FakeTranscriber(transcript=None)       .transcript .error
+FakeUploadPostClient()                 .uploads .deleted .upload_error .platform_results .analytics
+```
+
+- M05: read models with `settings.get_str("ai.model_writer")` / `("ai.model_fast")` and pass them to `complete_json`. Give `max_tokens` room for thinking (2000 or more for anything but a tiny answer). Check `budget_ok("vod")` before VOD-lane calls.
+- M07/M08: hosted transcription takes a file of at most 25 MB (a clip window of a few minutes of 16 kHz mono FLAC is far below that); use `extract_audio` first.
+- M10: `fields` for `upload_video` are the documented multipart names (`title`, `privacy_level`, `youtube_title`, `youtube_description`, `privacyStatus`, `categoryId="20"`, `media_type="REELS"`, `first_comment`, ...). After `wait_for_upload`, a platform can be successful with `post_url is None` (TikTok inbox or late post id): store `post_id` and read the status again later.
+
+### Test database note (added at the end of M02)
+
+- Local Docker Desktop hung near the end of the milestone, so the Postgres on `127.0.0.1:54329` is gone. **Integration tests now use port 54330**: `TEST_DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:54330/postgres` (a throwaway `postgres:17` on the staging server through an SSH tunnel). Through the tunnel the full suite takes about 3 minutes instead of 30 seconds.
+- The final full run was made in a separate, freshly created database on that server (`.../m02_test`, dropped afterwards): **226 passed, 10 skipped**, with migrations 0001 to 0003 applied from scratch by the fixture.
+- Two runs against the shared `postgres` database on 54330 failed in different M01 tests each time (job claiming, savepoints, an events insert), while the same commit passes in an isolated database. The likely cause is another test session using the same database at the same time (the fixtures truncate `jobs` and rewrite `settings`); this was not proven. **Agents that run integration tests in parallel should each use their own database**: `create database <name>` on the server and put the name at the end of `TEST_DATABASE_URL`.
+- `tests/integration/conftest.py` changed: migrations after `0002` are applied on every test session (they must be idempotent), so a database migrated by an older checkout catches up. `api_usage` was added to the tables truncated before each test.

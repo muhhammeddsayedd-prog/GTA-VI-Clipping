@@ -17,11 +17,11 @@ dependencies = [
     "anthropic",
     "supabase",
     "websockets",
-    "chat-downloader",
     "yt-dlp",
     "streamlink",
     "faster-whisper",
     "panns-inference",
+    "torch",
     "numpy",
     "pillow",
     "python-multipart",
@@ -60,6 +60,10 @@ extend-exclude = [".claude", "*.md"]
 [tool.ruff.lint]
 select = ["E", "F", "I", "B", "UP", "N", "SIM"]
 
+[tool.ruff.lint.per-file-ignores]
+# The M02 milestone fixes the client exception names (RateLimited, PostRejected, NotSupported, ...).
+"src/sixstars/clients/*.py" = ["N818"]
+
 [tool.ruff.lint.flake8-bugbear]
 # typer declares CLI arguments and options as call defaults.
 extend-immutable-calls = ["typer.Argument", "typer.Option"]
@@ -71,7 +75,20 @@ plugins = ["pydantic.mypy"]
 files = ["src"]
 mypy_path = "src"
 
+[[tool.mypy.overrides]]
+module = ["faster_whisper", "faster_whisper.*"]
+ignore_missing_imports = true
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
+markers = ["ffmpeg: renders real video with ffmpeg (skipped when ffmpeg is missing)"]
 asyncio_default_fixture_loop_scope = "function"
+
+[tool.uv.sources]
+torch = [{ index = "pytorch-cpu" }]
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true

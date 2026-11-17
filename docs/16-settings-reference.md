@@ -102,7 +102,7 @@ Defaults below are the production values from `supabase/migrations/0002_seed_set
 | `factory.font` | `"Montserrat Black"` | Subtitle font. |
 | `factory.hook_seconds` | `3.0` | How long the hook title shows. |
 | `factory.end_card_s` | `1.5` | End card length. |
-| `factory.watermark` | `"@6starsclips"` | Watermark text. |
+| `factory.watermark` | `"@6starsclipping"` | Watermark text. |
 | `factory.series_label` | `"6 Stars Moments"` | Series label shown on the end card. |
 | `factory.bleep` | `true` | Bleep profanity in audio and mask it in subtitles. |
 | `factory.music_duck_db` | `-18` | Gain applied to segments flagged as music (hourly clips under the music limit). |
@@ -114,7 +114,7 @@ Defaults below are the production values from `supabase/migrations/0002_seed_set
 | `ai.model_writer` | `"claude-sonnet-5-5"` | Model for clip writing, moment picking, vision layout. |
 | `ai.model_fast` | `"claude-haiku-5-5"` | Model for spike confirmation and classifiers. |
 | `ai.daily_budget_usd` | `25` | Daily Anthropic spend cap. Over it: VOD lane pauses, express continues. |
-| `transcribe.express_provider` | `"groq"` | Hosted transcription for express: groq | openai. |
+| `transcribe.express_provider` | `"openai"` | Hosted transcription for express: groq | openai. |
 | `transcribe.daily_budget_usd` | `5` | Daily hosted transcription cap. |
 
 ## Quality gate
@@ -143,7 +143,7 @@ Defaults below are the production values from `supabase/migrations/0002_seed_set
 | `posting.freshness_half_life_h` | `{"live": 6, "vod": 24}` | Freshness decay half-life by source. |
 | `posting.max_clip_age_h` | `72` | Approved clips older than this expire. |
 | `posting.queue_low_watermark` | `12` | Below this many approved hourly clips, guardian widens discovery. |
-| `posting.first_comment` | `"Follow @6starsclips for the best GTA 6 moments every hour 🎮⭐"` | First comment text. |
+| `posting.first_comment` | `"Follow @6starsclipping for the best GTA 6 moments every hour 🎮⭐"` | First comment text. |
 | `posting.base_hashtags` | `["#GTA6", "#GTAVI", "#GTA6Clips", "#Gaming"]` | Hashtags added to every caption. |
 | `posting.youtube_extra_hashtags` | `["#Shorts"]` | Extra hashtags for YouTube. |
 
