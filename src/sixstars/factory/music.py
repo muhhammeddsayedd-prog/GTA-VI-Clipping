@@ -32,6 +32,8 @@ VOCAL_THRESHOLD = 0.4
 # A last frame shorter than this is too short to judge and is left out.
 MIN_FRAME_S = 0.5
 DETECTOR_NAME = "panns-cnn14"
+# Music is ducked only where at least this many frames in a row are flagged (see `duck_spans`).
+MIN_DUCK_FRAMES = 2
 
 FloatArray = np.ndarray[Any, np.dtype[np.float32]]
 
@@ -108,14 +110,16 @@ def split_frames(samples: FloatArray, sample_rate: int = SAMPLE_RATE) -> FloatAr
 
 
 def duck_spans(analysis: MusicAnalysis | None, max_music_ratio: float, duration_s: float) -> list[Span]:
-    """Spans to duck (docs/09 section 6): the music frames of a clip that is under the music limit.
+    """Spans to duck (docs/09 section 6): the music of a clip that is under the music limit.
 
     A clip with no music, or with more music than its gate profile allows (the gate rejects it anyway),
-    is not ducked.
+    is not ducked. Neither is a single flagged frame on its own: on real streams that was speech over a
+    game sound, and ducking it cut one second out of a sentence. Music that matters lasts longer.
     """
     if analysis is None or not any(analysis.frames) or analysis.ratio > max_music_ratio:
         return []
-    return analysis.spans(duration_s)
+    min_length = MIN_DUCK_FRAMES * analysis.frame_s - 1e-6
+    return [span for span in analysis.spans(duration_s) if span.end_s - span.start_s >= min_length]
 
 
 class MusicDetector(Protocol):

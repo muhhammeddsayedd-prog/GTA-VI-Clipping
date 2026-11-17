@@ -160,13 +160,22 @@ def test_music_analysis_ratio_spans_and_json() -> None:
 
 
 def test_duck_spans_only_for_clips_under_the_music_limit() -> None:
-    some = music.MusicAnalysis(frames=(True,) + (False,) * 19)  # 5%
-    assert music.duck_spans(some, 0.1, 20.0) == [Span(0.0, 1.0)]
-    assert music.duck_spans(some, 0.0, 20.0) == [], (
+    some = music.MusicAnalysis(frames=(True, True) + (False,) * 38)  # 5%
+    assert music.duck_spans(some, 0.1, 40.0) == [Span(0.0, 2.0)]
+    assert music.duck_spans(some, 0.0, 40.0) == [], (
         "over the express limit: the gate rejects, nothing is ducked"
     )
     assert music.duck_spans(music.MusicAnalysis(frames=(False,) * 20), 0.1, 20.0) == []
     assert music.duck_spans(None, 0.1, 20.0) == []
+
+
+def test_a_single_flagged_frame_is_not_ducked() -> None:
+    # speech over a game sound is flagged for one second now and then; real music lasts longer
+    lone = music.MusicAnalysis(
+        frames=(False, True, False, False, True, True, True, False, False, True) + (False,) * 40
+    )
+    assert lone.ratio == pytest.approx(0.1)
+    assert music.duck_spans(lone, 0.1, 50.0) == [Span(4.0, 7.0)]
 
 
 def test_analyse_without_audio_reports_no_music(tmp_path: Path) -> None:
