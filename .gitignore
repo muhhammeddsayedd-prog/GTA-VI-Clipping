@@ -34,3 +34,6 @@ Thumbs.db
 # Runtime data and stream segments
 data/
 *.ts
+
+# Agent worktrees
+.claude/worktrees/
