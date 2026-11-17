@@ -1,0 +1,44 @@
+[Script Info]
+ScriptType: v4.00+
+PlayResX: 1080
+PlayResY: 1920
+WrapStyle: 0
+ScaledBorderAndShadow: yes
+YCbCr Matrix: None
+
+[V4+ Styles]
+Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
+Style: Caption,Montserrat Black,78,&H00FFFFFF,&H00FFFFFF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,6,3,2,40,40,0,1
+Style: Hook,Montserrat Black,56,&H00000000,&H00000000,&H00FFFFFF,&H00000000,-1,0,0,0,100,100,0,0,1,0,0,5,0,0,0,1
+Style: Badge,Montserrat Black,30,&H00FFFFFF,&H00FFFFFF,&H00000000,&H00000000,-1,0,0,0,100,100,0,0,1,0,0,4,0,0,0,1
+Style: Credit,Montserrat Black,34,&H26FFFFFF,&H26FFFFFF,&H26000000,&H80000000,-1,0,0,0,100,100,0,0,1,2,1,1,0,0,0,1
+
+[Events]
+Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
+Dialogue: 1,0:00:00.00,0:00:10.00,Credit,,0,0,0,,{\an1\pos(40,1091)\q2}{\fnNoto Emoji}🎥{\fn} @some_streamer
+Dialogue: 2,0:00:00.20,0:00:00.40,Caption,,0,0,0,,{\an2\pos(540,1189)}{\1c&H00D4FF&}He{\1c&HFFFFFF&}{\fsp10} {\fsp0}did{\fsp10} {\fsp0}NOT
+Dialogue: 2,0:00:00.40,0:00:00.60,Caption,,0,0,0,,{\an2\pos(540,1189)}He{\fsp10} {\fsp0}{\1c&H00D4FF&}did{\1c&HFFFFFF&}{\fsp10} {\fsp0}NOT
+Dialogue: 2,0:00:00.60,0:00:01.00,Caption,,0,0,0,,{\an2\pos(540,1189)}He{\fsp10} {\fsp0}did{\fsp10} {\fsp0}{\1c&H00D4FF&\t(0,80,\fscx118\fscy118)\t(80,160,\fscx100\fscy100)}NOT{\1c&HFFFFFF&\fscx100\fscy100}
+Dialogue: 2,0:00:01.00,0:00:01.40,Caption,,0,0,0,,{\an2\pos(540,1189)}{\1c&H00D4FF&}expect{\1c&HFFFFFF&}{\fsp10} {\fsp0}that!
+Dialogue: 2,0:00:01.40,0:00:02.10,Caption,,0,0,0,,{\an2\pos(540,1189)}expect{\fsp10} {\fsp0}{\1c&H00D4FF&}that!{\1c&HFFFFFF&}
+Dialogue: 2,0:00:02.40,0:00:02.60,Caption,,0,0,0,,{\an2\pos(540,1189)}{\1c&H00D4FF&\t(0,80,\fscx118\fscy118)\t(80,160,\fscx100\fscy100)}No{\1c&HFFFFFF&\fscx100\fscy100}{\fsp10} {\fsp0}way,
+Dialogue: 2,0:00:02.60,0:00:03.00,Caption,,0,0,0,,{\an2\pos(540,1189)}{\1c&H00D4FF&}No{\1c&HFFFFFF&}{\fsp10} {\fsp0}{\1c&H00D4FF&\t(0,80,\fscx118\fscy118)\t(80,160,\fscx100\fscy100)}way,{\1c&HFFFFFF&\fscx100\fscy100}
+Dialogue: 2,0:00:03.00,0:00:03.40,Caption,,0,0,0,,{\an2\pos(540,1189)}{\1c&H00D4FF&}fifty{\1c&HFFFFFF&}{\fsp10} {\fsp0}thousand{\fsp10} {\fsp0}dollars
+Dialogue: 2,0:00:03.40,0:00:03.90,Caption,,0,0,0,,{\an2\pos(540,1189)}fifty{\fsp10} {\fsp0}{\1c&H00D4FF&}thousand{\1c&HFFFFFF&}{\fsp10} {\fsp0}dollars
+Dialogue: 2,0:00:03.90,0:00:04.70,Caption,,0,0,0,,{\an2\pos(540,1189)}fifty{\fsp10} {\fsp0}thousand{\fsp10} {\fsp0}{\1c&H00D4FF&}dollars{\1c&HFFFFFF&}
+Dialogue: 2,0:00:04.70,0:00:04.90,Caption,,0,0,0,,{\an2\pos(540,1189)}{\1c&H00D4FF&}this{\1c&HFFFFFF&}{\fsp10} {\fsp0}f******{\fsp10} {\fsp0}cop{\fsp10} {\fsp0}just
+Dialogue: 2,0:00:04.90,0:00:05.40,Caption,,0,0,0,,{\an2\pos(540,1189)}this{\fsp10} {\fsp0}{\1c&H00D4FF&}f******{\1c&HFFFFFF&}{\fsp10} {\fsp0}cop{\fsp10} {\fsp0}just
+Dialogue: 2,0:00:05.40,0:00:05.70,Caption,,0,0,0,,{\an2\pos(540,1189)}this{\fsp10} {\fsp0}f******{\fsp10} {\fsp0}{\1c&H00D4FF&}cop{\1c&HFFFFFF&}{\fsp10} {\fsp0}just
+Dialogue: 2,0:00:05.70,0:00:05.90,Caption,,0,0,0,,{\an2\pos(540,1189)}this{\fsp10} {\fsp0}f******{\fsp10} {\fsp0}cop{\fsp10} {\fsp0}{\1c&H00D4FF&}just{\1c&HFFFFFF&}
+Dialogue: 2,0:00:05.90,0:00:06.50,Caption,,0,0,0,,{\an2\pos(540,1189)}{\1c&H00D4FF&}crashed{\1c&HFFFFFF&}{\fsp10} {\fsp0}into
+Dialogue: 2,0:00:06.50,0:00:06.70,Caption,,0,0,0,,{\an2\pos(540,1189)}crashed{\fsp10} {\fsp0}{\1c&H00D4FF&}into{\1c&HFFFFFF&}
+Dialogue: 2,0:00:06.70,0:00:06.80,Caption,,0,0,0,,{\an2\pos(540,1189)}{\1c&H00D4FF&}the{\1c&HFFFFFF&}{\fsp10} {\fsp0}helicopter
+Dialogue: 2,0:00:06.80,0:00:07.80,Caption,,0,0,0,,{\an2\pos(540,1189)}the{\fsp10} {\fsp0}{\1c&H00D4FF&\t(0,80,\fscx118\fscy118)\t(80,160,\fscx100\fscy100)}helicopter{\1c&HFFFFFF&\fscx100\fscy100}
+Dialogue: 2,0:00:07.90,0:00:08.00,Caption,,0,0,0,,{\an2\pos(540,1189)}{\1c&H00D4FF&}and{\1c&HFFFFFF&}{\fsp10} {\fsp0}exploded
+Dialogue: 2,0:00:08.00,0:00:08.70,Caption,,0,0,0,,{\an2\pos(540,1189)}and{\fsp10} {\fsp0}{\1c&H00D4FF&\t(0,80,\fscx118\fscy118)\t(80,160,\fscx100\fscy100)}exploded{\1c&HFFFFFF&\fscx100\fscy100}
+Dialogue: 2,0:00:08.70,0:00:09.70,Caption,,0,0,0,,{\an2\pos(540,1189)}{\1c&H00D4FF&}everywhere{\1c&HFFFFFF&}
+Dialogue: 3,0:00:00.00,0:00:10.00,Badge,,0,0,0,,{\an7\pos(40,240)\p1\bord0\shad0\1c&H2B21E8&}m 28 0 l 409 0 b 424 0 437 13 437 28 l 437 28 b 437 43 424 56 409 56 l 28 56 b 13 56 0 43 0 28 l 0 28 b 0 13 13 0 28 0{\p0}
+Dialogue: 4,0:00:00.00,0:00:10.00,Badge,,0,0,0,,{\an7\pos(66,259)\p1\bord0\shad0\1c&HFFFFFF&}m 9 0 l 9 0 b 14 0 18 4 18 9 l 18 9 b 18 14 14 18 9 18 l 9 18 b 4 18 0 14 0 9 l 0 9 b 0 4 4 0 9 0{\p0}
+Dialogue: 4,0:00:00.00,0:00:10.00,Badge,,0,0,0,,{\an4\pos(96,268)\q2}LIVE · JUST HAPPENED
+Dialogue: 5,0:00:00.00,0:00:03.00,Hook,,0,0,0,,{\an5\pos(540,392)\fscx82\fscy82\t(0,150,\fscx100\fscy100)\fad(60,120)\p1\bord0\shad4\1c&HFFFFFF&\4c&H000000&\4a&HA0&}m 30 0 l 911 0 b 928 0 941 13 941 30 l 941 130 b 941 147 928 160 911 160 l 30 160 b 13 160 0 147 0 130 l 0 30 b 0 13 13 0 30 0{\p0}
+Dialogue: 6,0:00:00.00,0:00:03.00,Hook,,0,0,0,,{\an5\pos(540,392)\fscx82\fscy82\t(0,150,\fscx100\fscy100)\fad(60,120)\q2\fs68}He did NOT expect that {\fnNoto Emoji}😭{\fn}

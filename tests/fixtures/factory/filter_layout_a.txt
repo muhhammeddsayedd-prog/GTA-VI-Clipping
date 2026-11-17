@@ -1,0 +1,17 @@
+[0:v]fps=fps=30,split=2[v_game_in][v_face_in];
+[v_game_in]crop=w=1014:h=1080:x=426:y=0,scale=w=2*trunc(1080*(1+0.08*clip((t-21.6)/14.4\,0\,1))/2):h=2*trunc(1150*(1+0.08*clip((t-21.6)/14.4\,0\,1))/2):eval=frame,crop=w=1080:h=1150:x=max(0\,(2*trunc(1080*(1+0.08*clip((t-21.6)/14.4\,0\,1))/2)-1080)/2):y=max(0\,(2*trunc(1150*(1+0.08*clip((t-21.6)/14.4\,0\,1))/2)-1150)/2),setsar=1[v_game];
+[v_face_in]crop=w=480:h=342:x=1440:y=728,scale=w=1080:h=770,setsar=1[v_face];
+[v_game][v_face]vstack=inputs=2[v_layout];
+[v_layout]drawbox=x=0:y=1147:w=1080:h=6:color=0xFFFFFF:thickness=fill[v_seam];
+color=color=0xFFD400:size=1080x8:rate=30:duration=36[v_progress_bar];
+[v_seam][v_progress_bar]overlay=x=-w+w*t/36:y=1146:eof_action=pass[v_progress];
+[v_progress]ass=filename=/data/render/c1/clip.ass:fontsdir=/app/assets/fonts,drawtext=text=@6starsclips:expansion=none:fontfile=/app/assets/fonts/Montserrat-Black.ttf:fontsize=30:fontcolor=white@0.6:x=1040-text_w:y=240:shadowcolor=black@0.35:shadowx=2:shadowy=2:enable=gte(t\,3),trim=duration=36,setpts=PTS-STARTPTS,setsar=1,format=yuv420p[v_main];
+color=color=0x0D0D12:size=1080x1920:rate=30:duration=1.5,drawtext=text=6 STARS CLIPS:expansion=none:fontfile=/app/assets/fonts/Montserrat-Black.ttf:fontsize=92:fontcolor=white:x=(w-text_w)/2:y=800,drawtext=text=6 Stars Moments #128:expansion=none:fontfile=/app/assets/fonts/Montserrat-Black.ttf:fontsize=58:fontcolor=0xFFD400:x=(w-text_w)/2:y=932,drawtext=text=Follow for more:expansion=none:fontfile=/app/assets/fonts/Montserrat-Black.ttf:fontsize=42:fontcolor=white@0.85:x=(w-text_w)/2:y=1034,setsar=1,format=yuv420p[v_end];
+[v_main][v_end]concat=n=2:v=1:a=0[vout];
+[0:a]aresample=out_sample_rate=48000,aformat=sample_fmts=fltp:channel_layouts=stereo,apad=whole_dur=36,atrim=duration=36,asetpts=PTS-STARTPTS[a_src];
+[a_src]volume=volume=0:enable=between(t\,4.85\,5.45)[a_bleep_muted];
+sine=frequency=1000:sample_rate=48000:duration=36,aformat=sample_fmts=fltp:channel_layouts=stereo,volume=volume=-20dB,volume=volume=0:enable=not(between(t\,4.85\,5.45))[a_bleep_tone];
+[a_bleep_muted][a_bleep_tone]amix=inputs=2:duration=first:normalize=0[a_bleep];
+[a_bleep]loudnorm=I=-14:TP=-1.5:LRA=11,aresample=out_sample_rate=48000,aformat=sample_fmts=fltp:channel_layouts=stereo,alimiter=limit=0.841:attack=5:release=50:level=false,apad=whole_dur=36,atrim=duration=36,asetpts=PTS-STARTPTS[a_main];
+anullsrc=sample_rate=48000:channel_layout=stereo:duration=1.5,aformat=sample_fmts=fltp:channel_layouts=stereo[a_end];
+[a_main][a_end]concat=n=2:v=0:a=1[aout]

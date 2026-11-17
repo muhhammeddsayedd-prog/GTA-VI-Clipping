@@ -1,0 +1,19 @@
+# The build context is the repository root. The image needs only pyproject.toml, uv.lock, README.md, src/,
+# assets/ and docker/entrypoint.sh, so everything else is excluded.
+**
+
+!pyproject.toml
+!uv.lock
+!README.md
+!src/**
+!assets/**
+!docker/entrypoint.sh
+
+# Never include these, even inside an allowed directory.
+**/.env
+**/.env.*
+**/*.pem
+**/*.key
+**/__pycache__
+**/*.py[cod]
+**/.DS_Store

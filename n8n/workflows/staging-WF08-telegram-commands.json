@@ -1,0 +1,497 @@
+{
+  "name": "[STG] WF08 Telegram Commands",
+  "description": "Owner commands /stop /start /status /report from the Telegram chat, relayed to the control API. One bot has one webhook, so only one environment may have this workflow active.",
+  "active": false,
+  "nodes": [
+    {
+      "name": "Telegram Trigger",
+      "type": "n8n-nodes-base.telegramTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {
+        "updates": [
+          "message"
+        ],
+        "additionalFields": {}
+      },
+      "credentials": {
+        "telegramApi": {
+          "name": "6stars Telegram"
+        }
+      }
+    },
+    {
+      "id": "85bff37d-0f40-416c-8806-b17b5ff0e777",
+      "name": "Config",
+      "notes": "The only node that differs between staging and production (besides the credentials).",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        220,
+        0
+      ],
+      "parameters": {
+        "mode": "manual",
+        "assignments": {
+          "assignments": [
+            {
+              "id": "14ff0ac0-9ade-567f-a0b0-d5ea356a9bc4",
+              "name": "API_BASE",
+              "value": "https://api-staging.46.224.14.255.sslip.io",
+              "type": "string"
+            },
+            {
+              "id": "bc4519a9-9d44-5f27-96a9-c6b105fda5dc",
+              "name": "TELEGRAM_CHAT_ID",
+              "value": "<TELEGRAM_CHAT_ID>",
+              "type": "string"
+            },
+            {
+              "id": "b815debe-00de-5a07-9638-3b2edae920c6",
+              "name": "ENV_PREFIX",
+              "value": "[STG]",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": false,
+        "options": {}
+      }
+    },
+    {
+      "id": "33a84dda-b3a8-44fc-a176-b300462fff44",
+      "name": "From the owner chat?",
+      "notes": "Messages from any other chat are ignored: the false output is unconnected on purpose.",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        440,
+        0
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "ba598a01-0e26-5df0-903a-b63670636239",
+              "leftValue": "={{ String($('Telegram Trigger').first().json.message?.chat?.id ?? '') }}",
+              "rightValue": "={{ $('Config').first().json.TELEGRAM_CHAT_ID }}",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "ce9e1576-8f83-448f-a175-6e384729a31f",
+      "name": "Which command?",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
+      "position": [
+        660,
+        0
+      ],
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "87033469-e7b6-5156-ae37-8eca46d62aed",
+                    "leftValue": "={{ ($('Telegram Trigger').first().json.message?.text ?? '').trim().split(/\\s+/)[0].split('@')[0] }}",
+                    "rightValue": "/stop",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "/stop"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "af5a8a9f-41b7-5b3a-83da-194aa6c6fbd4",
+                    "leftValue": "={{ ($('Telegram Trigger').first().json.message?.text ?? '').trim().split(/\\s+/)[0].split('@')[0] }}",
+                    "rightValue": "/start",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "/start"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "60dc13d8-493e-5661-8b72-2c18b40c0059",
+                    "leftValue": "={{ ($('Telegram Trigger').first().json.message?.text ?? '').trim().split(/\\s+/)[0].split('@')[0] }}",
+                    "rightValue": "/status",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "/status"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "84e2ae5d-e046-5c17-9e5c-ee4045d3c431",
+                    "leftValue": "={{ ($('Telegram Trigger').first().json.message?.text ?? '').trim().split(/\\s+/)[0].split('@')[0] }}",
+                    "rightValue": "/report",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "/report"
+            }
+          ]
+        },
+        "options": {
+          "fallbackOutput": "extra",
+          "renameFallbackOutput": "Other"
+        }
+      }
+    },
+    {
+      "id": "ac506ff7-c4ea-47ce-84b0-45b338327714",
+      "name": "Stop posting",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "position": [
+        880,
+        -360
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Config').first().json.API_BASE }}/v1/control/stop",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {
+          "timeout": 30000
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{ \"reason\": \"manual /stop\" }"
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "name": "6stars API staging"
+        }
+      }
+    },
+    {
+      "id": "d5579d1b-1b55-4f48-9947-728cdfa11261",
+      "name": "Start posting",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "position": [
+        880,
+        -180
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Config').first().json.API_BASE }}/v1/control/start",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "name": "6stars API staging"
+        }
+      }
+    },
+    {
+      "id": "7a8c4ecf-5afb-471e-9745-01913b2321d3",
+      "name": "Get status",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "position": [
+        880,
+        0
+      ],
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $('Config').first().json.API_BASE }}/v1/status?format=telegram",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "name": "6stars API staging"
+        }
+      }
+    },
+    {
+      "id": "48dd8f2d-d6f8-4d71-a52f-fd53b94053d1",
+      "name": "Get daily report",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "position": [
+        880,
+        180
+      ],
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $('Config').first().json.API_BASE }}/v1/reports/daily?format=telegram",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "name": "6stars API staging"
+        }
+      }
+    },
+    {
+      "id": "10a2e4ca-6fb2-4c10-830a-8e05670e2d8b",
+      "name": "Ignore other messages",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        880,
+        360
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "c7781839-e70d-456f-b8f9-1d35461589f1",
+      "name": "Reply",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "position": [
+        1100,
+        -360
+      ],
+      "parameters": {
+        "resource": "message",
+        "operation": "sendMessage",
+        "chatId": "={{ String($('Telegram Trigger').first().json.message?.chat?.id ?? '') }}",
+        "text": "={{ $json.text ?? ($json.stopped === true ? '⛔ Emergency stop is ON: nothing will be posted.' : $json.stopped === false ? '✅ Emergency stop is OFF: posting resumed.' : JSON.stringify($json)) }}",
+        "additionalFields": {
+          "appendAttribution": false,
+          "disable_web_page_preview": true,
+          "parse_mode": "HTML"
+        }
+      },
+      "credentials": {
+        "telegramApi": {
+          "name": "6stars Telegram"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Telegram Trigger": {
+      "main": [
+        [
+          {
+            "node": "Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Config": {
+      "main": [
+        [
+          {
+            "node": "From the owner chat?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "From the owner chat?": {
+      "main": [
+        [
+          {
+            "node": "Which command?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Which command?": {
+      "main": [
+        [
+          {
+            "node": "Stop posting",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Start posting",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Get status",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Get daily report",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Ignore other messages",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Stop posting": {
+      "main": [
+        [
+          {
+            "node": "Reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Start posting": {
+      "main": [
+        [
+          {
+            "node": "Reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get status": {
+      "main": [
+        [
+          {
+            "node": "Reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get daily report": {
+      "main": [
+        [
+          {
+            "node": "Reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "saveExecutionProgress": false,
+    "saveManualExecutions": true,
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "none",
+    "errorWorkflow": "<id of [STG] WF09 Error Alert>",
+    "timezone": "UTC",
+    "executionOrder": "v1"
+  },
+  "tags": [
+    "6stars",
+    "staging"
+  ]
+}

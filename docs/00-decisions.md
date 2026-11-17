@@ -82,3 +82,20 @@ Every decision made while planning, with the reason. If code and this file disag
 - Telegram bot token and chat ID.
 - n8n base URL.
 - All API keys listed in `config/.env.example`.
+
+## Decisions made during the build
+
+Made at owner intake on 2026-11-16 (details in `development-plan/ORCHESTRATION.md`). Where a row disagrees with an earlier decision, the row here wins.
+
+| # | Date | Decision | Reason |
+|---|---|---|---|
+| D100 | 2026-11-16 | YouTube-only sources until Twitch keys arrive. The Twitch code is built and unit-tested against fakes; an empty `TWITCH_CLIENT_ID` disables Twitch sources for discovery and chat. | Twitch client id and secret were not provided at intake |
+| D101 | 2026-11-16 | A single Upload-Post profile, `default`, is used for both environments. Seeds are updated with the real handles (TikTok `@6starsclipping`, Instagram `@6starsclippy`, YouTube `@6starsclips-m3x`); `tiktok_live` stays disabled. Replaces the separate staging profile in D64. | The owner has one Upload-Post profile and no second TikTok account |
+| D102 | 2026-11-16 | Staging posts go to the production accounts: TikTok `SELF_ONLY`, YouTube `private`. Instagram cannot post privately, so at most one Instagram test post is made in M15 and it is listed in the handover for deletion. Replaces the private test accounts in D64. | No private test accounts exist; the owner approved using the production accounts for staging tests |
+| D103 | 2026-11-16 | The YouTube claim pre-check (D68) is deferred and the stricter music rule applies instead. | No YouTube OAuth refresh token was provided (client id and secret only) |
+| D104 | 2026-11-16 | Hosted transcription is OpenAI only. Narrows D67 (Groq with OpenAI fallback). | No Groq API key was provided |
+| D105 | 2026-11-16 | Images are pushed to GHCR by GitHub Actions with `GITHUB_TOKEN` (`packages: write`); the server pulls with a short-lived login during deploy. | The local GitHub token has no `write:packages` scope |
+| D106 | 2026-11-17 | Spike settings retuned from real GTA 5 chats (migration 0004): `min_messages` 8, `warmup_s` 900, reaction weight 0.55, `z_b`/`z_a`/`z_s` 2.0/2.6/3.4, new `spikes.end_guard_s` 300. Reason: seeded values found 2 of 6 genuine moments on YouTube chats; tuned values found 7 of 9 (judged from chat text, tuned on the same streams). |
+| D107 | 2026-11-17 | Twitch keys arrived; Twitch is a live source again (supersedes D100). YouTube video downloads stay blocked on the Hetzner IP (cookies were invalidated twice within an hour), so clips come from Twitch until a residential proxy exists. A blocked platform gets no new VOD jobs or live slots (migration 0013). Local whole-video fallback transcription is off (migration 0014). | Staging runs on the server: Twitch chat, spikes, downloads and live recording work; YouTube downloads do not; fallback transcription starved the render queue. |
+| D108 | 2026-11-17 | The clip score the gate reads now comes from a vision call on frames of the rendered clip plus chat reaction (P9V, migration 0016); the minimum score stays 7. Allowed black and frozen picture rise from 2 s to 4 s (migration 0017). The music rule is unchanged. | On staging 0 of 24 clips passed: the transcript-only score could not see visual payoffs (a no-parachute jump scored 6), and the game's 3.2 s death screen failed the black/freeze checks. Measured on 15 rendered clips: 3 reach 7, every weak clip stays below. |
+| D109 | 2026-11-17 | Admin console (supersedes D23): a private Next.js app in `web/` on Vercel, one project per environment, one operator account in Supabase Auth with sign-ups off. It reads through new read-only `/v1/admin/*` control-API routes with its own `DASHBOARD_API_TOKEN`; the browser never talks to Postgres or Storage and RLS keeps no policies. Controls are limited to the ones the API already had: emergency stop/start and the settings editor. It is milestone M17, built after launch and not merged to `main` before M16 is done. | Owner asked for a full UI to view the system. Vercel keeps the console up when the pipeline server is down; a separate token can be rotated without touching n8n. |

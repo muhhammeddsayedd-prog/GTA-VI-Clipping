@@ -9,7 +9,7 @@ Source of truth: `supabase/migrations/0001_init.sql` (schema) and `0002_seed_set
 | Production | existing empty Pro project → rename to `6stars-production` | `supabase/seed/production.sql` |
 | Staging | new project `6stars-staging` in the same Pro organisation | `supabase/seed/staging.sql` |
 
-- Apply migrations with the Supabase CLI: `supabase link --project-ref <ref>` then `supabase db push`.
+- Apply migrations with the Supabase CLI: `supabase link --project-ref <ref>` then `supabase db push --remote --yes` (CLI 3.x, run as `npx supabase@latest`; without `--remote` it targets a local database). The exact commands used are in `development-plan/PROGRESS.md` (M01).
 - The worker connects through the **session pooler** (port 5432) using `DATABASE_URL`. Long-running processes keep a small psycopg pool (`DB_POOL_MAX`).
 - RLS is enabled on every table with **no policies**: the anon/public keys can read nothing. Only the server (postgres role / service role) can access data.
 - Storage bucket `clips` is private. Files are uploaded with the service role key.

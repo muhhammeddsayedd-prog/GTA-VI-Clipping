@@ -1,0 +1,118 @@
+# 6 Stars Clips: all services, one image. Replica counts here are the PRODUCTION values;
+# docker-compose.staging.yml overrides them for the smaller staging server.
+#
+# On a server this file lives at /opt/6stars/docker-compose.yml, next to:
+#   .env                          secrets and configuration (chmod 600), also read by compose for
+#                                 IMAGE_TAG and PUBLIC_API_HOST
+#   Caddyfile                     reverse proxy configuration
+#   docker-compose.override.yml   staging only: a copy of docker-compose.staging.yml (compose loads it
+#                                 automatically, so plain `docker compose ...` commands work on the server)
+#   data/                         shared scratch volume, mounted at /data
+#   secrets/                      cookie files, mounted at /secrets (writable: yt-dlp saves refreshed cookies back)
+#
+# Deploy:    IMAGE_TAG is written to .env by the deploy workflow, then `docker compose pull && docker compose up -d`.
+# Rollback:  set IMAGE_TAG in .env to the previous tag, then `docker compose up -d`.
+
+name: sixstars
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: 50m
+    max-file: "5"
+
+x-app: &app
+  image: ghcr.io/muhhammeddsayedd-prog/6stars-clips:${IMAGE_TAG:?IMAGE_TAG is not set (expected in .env, e.g. staging-<sha>)}
+  restart: always
+  env_file:
+    - path: .env
+      required: true
+  stop_grace_period: 60s
+  volumes:
+    - ./data:/data
+    - ./secrets:/secrets
+  logging: *logging
+
+services:
+  caddy:
+    image: caddy:2.11-alpine
+    restart: always
+    environment:
+      TZ: UTC
+      PUBLIC_API_HOST: ${PUBLIC_API_HOST:?PUBLIC_API_HOST is not set (expected in .env)}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data # certificates: must survive container replacement
+      - caddy_config:/config
+    healthcheck:
+      # Caddy's admin endpoint, reachable inside the container only.
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:2019/config/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    stop_grace_period: 15s
+    logging: *logging
+
+  api:
+    <<: *app
+    command: ["api"]
+    environment:
+      TZ: UTC
+      DATA_DIR: /data
+      SERVICE_NAME: api
+    expose:
+      - "8080"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "--max-time", "5", "http://127.0.0.1:8080/v1/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  live-manager:
+    <<: *app
+    command: ["live-manager"]
+    environment:
+      TZ: UTC
+      DATA_DIR: /data
+      SERVICE_NAME: live-manager
+
+  worker-express:
+    <<: *app
+    command: ["worker", "--queue", "express"]
+    environment:
+      TZ: UTC
+      DATA_DIR: /data
+      SERVICE_NAME: worker-express
+    deploy:
+      replicas: 2
+
+  worker-normal:
+    <<: *app
+    command: ["worker", "--queue", "normal"]
+    environment:
+      TZ: UTC
+      DATA_DIR: /data
+      SERVICE_NAME: worker-normal
+    deploy:
+      replicas: 4
+
+  scheduler:
+    <<: *app
+    command: ["scheduler"]
+    environment:
+      TZ: UTC
+      DATA_DIR: /data
+      SERVICE_NAME: scheduler
+
+# live-manager, the workers and the scheduler have no container healthcheck: they serve no port, and their
+# liveness is the `heartbeats` table, which the guardian (M13) watches. `restart: always` covers crashes.
+
+volumes:
+  caddy_data:
+  caddy_config:

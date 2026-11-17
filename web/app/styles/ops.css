@@ -1,0 +1,17 @@
+﻿/* ops pages: settings sidebar */
+.settings-side .side-item {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px; width: 100%;
+  padding: 10px 12px; border-radius: 14px; border: 0; background: transparent; color: var(--ink); font: inherit; font-size: 12.5px; text-align: left;
+  transition: background-color .15s ease;
+}
+.settings-side .side-item:hover { background: var(--grs); }
+.settings-side .side-item.on { background: var(--ps); color: var(--p); }
+.settings-side .side-item.on .chip { background: #fff; color: var(--p); }
+.diff div { white-space: pre-wrap; word-break: break-word; }
+/* `.flabel` resets margins after the spacing helpers; keep the helpers working on labels */
+.flabel.mt { margin-top: 16px; }
+.flabel.mt2 { margin-top: 24px; }
+@media (max-width: 1180px) {
+  .settings-side ul { display: flex; flex-wrap: wrap; gap: 4px; }
+  .settings-side .side-item { width: auto; }
+}
