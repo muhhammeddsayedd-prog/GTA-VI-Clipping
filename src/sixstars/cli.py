@@ -103,9 +103,44 @@ def vod_process(url: str = typer.Argument(..., help="Video URL to process end to
 
 
 @spikes_app.command("scan")
-def spikes_scan(chat_file: str = typer.Argument(..., help="Path to a chat JSON file.")) -> None:
+def spikes_scan(
+    chat_file: str = typer.Argument(
+        ..., help="Chat file: .jsonl from `chat replay`, or TwitchDownloader JSON."
+    ),
+    top: int = typer.Option(25, "--top", help="How many spikes to print, best first (0 = all)."),
+    details: bool = typer.Option(False, "--details", help="Also print the z-scores and a chat sample."),
+    sample: int = typer.Option(12, "--sample", help="Chat messages per spike with --details."),
+    settings_file: str = typer.Option(
+        "", "--settings-file", help="JSON object of settings to use instead of the database."
+    ),
+    set_pairs: list[str] = typer.Option(
+        [], "--set", help="Override one setting for this run, as key=json (repeatable)."
+    ),
+    end_guard: float = typer.Option(
+        0.0, "--end-guard", help="Drop spikes in the last N seconds of the chat."
+    ),
+) -> None:
     """Print the spikes found in a chat file."""
-    _not_implemented()
+    from pathlib import Path
+
+    from sixstars.spikes import commands
+
+    def run() -> int:
+        return commands.scan(
+            Path(chat_file),
+            top=top,
+            details=details,
+            sample=sample,
+            settings_file=Path(settings_file) if settings_file else None,
+            set_pairs=set_pairs,
+            end_guard_s=end_guard,
+        )
+
+    if settings_file:
+        raise typer.Exit(code=run())
+    with _database():
+        code = run()
+    raise typer.Exit(code=code)
 
 
 @clip_app.command("render")

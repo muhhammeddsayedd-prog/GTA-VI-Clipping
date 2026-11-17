@@ -63,6 +63,7 @@ Defaults below are the production values from `supabase/migrations/0002_seed_set
 | `spikes.ab_min_confidence` | `0.6` | A/B need Claude confidence >= this. |
 | `spikes.min_messages` | `15` | Minimum messages in a spike bucket (absolute floor). |
 | `spikes.merge_gap_s` | `60` | Spikes closer than this are merged. |
+| `spikes.end_guard_s` | `300` | Replay scans ignore spikes in the last N seconds of a video (goodbye messages). Added in migration 0004. |
 | `spikes.lead_s` | `20` | Clip starts this many seconds before the spike (15-30). |
 | `spikes.end_z` | `1.5` | Clip ends when the score falls below this. |
 | `spikes.tail_s` | `5` | Seconds added after the score falls. |
