@@ -130,9 +130,35 @@ def discovery_set_tier(
 
 
 @vod_app.command("process")
-def vod_process(url: str = typer.Argument(..., help="Video URL to process end to end.")) -> None:
-    """Process one video end to end."""
-    _not_implemented()
+def vod_process(
+    url: str = typer.Argument(..., help="Twitch VOD or YouTube video URL to process end to end."),
+    render: bool = typer.Option(False, "--render", help="Also run the queued clip.render jobs here."),
+    whisper_model: str = typer.Option("", "--whisper-model", help="Local model for --render (testing)."),
+    force: bool = typer.Option(False, "--force", help="Ignore the blocked-downloads and concurrency gates."),
+    as_json: bool = typer.Option(False, "--json", help="Print the outcome as JSON."),
+) -> None:
+    """Process one video end to end: chat, spikes, confirmation, window downloads, render jobs."""
+    from sixstars.vod import commands
+
+    with _database():
+        code = commands.process_url(
+            url, render=render, whisper_model=whisper_model, force=force, as_json=as_json
+        )
+    raise typer.Exit(code=code)
+
+
+@vod_app.command("scan-only")
+def vod_scan_only(
+    url: str = typer.Argument(..., help="Twitch VOD or YouTube video URL."),
+    top: int = typer.Option(25, "--top", help="How many spikes to print, best first (0 = all)."),
+    details: bool = typer.Option(False, "--details", help="Also print the z-scores and a chat sample."),
+) -> None:
+    """Download the chat replay and print its spikes. Stores nothing and downloads no video."""
+    from sixstars.vod import commands
+
+    with _database():
+        code = commands.scan_only(url, top=top, details=details)
+    raise typer.Exit(code=code)
 
 
 @spikes_app.command("scan")
