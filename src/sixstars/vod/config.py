@@ -30,7 +30,7 @@ DEFAULTS: Final[dict[str, Any]] = {
     "vod.blocked_notify_interval_s": 3600,
     "vod.stop_retry_s": 600,
     "vod.fallback_enabled": True,
-    "vod.fallback_below_spikes": 1,
+    "vod.fallback_below_spikes": 3,  # 1 in 0008, raised by 0010
     "vod.fallback_max_duration_s": 43200,
     "vod.fallback_min_confidence": 0.5,
     "vod.fallback_chunk_s": 30,
