@@ -34,6 +34,8 @@ Thumbs.db
 # Runtime data and stream segments
 data/
 *.ts
+# ...but the admin console's TypeScript sources are code, not stream segments
+!web/**/*.ts
 
 # Agent worktrees
 .claude/worktrees/

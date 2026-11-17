@@ -1,0 +1,9 @@
+import type { Metadata } from "next";
+
+import { HealthView } from "./HealthView";
+
+export const metadata: Metadata = { title: "Health" };
+
+export default function HealthPage() {
+  return <HealthView />;
+}

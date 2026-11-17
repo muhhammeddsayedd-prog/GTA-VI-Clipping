@@ -1,9 +1,11 @@
 """FastAPI application factory and router wiring for the control API. Implemented in M11.
 
-`create_app()` builds the application: `/v1/health` is open, every other route needs the bearer token
-(`sixstars.api.auth`). The interactive documentation and the OpenAPI document are switched off, so nothing
-but the health route answers without the token. `run()` serves it with uvicorn on `0.0.0.0:8080`, behind
-Caddy, with uvicorn's own log lines converted to the same JSON format as the rest of the system.
+`create_app()` builds the application: `/v1/health` is open, every other route needs a bearer token
+(`sixstars.api.auth`): the trigger routes n8n's token, the others n8n's or the admin console's (including
+the read-only `/v1/admin/*` routes of M17). The interactive documentation and the OpenAPI document are
+switched off, so nothing but the health route answers without the token. `run()` serves it with uvicorn on
+`0.0.0.0:8080`, behind Caddy, with uvicorn's own log lines converted to the same JSON format as the rest of
+the system.
 """
 
 import json
@@ -16,8 +18,8 @@ import uvicorn
 from fastapi import Depends, FastAPI
 
 from sixstars import db
-from sixstars.api import errors, routes_control, routes_health, routes_triggers
-from sixstars.api.auth import require_token, warn_if_weak_token
+from sixstars.api import errors, routes_admin, routes_control, routes_health, routes_triggers
+from sixstars.api.auth import require_any_token, require_token, warn_if_weak_token
 from sixstars.api.middleware import RequestMiddleware
 from sixstars.config import env
 from sixstars.logging import configure_logging, get_logger
@@ -50,9 +52,12 @@ def create_app() -> FastAPI:
     errors.install(app)
     app.add_middleware(RequestMiddleware)
     app.include_router(routes_health.router)
-    protected = [Depends(require_token)]
-    app.include_router(routes_triggers.router, dependencies=protected)
-    app.include_router(routes_control.router, dependencies=protected)
+    n8n_only = [Depends(require_token)]
+    either = [Depends(require_any_token)]
+    app.include_router(routes_triggers.router, dependencies=n8n_only)
+    app.include_router(routes_triggers.read_router, dependencies=either)
+    app.include_router(routes_control.router, dependencies=either)
+    app.include_router(routes_admin.router, dependencies=either)
     return app
 
 

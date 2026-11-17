@@ -46,6 +46,7 @@ class Env(BaseSettings):
 
     # Control API
     CONTROL_API_TOKEN: SecretStr | None = None
+    DASHBOARD_API_TOKEN: SecretStr | None = None  # the admin console; refused on the trigger routes
     PUBLIC_API_HOST: str | None = None
 
     # n8n

@@ -26,7 +26,8 @@ from sixstars.logging import get_logger
 from sixstars.posting.hourly import schedule_hourly_slot
 from sixstars.stats import report as report_view
 
-router = APIRouter(prefix="/v1")
+router = APIRouter(prefix="/v1")  # the trigger routes: n8n's token only (docs/26)
+read_router = APIRouter(prefix="/v1")  # read routes: n8n's or the admin console's token
 
 DISCOVERY_MODULE = "sixstars.discovery.run"
 DISCOVERY_FUNCTION = "run_discovery"
@@ -170,7 +171,7 @@ def stats_collect() -> JSONResponse:
     return JSONResponse(guardian_service.collect_stats())
 
 
-@router.get("/reports/daily")
+@read_router.get("/reports/daily")
 def reports_daily(
     format: Literal["telegram", "json"] = Query("json"),  # noqa: A002
     day: Annotated[date | None, Query()] = None,
