@@ -156,7 +156,7 @@ def keyword_times(lines: Sequence[Line], keywords: Mapping[int, Sequence[str]]) 
 
 
 def outside_spans(times_s: Sequence[float], spans: Sequence[Span]) -> tuple[float, ...]:
-    """The times that fall in none of the spans (a keyword that is bleeped gets no pop on top of the bleep)."""
+    """The times that fall in none of the spans (a bleeped keyword gets no pop on top of the bleep)."""
     return tuple(t for t in times_s if not any(span.start_s <= t <= span.end_s for span in spans))
 
 
