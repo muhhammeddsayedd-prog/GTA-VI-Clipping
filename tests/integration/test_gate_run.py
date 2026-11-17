@@ -140,7 +140,7 @@ def test_black_frames_are_rejected(black_video: Path) -> None:
     assert gate.run_gate(clip_id, deps=kit.deps).status == "rejected"
     row = clip(clip_id)
     assert row["reject_reason"] == "black_frames"
-    assert row["gate_result"]["checks"]["visual"]["value"]["longest_black_s"] == pytest.approx(3.0, abs=0.3)
+    assert row["gate_result"]["checks"]["visual"]["value"]["longest_black_s"] == pytest.approx(6.0, abs=0.3)
     assert kit.p5_calls == 0
 
 

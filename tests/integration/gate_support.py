@@ -93,15 +93,15 @@ def good_video(tmp_path_factory: pytest.TempPathFactory) -> Path:
 
 @pytest.fixture(scope="session")
 def black_video(tmp_path_factory: pytest.TempPathFactory) -> Path:
-    """Three seconds of black picture from 5 s."""
-    black = "drawbox=enable='between(t,5,8)':x=0:y=0:w=iw:h=ih:color=black:t=fill"
+    """Six seconds of black picture from 5 s (the limit is 4 s since migration 0017)."""
+    black = "drawbox=enable='between(t,5,11)':x=0:y=0:w=iw:h=ih:color=black:t=fill"
     return make_video(tmp_path_factory.mktemp("gate") / "black.mp4", black)
 
 
 @pytest.fixture(scope="session")
 def frozen_video(tmp_path_factory: pytest.TempPathFactory) -> Path:
-    """About four frozen seconds from 5 s."""
-    return make_video(tmp_path_factory.mktemp("gate") / "frozen.mp4", "loop=loop=40:size=1:start=50")
+    """About seven frozen seconds from 5 s (the limit is 4 s since migration 0017)."""
+    return make_video(tmp_path_factory.mktemp("gate") / "frozen.mp4", "loop=loop=70:size=1:start=50")
 
 
 def add_creator(tier: str = "preferred", handle: str = "SomeStreamer") -> str:
