@@ -165,8 +165,11 @@ def test_a_missing_or_unreadable_file_is_rejected(tmp_path: Path, problem: str) 
 
 
 def test_wrong_frame_size_is_rejected(tmp_path: Path) -> None:
+    import shutil
     import subprocess
 
+    if shutil.which("ffmpeg") is None:
+        pytest.skip("ffmpeg not installed")
     small = tmp_path / "small.mp4"
     command = ["ffmpeg", "-loglevel", "error", "-y", "-f", "lavfi", "-i", "testsrc2=s=540x960:r=10:d=22.5"]
     command += ["-f", "lavfi", "-i", "sine=frequency=440:duration=22.5", "-shortest", "-preset", "ultrafast"]
