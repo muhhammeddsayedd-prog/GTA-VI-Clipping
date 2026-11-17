@@ -1,0 +1,252 @@
+name: Deploy production
+
+# Push to `main` -> wait for the CI workflow on the same commit -> build and push the image ->
+# apply database migrations -> roll the production server -> check /v1/health.
+#
+# GitHub Environment `production` must provide (no required reviewer: the owner approved
+# unattended production deploys):
+#   secrets    SSH_HOST, SSH_USER, SSH_KEY, SUPABASE_ACCESS_TOKEN, SUPABASE_PROJECT_REF, SUPABASE_DB_PASSWORD
+#   variables  PUBLIC_API_HOST
+#   optional   secret SSH_KNOWN_HOSTS (the server's host key line; without it the key is trusted on first use)
+# The application's own secrets stay in /opt/6stars/.env on the server and never pass through GitHub.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  IMAGE: ghcr.io/muhhammeddsayedd-prog/6stars-clips
+  IMAGE_TAG: prod-${{ github.sha }}
+  APP_DIR: /opt/6stars
+  SUPABASE_CLI_VERSION: 3.2.0
+
+jobs:
+  ci:
+    name: Wait for CI
+    # A manual run from any other branch must never reach production.
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      actions: read
+    steps:
+      # ci.yml runs on every push. This job waits for that run on this exact commit and fails unless it
+      # succeeded, so a commit that fails lint, types or tests is never deployed.
+      - name: Wait for the CI run of this commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          for attempt in $(seq 1 170); do
+            run="$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/ci.yml/runs?head_sha=${GITHUB_SHA}&event=push&per_page=1" \
+              --jq '.workflow_runs[0] | select(. != null) | "\(.status) \(.conclusion) \(.html_url)"')"
+            if [ -z "$run" ]; then
+              echo "attempt ${attempt}: no CI run for ${GITHUB_SHA} yet"
+            else
+              read -r status conclusion url <<<"$run"
+              echo "attempt ${attempt}: CI is ${status} (${conclusion}) ${url}"
+              if [ "$status" = "completed" ]; then
+                if [ "$conclusion" = "success" ]; then
+                  exit 0
+                fi
+                echo "::error::CI finished with '${conclusion}'; not deploying."
+                exit 1
+              fi
+            fi
+            sleep 10
+          done
+          echo "::error::CI did not finish within the wait window; not deploying."
+          exit 1
+
+  build:
+    name: Build and push image
+    # A manual run from any other branch must never reach production.
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+
+      # Runs in parallel with CI to save time: an image for a commit that later fails CI is pushed but
+      # never deployed.
+      - name: Build and push
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: docker/Dockerfile
+          push: true
+          tags: ${{ env.IMAGE }}:${{ env.IMAGE_TAG }}
+          build-args: |
+            GIT_SHA=${{ github.sha }}
+          cache-from: type=gha,scope=6stars-clips
+          cache-to: type=gha,scope=6stars-clips,mode=max
+          provenance: false
+
+  deploy:
+    name: Migrate and deploy
+    needs: [ci, build]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: production
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check environment configuration
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+          SSH_KEY: ${{ secrets.SSH_KEY }}
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+          PUBLIC_API_HOST: ${{ vars.PUBLIC_API_HOST }}
+        run: |
+          missing=0
+          for name in SSH_HOST SSH_USER SSH_KEY SUPABASE_ACCESS_TOKEN SUPABASE_PROJECT_REF SUPABASE_DB_PASSWORD PUBLIC_API_HOST; do
+            if [ -z "${!name}" ]; then
+              echo "::error::${name} is not set in the GitHub Environment 'production'."
+              missing=1
+            fi
+          done
+          exit "$missing"
+
+      - uses: supabase/setup-cli@v3
+        with:
+          version: ${{ env.SUPABASE_CLI_VERSION }}
+
+      # Migrations are additive only, so they are applied before the new code starts.
+      # CLI 3.x: `db push` targets the local database unless --remote is given, and needs --yes for a
+      # hosted project. The password is only sent to the linked project, so link first.
+      - name: Apply database migrations
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+          SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+        run: |
+          set -euo pipefail
+          supabase link --project-ref "$SUPABASE_PROJECT_REF"
+          supabase db push --remote --yes
+
+      - name: Configure SSH
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+          SSH_KEY: ${{ secrets.SSH_KEY }}
+          SSH_KNOWN_HOSTS: ${{ secrets.SSH_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$SSH_KEY" | tr -d '\r' > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          if [ -n "$SSH_KNOWN_HOSTS" ]; then
+            printf '%s\n' "$SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          else
+            ssh-keyscan -T 15 -t ed25519 "$SSH_HOST" > ~/.ssh/known_hosts
+          fi
+          test -s ~/.ssh/known_hosts
+          {
+            echo "Host deploy-target"
+            echo "  HostName ${SSH_HOST}"
+            echo "  User ${SSH_USER}"
+            echo "  IdentityFile ~/.ssh/deploy_key"
+            echo "  IdentitiesOnly yes"
+            echo "  StrictHostKeyChecking yes"
+            echo "  BatchMode yes"
+            echo "  ConnectTimeout 20"
+            echo "  ServerAliveInterval 15"
+          } > ~/.ssh/config
+          chmod 600 ~/.ssh/config
+
+      - name: Copy compose files and Caddyfile
+        run: |
+          set -euo pipefail
+          # shellcheck disable=SC2029
+          ssh deploy-target "test -f '${APP_DIR}/.env'" \
+            || { echo "::error::${APP_DIR}/.env is missing on the server."; exit 1; }
+          scp -q docker/docker-compose.yml docker/Caddyfile "deploy-target:${APP_DIR}/"
+          # Production runs the replica counts of docker-compose.yml: make sure no override file is left behind.
+          # shellcheck disable=SC2029
+          ssh deploy-target "rm -f '${APP_DIR}/docker-compose.override.yml'"
+
+      # The workflow token is valid for this job only; the server is logged out again in the last step.
+      - name: Log the server in to GHCR
+        env:
+          GHCR_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          # shellcheck disable=SC2029
+          printf '%s' "$GHCR_TOKEN" | ssh deploy-target "docker login ghcr.io -u '${GITHUB_ACTOR}' --password-stdin"
+
+      - name: Pull and restart services
+        run: |
+          set -euo pipefail
+          # shellcheck disable=SC2029
+          ssh deploy-target "bash -s -- '${APP_DIR}' '${IMAGE_TAG}'" <<'REMOTE'
+          set -euo pipefail
+          cd "$1"
+          tag="$2"
+          previous="$(grep -E '^IMAGE_TAG=' .env | tail -n 1 | cut -d= -f2- || true)"
+          echo "previous image tag: ${previous:-none}"
+          # Pull with the new tag first; .env is changed only when the image is really there.
+          IMAGE_TAG="$tag" docker compose pull --quiet
+          if grep -qE '^IMAGE_TAG=' .env; then
+            sed -i "s|^IMAGE_TAG=.*|IMAGE_TAG=${tag}|" .env
+          else
+            printf '\nIMAGE_TAG=%s\n' "$tag" >> .env
+          fi
+          chmod 600 .env
+          docker compose up -d --remove-orphans
+          # A changed Caddyfile is not picked up by `up -d`: reload it (does nothing when unchanged).
+          docker compose exec -T caddy caddy reload --config /etc/caddy/Caddyfile \
+            || echo "caddy reload failed (the container may still be starting)"
+          docker image prune -af --filter "until=168h" >/dev/null || true
+          docker compose ps
+          REMOTE
+
+      # The deploy fails when the API does not answer. Until the control API milestone is merged,
+      # `sixstars api` exits with code 1, so this step (and the job) is expected to be red.
+      - name: Health check (2 minutes)
+        env:
+          PUBLIC_API_HOST: ${{ vars.PUBLIC_API_HOST }}
+        run: |
+          set -uo pipefail
+          url="https://${PUBLIC_API_HOST}/v1/health"
+          for attempt in $(seq 1 24); do
+            if body="$(curl -fsS --max-time 5 "$url" 2>/dev/null)" && grep -Eq '"ok": ?true' <<<"$body"; then
+              echo "healthy after attempt ${attempt}: ${body}"
+              exit 0
+            fi
+            echo "attempt ${attempt}/24: ${url} not healthy yet"
+            sleep 5
+          done
+          echo "::error::${url} did not report ok within 2 minutes. The new image stays deployed; roll back by setting IMAGE_TAG in ${APP_DIR}/.env to the previous tag (printed in the step above) and running 'docker compose up -d'."
+          # shellcheck disable=SC2029
+          ssh deploy-target "cd '${APP_DIR}' && docker compose ps && docker compose logs --tail 30 api caddy" || true
+          exit 1
+
+      - name: Log the server out of GHCR
+        if: always()
+        run: ssh deploy-target "docker logout ghcr.io" || true
