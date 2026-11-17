@@ -80,10 +80,10 @@ export function Shell({ env, email, mock, signOut, children }: ShellProps) {
       <a href="#main" className="sr-only" style={{ position: "absolute" }}>Skip to content</a>
       <div className="app">
         {env === "staging" && (
-          <div className="band stg" role="note"><AlertTriangle size={15} /> STAGING · GTA V · posts go to the real accounts as <b>&nbsp;private</b>&nbsp;· Instagram posting is off · Telegram commands are production-only</div>
+          <div className="band stg" role="note"><AlertTriangle size={15} style={{ flex: "none" }} /><span>STAGING · GTA V · posts go to the real accounts as <b>private</b> · Instagram posting is off · Telegram commands are production-only</span></div>
         )}
         {mock && (
-          <div className="band mock" role="note"><Database size={15} /> SAMPLE DATA · no control API is configured, so this console shows generated data. Nothing here is real.</div>
+          <div className="band mock" role="note"><Database size={15} style={{ flex: "none" }} /><span>SAMPLE DATA · no control API is configured, so this console shows generated data. Nothing here is real.</span></div>
         )}
 
         <header className="top">
