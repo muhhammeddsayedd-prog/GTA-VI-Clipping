@@ -17,7 +17,7 @@ dependencies = [
     "anthropic",
     "supabase",
     "websockets",
-    "yt-dlp",
+    "yt-dlp[default]",
     "streamlink",
     "faster-whisper",
     "panns-inference",
