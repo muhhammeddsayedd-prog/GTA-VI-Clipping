@@ -3,6 +3,8 @@
 network: the store, the frame grab and Claude are stand-ins."""
 
 import io
+from dataclasses import replace
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -102,6 +104,7 @@ class World:
         self.events: list[dict[str, Any]] = []
         self.grab_error: Exception | None = None
         self.values: dict[str, Any] = dict(SETTINGS)
+        self.viewer_clip: dict[str, Any] | None = None
 
 
 @pytest.fixture
@@ -112,6 +115,7 @@ def world(monkeypatch: pytest.MonkeyPatch) -> World:
     monkeypatch.setattr(usage, "spent_today", lambda provider: 0.0)
     monkeypatch.setattr(usage, "record", lambda *args, **kwargs: False)
     monkeypatch.setattr(store, "spike_row", lambda spike_id: dict(SPIKE) if spike_id else None)
+    monkeypatch.setattr(store, "audience_row", lambda clip_id, spike_id: state.viewer_clip)
 
     def store_score(clip_id: str, score: int, parts: dict[str, Any]) -> bool:
         state.stored.append((clip_id, score, dict(parts)))
@@ -340,3 +344,59 @@ def test_the_score_document_without_writer_parts() -> None:
     scored = VisualClipScore.model_validate(visual_reply(7))
     document = rescore.score_document(clip_row(score=None, score_parts=None), scored, "m", 6, 1)
     assert document["writer"] == {"score": None} and document["visual"]["frames"] == 6  # type: ignore[index]
+
+
+# ── Viewer-made clips: audience evidence in place of a chat spike ──
+
+MADE = datetime(2026, 11, 17, 6, 0, tzinfo=UTC)
+VIEWER_CLIP = {
+    "title": "he did  not have a parachute",
+    "view_count": 1749,
+    "clip_created_at": MADE,
+    "created_at": MADE + timedelta(hours=14, minutes=20),
+}
+
+
+def test_audience_evidence_reads_the_viewer_clip_row() -> None:
+    evidence = rescore.audience_evidence(VIEWER_CLIP)
+    assert evidence == calls.AudienceEvidence(views=1749, age_h=14 + 1 / 3, title=VIEWER_CLIP["title"])
+    assert rescore.audience_evidence(None) is None
+    bare = rescore.audience_evidence({"title": None, "view_count": None, "clip_created_at": None})
+    assert bare == calls.AudienceEvidence(views=None, age_h=None, title="")
+
+
+def test_a_viewer_clip_is_scored_with_audience_evidence_and_no_chat(world: World) -> None:
+    world.viewer_clip = dict(VIEWER_CLIP)
+    fake = FakeAnthropicClient({calls.P9V: visual_reply(7)})
+    world.values["ai.visual_score_samples"] = 1
+    row, shots = rescore.run(replace(clip_row(), spike_id=None), client=fake)
+
+    assert world.sampled == [(20.0, 8, None)]  # no chat peak to aim the frames at
+    user = fake.calls[0][1]["user_content"]
+    assert "No chat spike" in user and "1749 views about 14 hours after it was made" in user
+    assert "he did not have a parachute" in user and "(no chat messages)" in user
+    assert "messages in the peak window" not in user
+    assert row.raw["score"] == 7 and shots is not None and world.events == []
+
+
+def test_a_spike_clip_never_reads_audience_evidence(world: World) -> None:
+    world.viewer_clip = dict(VIEWER_CLIP)  # would be wrong for this clip: it has a chat spike
+    fake = FakeAnthropicClient({calls.P9V: visual_reply(7)})
+    world.values["ai.visual_score_samples"] = 1
+    rescore.run(clip_row(), client=fake)
+    user = fake.calls[0][1]["user_content"]
+    assert "9 messages from 8 chatters in the peak window" in user and "No chat spike" not in user
+
+
+def test_unreadable_audience_evidence_does_not_cost_the_score(
+    world: World, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def broken(clip_id: str, spike_id: str | None) -> dict[str, Any]:
+        raise RuntimeError("relation viewer_clips does not exist")
+
+    monkeypatch.setattr(store, "audience_row", broken)
+    fake = FakeAnthropicClient({calls.P9V: visual_reply(7)})
+    world.values["ai.visual_score_samples"] = 1
+    row, _ = rescore.run(replace(clip_row(), spike_id=None), client=fake)
+    assert row.raw["score"] == 7 and "(no chat data for this clip)" in fake.calls[0][1]["user_content"]
+    assert world.events == []
