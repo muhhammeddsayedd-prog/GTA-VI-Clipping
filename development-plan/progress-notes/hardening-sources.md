@@ -200,6 +200,20 @@ ssh -i C:/Users/iway/.ssh/6stars_ed25519 deploy@46.224.14.255 'cd /opt/6stars &&
 
 When the database knows no past stream yet, the chat and download checks use a 19-second public video without chat; add `--video <id>` of a past stream to test a chat replay.
 
+### Local results
+
+| Command | Result |
+|---|---|
+| `uv run ruff check .` / `uv run ruff format --check .` (262 files) | pass |
+| `uv run mypy --strict src/` (154 files) | pass |
+| `uv run pytest tests/unit` | 2665 passed, 6 skipped (the network tests of chat) |
+| `TEST_DATABASE_URL=...54330/v3 uv run pytest tests/integration/test_discovery_hardening.py` | 12 passed (4 min 56 s through the tunnel) |
+| `... pytest tests/integration/test_vod_process.py tests/integration/test_discovery_run.py tests/integration/test_chat_settings_db.py` | 56 passed (18 min 42 s) |
+| `RUN_LIVE_TESTS=1 uv run pytest tests/live/test_discovery_live.py -k search_list` | 1 passed (one real `search.list` call) |
+| the whole integration suite | not run here (CI) |
+
+The test database `v3` had received an earlier draft of migration 0010 during this work; its 0010 keys were deleted once so the final file seeded them. A database that gets the committed file for the first time needs nothing of the kind.
+
 ### Settings added (migration 0010)
 
 `discovery.search_api_mode` "fallback", `search_api_calls_per_pass` 1, `search_api_interval_s` 1800, `search_api_daily_calls` 60, `search_api_modes` ["live","recent"], `search_api_combined_modes` ["recent","completed"], `search_api_durations` {"recent":"long","completed":"long"}, `search_api_orders` {"live":"viewCount","recent":"viewCount","completed":"viewCount"}, `search_api_relevance_language` "en", `search_api_category_id` "20", `search_api_state` (written by code), `live_recheck_max` 50, `live_recheck_window_s` 5400, `source_failure_notify_after` 3, `ytdlp_backoff_after_failures` 2, `ytdlp_backoff_s` 3600, `ytdlp_use_cookies` false, `source_health` (written by code), `non_latin_share` 0.3, `non_english_terms` [32 words], `edited_upload_bonus` 6, `edited_max_duration_s` 3600, `edited_engagement_full` 0.04, `long_stream_min_s` 3600, `thin_chat_factor` 0.75 (all under `discovery.`). Changed: the three in the table of item 5.
