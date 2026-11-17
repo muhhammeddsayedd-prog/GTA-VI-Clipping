@@ -148,12 +148,17 @@ def run_renders(video_id: str, whisper_model: str | None) -> list[tuple[str, str
     for row in sorted(rows, key=lambda item: -int(item["priority"])):
         job = jobs.Job.from_row(row)
         item = pipeline.RenderInput.from_payload(job.payload)
-        try:
-            clip_id = pipeline.render_clip(item, deps=deps)
-        except Exception as exc:
-            jobs.fail(job.id, f"{type(exc).__name__}: {exc}", retry=False)
-            pipeline.mark_failed(item, f"{type(exc).__name__}: {exc}")
-            results.append((str(item.spike_id), f"failed: {type(exc).__name__}: {exc}"))
+        clip_id, error = "", ""
+        for _attempt in range(max(1, job.max_attempts)):  # as many tries as the worker would give it
+            try:
+                clip_id, error = pipeline.render_clip(item, deps=deps), ""
+                break
+            except Exception as exc:
+                error = f"{type(exc).__name__}: {exc}"
+        if error:
+            jobs.fail(job.id, error, retry=False)
+            pipeline.mark_failed(item, error)
+            results.append((str(item.spike_id), f"failed: {error}"))
             continue
         jobs.complete(job.id)
         clip = db.fetch_one("select status, reject_reason from clips where id = %s", (clip_id,))

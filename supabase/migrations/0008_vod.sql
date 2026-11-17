@@ -22,6 +22,7 @@ insert into settings (key, value, description) values
   ('vod.fallback_max_duration_s', '43200'::jsonb, 'Transcript fallback: videos longer than this are skipped.'),
   ('vod.fallback_min_confidence', '0.5'::jsonb, 'Transcript fallback: moments below this confidence are stored as rejected.'),
   ('vod.fallback_chunk_s', '30'::jsonb, 'Transcript fallback: seconds of transcript per block shown to the moment picker.'),
+  ('vod.fallback_max_transcript_s', '21600'::jsonb, 'Transcript fallback: seconds of transcript the moment picker reads per video at most (0 = all). One request per 30 minutes.'),
   ('vod.fallback_transcribe_mode', '"local"'::jsonb, 'Transcript fallback without a caption track: local (faster-whisper, no fee) or hosted (transcribe.express_provider, paid).'),
   ('vod.fallback_transcribe_max_s', '5400'::jsonb, 'Transcript fallback without a caption track: seconds of audio transcribed per video at most (0 = never transcribe).'),
   ('vod.fallback_transcribe_daily_s', '21600'::jsonb, 'Transcript fallback without a caption track: seconds of audio transcribed per UTC day at most.'),

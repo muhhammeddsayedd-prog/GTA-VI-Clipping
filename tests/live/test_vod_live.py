@@ -3,7 +3,8 @@ YouTube and from Twitch (no key needed), and a Twitch chat replay through the re
 
 Skipped unless `RUN_LIVE_TESTS=1`. No database, no AI call, nothing is uploaded. The video ids are public
 GTA 5 streams; set `VOD_LIVE_YOUTUBE_ID` / `VOD_LIVE_TWITCH_VOD` when they are gone, and
-`TWITCH_DOWNLOADER_CLI` to the binary for the chat test. Downloads are cut to a few seconds at 360p.
+`VOD_LIVE_TWITCH_CLI` to the TwitchDownloaderCLI binary for the chat test. Downloads are cut to a few
+seconds at 360p.
 
     RUN_LIVE_TESTS=1 uv run pytest tests/live/test_vod_live.py -v
 """
@@ -77,9 +78,9 @@ def test_twitch_window_download_needs_no_key(tmp_path: Path, ffmpeg: None) -> No
 
 
 def test_twitch_chat_replay_with_the_real_cli_gives_spikes(tmp_path: Path) -> None:
-    cli = os.environ.get("TWITCH_DOWNLOADER_CLI", "")
+    cli = os.environ.get("VOD_LIVE_TWITCH_CLI", "")
     if not cli or not Path(cli).is_file():
-        pytest.skip("TWITCH_DOWNLOADER_CLI does not name the binary")
+        pytest.skip("VOD_LIVE_TWITCH_CLI does not name the TwitchDownloaderCLI binary")
     import json
     import re
 

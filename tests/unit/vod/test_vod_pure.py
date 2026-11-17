@@ -7,6 +7,7 @@ from typing import Any
 
 import pytest
 
+from sixstars.ai.calls import TranscriptChunk
 from sixstars.ai.schemas import Moment
 from sixstars.factory.pipeline import next_budget_reset
 from sixstars.spikes.detector import DetectedSpike
@@ -224,6 +225,15 @@ def test_block_message_says_what_happens_and_what_fixes_it() -> None:
 )
 def test_transcribe_range(duration_s: float | None, limit_s: float, expected: tuple[float, float]) -> None:
     assert fallback.transcribe_range(duration_s, limit_s, 900.0) == expected
+
+
+def test_the_picker_reads_a_capped_part_of_a_long_transcript() -> None:
+    chunks = [TranscriptChunk(float(start), float(start) + 30, "words") for start in range(0, 18000, 30)]
+    assert fallback.limit_chunks(chunks, 0, 900.0) == chunks  # no cap
+    assert fallback.limit_chunks(chunks[:100], 21600, 900.0) == chunks[:100]  # short enough
+    capped = fallback.limit_chunks(chunks, 3600, 900.0)
+    assert (capped[0].start_s, capped[-1].end_s, len(capped)) == (900.0, 4500.0, 120)
+    assert fallback.limit_chunks([], 3600, 900.0) == []
 
 
 def moment(confidence: float, start: float = 600.0, end: float = 640.0) -> Moment:

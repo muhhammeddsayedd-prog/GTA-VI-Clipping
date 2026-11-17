@@ -17,6 +17,7 @@ from sixstars.ai import calls
 from sixstars.ai.calls import BudgetExceededError
 from sixstars.chat import synthetic, twitch_replay
 from sixstars.chat.models import ReplayChat
+from sixstars.clients.anthropic_client import InvalidModelOutput
 from sixstars.clients.fakes import FakeAnthropicClient
 from sixstars.factory import tools
 from sixstars.factory.pipeline import RenderInput
@@ -66,6 +67,8 @@ class ScriptedClaude(FakeAnthropicClient):
         self.verdicts = list(verdicts)
         self.moments = list(moments)
         self.error: Exception | None = None
+        self.p3_calls = 0
+        self.invalid_p3_calls: set[int] = set()
 
     def complete_json[T: BaseModel](  # type: ignore[override]
         self, prompt_id: str, system: str, user_content: Any, schema: type[T], *args: Any, **kwargs: Any
@@ -74,6 +77,9 @@ class ScriptedClaude(FakeAnthropicClient):
         if self.error is not None:
             raise self.error
         if prompt_id == calls.P3:
+            self.p3_calls += 1
+            if self.p3_calls in self.invalid_p3_calls:
+                raise InvalidModelOutput("p3_vod_moment_picker: reply is not valid for Bound")
             covers = re.search(r"covers (\d+) s to (\d+) s", str(user_content))
             assert covers is not None
             low, high = float(covers.group(1)), float(covers.group(2))
@@ -834,6 +840,22 @@ def test_the_fallback_is_paid_for_once(lane: Lane) -> None:
 
     assert outcome.status == "done" and outcome.queued == 2
     assert lane.claude.asked(calls.P3) == asked and len(spikes(video_id)) == 3
+
+
+def test_one_invalid_answer_of_the_picker_does_not_lose_the_other_parts(lane: Lane) -> None:
+    lane.chat = None
+    lane.ytdlp.captions = caption_track()
+    lane.claude.moments = MOMENTS
+    lane.claude.invalid_p3_calls = {1}  # the first 30 minutes get no valid answer
+    video_id = lane.video(duration_s=2400)
+    lane.enqueue(video_id)
+
+    outcome = lane.run_next()
+
+    assert outcome.status == "done" and outcome.spikes == 1  # only the moment of the second part
+    assert [float(row["spike_offset_s"]) for row in spikes(video_id)] == [1800.0]
+    row = db.fetch_one("select message, data from events where type = 'video.fallback_picked'")
+    assert row is not None and "1 part(s)" in row["message"] and row["data"]["moments"] == 1
 
 
 def test_a_chat_without_spikes_falls_back_to_the_transcript(lane: Lane) -> None:

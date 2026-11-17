@@ -34,6 +34,7 @@ DEFAULTS: Final[dict[str, Any]] = {
     "vod.fallback_max_duration_s": 43200,
     "vod.fallback_min_confidence": 0.5,
     "vod.fallback_chunk_s": 30,
+    "vod.fallback_max_transcript_s": 21600,
     "vod.fallback_transcribe_mode": "local",
     "vod.fallback_transcribe_max_s": 5400,
     "vod.fallback_transcribe_daily_s": 21600,
@@ -97,6 +98,7 @@ class VodConfig:
     fallback_max_duration_s: float
     fallback_min_confidence: float
     fallback_chunk_s: float
+    fallback_max_transcript_s: float
     fallback_transcribe_mode: str
     fallback_transcribe_max_s: float
     fallback_transcribe_daily_s: float
@@ -155,6 +157,7 @@ class VodConfig:
             fallback_max_duration_s=_number(merged, "vod.fallback_max_duration_s"),
             fallback_min_confidence=_number(merged, "vod.fallback_min_confidence"),
             fallback_chunk_s=_number(merged, "vod.fallback_chunk_s"),
+            fallback_max_transcript_s=_number(merged, "vod.fallback_max_transcript_s"),
             fallback_transcribe_mode=mode,
             fallback_transcribe_max_s=_number(merged, "vod.fallback_transcribe_max_s"),
             fallback_transcribe_daily_s=_number(merged, "vod.fallback_transcribe_daily_s"),

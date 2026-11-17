@@ -23,8 +23,10 @@ from typing import Final
 
 from sixstars import events, settings, usage
 from sixstars.ai import calls
+from sixstars.ai.calls import TranscriptChunk
 from sixstars.ai.schemas import Moment
 from sixstars.clients import transcribe as transcribe_client
+from sixstars.clients.anthropic_client import InvalidModelOutput
 from sixstars.clients.transcribe import Transcriber
 from sixstars.factory import tools
 from sixstars.factory.pipeline import next_budget_reset
@@ -103,6 +105,52 @@ def moment_spike(
         pad_end_s=min(end_limit, moment.end_s + cfg.context_pad_s),
         spike_floor_s=(moment.start_s + moment.end_s) / 2,
     )
+
+
+def limit_chunks(chunks: Sequence[TranscriptChunk], max_s: float, warmup_s: float) -> list[TranscriptChunk]:
+    """The part of a transcript the moment picker is paid to read: at most `max_s` seconds of it
+    (0 = all). A longer transcript loses its first `warmup_s` when enough remains after them. Pure."""
+    ordered = sorted(chunks, key=lambda chunk: chunk.start_s)
+    if not ordered or max_s <= 0 or ordered[-1].end_s - ordered[0].start_s <= max_s:
+        return ordered
+    start_s, end_s = transcribe_range(ordered[-1].end_s, max_s, warmup_s)
+    return [chunk for chunk in ordered if chunk.start_s >= start_s and chunk.end_s <= end_s]
+
+
+def pick(
+    video: store.Video, chunks: Sequence[TranscriptChunk], cfg: VodConfig, deps: Deps
+) -> tuple[list[Moment], int]:
+    """Ask the moment picker (P3) about each 30-minute part of the transcript on its own.
+
+    Returns the merged moments (strongest first, at most the maximum of `vod.fallback_moments`) and the
+    number of parts whose answer was still invalid after the client's repair retry. Such a part is left
+    out instead of failing the video: the other parts are already paid for. `BudgetExceededError` and
+    API failures are raised.
+    """
+    log = get_logger("vod")
+    n_min, n_max = cfg.fallback_moments
+    parts = calls.slice_chunks(chunks)
+    found: list[Moment] = []
+    failed = 0
+    for part in parts:
+        try:
+            found.extend(
+                calls.pick_moments(
+                    part,
+                    n_min if len(parts) == 1 else 0,
+                    n_max,
+                    cfg.min_len_s,
+                    cfg.max_len_s,
+                    title=video.title,
+                    creator=video.creator_handle,
+                    ref_id=video.id,
+                    client=deps.ai_client,
+                )
+            )
+        except InvalidModelOutput as exc:
+            failed += 1
+            log.warning("fallback_part_invalid", start_s=part[0].start_s, error=str(exc)[:300])
+    return calls.merge_moments(found, n_max), failed
 
 
 def download_audio(url: str, work: Path, *, access: Access, timeout_s: float, deps: Deps) -> Path:
@@ -225,19 +273,12 @@ def run(
         )
         if track is None:
             return _finish(video, FallbackResult("none", why_not, transcribed_s=transcribed_s))
-    chunks = captions.chunk_words(track.words, cfg.fallback_chunk_s)
-    n_min, n_max = cfg.fallback_moments
-    moments = calls.pick_moments(
-        chunks,
-        n_min,
-        n_max,
-        cfg.min_len_s,
-        cfg.max_len_s,
-        title=video.title,
-        creator=video.creator_handle,
-        ref_id=video.id,
-        client=deps.ai_client,
+    chunks = limit_chunks(
+        captions.chunk_words(track.words, cfg.fallback_chunk_s),
+        cfg.fallback_max_transcript_s,
+        settings.get_float("spikes.warmup_s"),
     )
+    moments, failed_slices = pick(video, chunks, cfg, deps)
     a_min = settings.get_float("spikes.s_min_confidence")
     kept = 0
     occupied = list(taken)
@@ -268,7 +309,12 @@ def run(
     return _finish(
         video,
         FallbackResult(
-            track.source, transcript_s=span, transcribed_s=transcribed_s, moments=len(moments), kept=kept
+            track.source,
+            reason=f"{failed_slices} part(s) of the transcript gave no valid answer" if failed_slices else "",
+            transcript_s=span,
+            transcribed_s=transcribed_s,
+            moments=len(moments),
+            kept=kept,
         ),
     )
 
