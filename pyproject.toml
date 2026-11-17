@@ -17,11 +17,11 @@ dependencies = [
     "anthropic",
     "supabase",
     "websockets",
-    "chat-downloader",
     "yt-dlp",
     "streamlink",
     "faster-whisper",
     "panns-inference",
+    "torch",
     "numpy",
     "pillow",
     "python-multipart",
@@ -82,4 +82,13 @@ ignore_missing_imports = true
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
+markers = ["ffmpeg: renders real video with ffmpeg (skipped when ffmpeg is missing)"]
 asyncio_default_fixture_loop_scope = "function"
+
+[tool.uv.sources]
+torch = [{ index = "pytorch-cpu" }]
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
