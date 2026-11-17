@@ -42,7 +42,17 @@ export function Shell({ env, email, mock, signOut, children }: ShellProps) {
   const alerts = useApi<{ items: Alert[] }>(pop === "alerts" ? "admin/alerts" : null, { limit: 6 }, { interval: POLL.list });
 
   const mode = status.data?.posting_mode ?? null;
-  const stale = health.data?.heartbeats.filter((h) => h.stale).length ?? 0;
+  // Workers leave one heartbeat row per process, so old rows of restarted workers stay stale forever.
+  // Count a service as down only when none of its heartbeats is fresh.
+  const stale = (() => {
+    const fresh = new Map<string, boolean>();
+    for (const h of health.data?.heartbeats ?? []) {
+      if (h.name.startsWith("trigger:")) continue;
+      const svc = h.name.match(/^(worker-[a-z]+)/)?.[1] ?? h.name;
+      fresh.set(svc, (fresh.get(svc) ?? false) || !h.stale);
+    }
+    return [...fresh.values()].filter((ok) => !ok).length;
+  })();
   const incidents = (health.data?.open_incidents.length ?? 0) + stale;
 
   // Close menus when the page changes (state adjusted during render, not in an effect).
