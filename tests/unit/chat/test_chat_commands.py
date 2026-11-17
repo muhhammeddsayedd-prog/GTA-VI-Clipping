@@ -1,16 +1,26 @@
 """The `sixstars chat` commands, the package entry points and the proxy decision, with the adapters
 replaced by fakes (no network, no database)."""
 
+import asyncio
 from collections import Counter
 from collections.abc import AsyncGenerator
 from pathlib import Path
 from typing import Any
 
 import pytest
+import structlog
 from typer.testing import CliRunner
 
-from sixstars import chat, settings
-from sixstars.chat import commands, net, twitch_irc, twitch_replay, youtube_live, youtube_replay
+from sixstars import chat, config, settings
+from sixstars.chat import (
+    commands,
+    net,
+    twitch_irc,
+    twitch_replay,
+    youtube_innertube,
+    youtube_live,
+    youtube_replay,
+)
 from sixstars.chat.models import ChatMessage, ChatSourceError, ReplayChat, read_jsonl
 from sixstars.cli import app
 
@@ -212,3 +222,55 @@ def test_download_replay_routes_by_platform(monkeypatch: pytest.MonkeyPatch, tmp
     seen.clear()
     assert chat.download_replay("youtube", "AAAAAAAAAAA") is None
     assert seen == {"video": "AAAAAAAAAAA", "proxy": None, "cookies_file": None}
+
+
+# ── a cookies path without a file means "no cookies" (the default .env names an absent file) ──
+
+
+def test_a_missing_cookies_file_means_no_cookies_and_is_logged_once(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    missing = tmp_path / "secrets" / "youtube_cookies.txt"
+    monkeypatch.setenv("YOUTUBE_COOKIES_FILE", str(missing))
+    config.env.cache_clear()
+    net._missing_cookies_logged.clear()
+    with structlog.testing.capture_logs() as logs:
+        assert net.cookies_file() is None
+        assert net.cookies_file() is None
+        assert net.usable_cookies(missing) is None
+    assert [entry["event"] for entry in logs] == ["youtube_cookies_file_missing"]
+    assert logs[0]["path"] == str(missing)
+
+
+def test_an_existing_cookies_file_is_used(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    cookies = tmp_path / "cookies.txt"
+    cookies.write_text("# Netscape HTTP Cookie File\n", encoding="utf-8")
+    monkeypatch.setenv("YOUTUBE_COOKIES_FILE", str(cookies))
+    config.env.cache_clear()
+    assert net.cookies_file() == cookies
+    assert net.usable_cookies(None) is None
+
+
+def test_download_replay_and_open_live_do_not_pass_a_missing_cookies_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("YOUTUBE_COOKIES_FILE", str(tmp_path / "missing.txt"))
+    config.env.cache_clear()
+    seen: dict[str, Any] = {}
+    monkeypatch.setattr(youtube_replay, "download", lambda video, **kw: seen.update(kw, replay=video))
+    monkeypatch.setattr(youtube_live, "stream", lambda video, **kw: seen.update(kw, live=video))
+    chat.download_replay("youtube", "AAAAAAAAAAA")
+    assert seen["replay"] == "AAAAAAAAAAA" and seen["cookies_file"] is None
+    seen.clear()
+    chat.open_live("youtube", "AAAAAAAAAAA")
+    assert seen["live"] == "AAAAAAAAAAA" and seen["cookies_file"] is None
+
+
+def test_the_adapters_themselves_survive_a_missing_cookies_file(tmp_path: Path) -> None:
+    """The crash M08 reported: `MozillaCookieJar.load` raised FileNotFoundError inside `new_client`."""
+    missing = tmp_path / "missing.txt"
+    client = youtube_innertube.new_client(cookies_file=missing)
+    assert client.cookies.get("SOCS", domain=".youtube.com") is not None
+    asyncio.run(client.aclose())
+    command = youtube_replay.build_ytdlp_command("AAAAAAAAAAA", tmp_path, None, missing)
+    assert "--cookies" not in command

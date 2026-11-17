@@ -22,8 +22,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Final, Literal
 
-from sixstars.chat.net import proxy_for
-from sixstars.config import env
+from sixstars.chat.net import cookies_file, proxy_for
 from sixstars.logging import get_logger
 
 FailureKind = Literal["blocked", "forbidden", "unavailable", "timeout", "error"]
@@ -117,19 +116,11 @@ class Access:
         return f"PROXY_URL {proxy}, YOUTUBE_COOKIES_FILE {cookies}"
 
 
-_missing_cookies_logged: set[str] = set()
-
-
 def access_for(platform: str) -> Access:
     """The proxy (`PROXY_URL`, only for platforms in `downloads.proxy_platforms`) and the cookies file
     (`YOUTUBE_COOKIES_FILE`, YouTube only, only when the file exists) for `platform`."""
     proxy = proxy_for("twitch" if platform == "twitch" else "youtube")
-    cookies = env().YOUTUBE_COOKIES_FILE if platform == "youtube" else None
-    if cookies is not None and not cookies.is_file():
-        if str(cookies) not in _missing_cookies_logged:
-            _missing_cookies_logged.add(str(cookies))
-            get_logger("vod").warning("youtube_cookies_file_missing", path=str(cookies))
-        cookies = None
+    cookies = cookies_file() if platform == "youtube" else None
     return Access(proxy=proxy, cookies_file=cookies)
 
 

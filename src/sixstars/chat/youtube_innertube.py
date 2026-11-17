@@ -24,6 +24,7 @@ from typing import Any, Final
 import httpx
 
 from sixstars.chat.models import ChatMessage, ChatSourceError, Kind
+from sixstars.chat.net import usable_cookies
 
 WATCH_URL: Final = "https://www.youtube.com/watch"
 CHAT_API_URL: Final = "https://www.youtube.com/youtubei/v1/live_chat/{endpoint}"
@@ -367,6 +368,7 @@ def new_client(
     request, and optionally a proxy and a Netscape-format cookies file. `transport` is for tests."""
     cookies = httpx.Cookies()
     cookies.set(CONSENT_COOKIE[0], CONSENT_COOKIE[1], domain=".youtube.com")
+    cookies_file = usable_cookies(cookies_file)  # a path without a file means "no cookies"
     if cookies_file is not None:
         jar = MozillaCookieJar(str(cookies_file))
         jar.load(ignore_discard=True, ignore_expires=True)
