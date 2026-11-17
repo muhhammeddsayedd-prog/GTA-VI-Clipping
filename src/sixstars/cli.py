@@ -141,6 +141,20 @@ def discovery_set_tier(
     raise typer.Exit(code=code)
 
 
+@discovery_app.command("doctor")
+def discovery_doctor(
+    video: str = typer.Option("", "--video", help="YouTube id or URL of a past stream to test chat on."),
+    search_api: bool = typer.Option(False, "--search-api", help="Also make one Data API search call."),
+    as_json: bool = typer.Option(False, "--json", help="Print the results as JSON."),
+) -> None:
+    """Check each source path once (yt-dlp search, Data API, RSS, chat, a 5 s download, Twitch)."""
+    from sixstars.discovery import commands
+
+    with _database():
+        code = commands.doctor(video=video, search_api=search_api, as_json=as_json)
+    raise typer.Exit(code=code)
+
+
 @vod_app.command("process")
 def vod_process(
     url: str = typer.Argument(..., help="Twitch VOD or YouTube video URL to process end to end."),

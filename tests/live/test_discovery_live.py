@@ -2,7 +2,8 @@
 
 - the `sp` filter values of `discovery.ytsearch` still mean "live now" and "recent videos" on YouTube;
 - a flat yt-dlp listing still carries the fields discovery reads;
-- `videos.list` still returns the fields `sources.candidate_from_api` reads, at 1 quota unit per call.
+- `videos.list` still returns the fields `sources.candidate_from_api` reads, at 1 quota unit per call;
+- `search.list` (the fallback when the yt-dlp search is refused) still answers in the documented shape.
 
 Run with `RUN_LIVE_TESTS=1 uv run pytest tests/live/test_discovery_live.py -v`.
 """
@@ -55,3 +56,18 @@ def test_videos_list_enriches_live_and_finished_videos() -> None:
     assert any(stream.viewers is not None for stream in streams)
     assert all(video.published_at is not None and video.duration_s is not None for video in videos)
     assert any(video.views is not None and video.likes is not None for video in videos)
+
+
+def test_search_list_returns_live_streams_in_the_documented_shape() -> None:
+    """One `search.list` call (one of the 100 a day): the fallback source of discovery when the yt-dlp
+    search is refused. Checks the fields `sources._stub_from_search` reads."""
+    client = YouTubeClient()
+    if not client.is_configured():
+        pytest.skip("YOUTUBE_API_KEY is not set")
+    items = client.search_list(TERM, event_type="live", order="viewCount", relevance_language="en")
+    assert 5 <= len(items) <= 50
+    stubs = [stub for stub in (sources._stub_from_search(item) for item in items) if stub is not None]
+    assert len(stubs) == len(items)
+    assert all(len(stub.video_id) == 11 and (stub.channel_id or "").startswith("UC") for stub in stubs)
+    assert all(stub.title and stub.published_at is not None and stub.origin == "ytapi" for stub in stubs)
+    assert sum(1 for stub in stubs if stub.live_status == "is_live") >= len(stubs) // 2
