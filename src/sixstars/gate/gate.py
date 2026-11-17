@@ -30,7 +30,7 @@ from sixstars.clients.anthropic_client import AnthropicClient, BudgetKind
 from sixstars.clients.upload_post import UploadPostClient
 from sixstars.clients.youtube import YouTubeClient
 from sixstars.factory import pipeline, tools
-from sixstars.gate import profiles, store
+from sixstars.gate import profiles, rescore, store
 from sixstars.gate import visual as visuals
 from sixstars.gate.decision import decide
 from sixstars.gate.models import (
@@ -150,9 +150,13 @@ def _youtube(deps: GateDeps) -> YouTubeClient:
     return deps.youtube
 
 
-def _look(row: store.ClipRow, deps: GateDeps) -> VisualFindings:
+def _look(row: store.ClipRow, deps: GateDeps, shots: rescore.Shots | None = None) -> VisualFindings:
+    """Ask P5. `shots` are the frames the visual score already extracted; P5 uses its four of them."""
     lane: BudgetKind = "express" if row.profile == EXPRESS else "vod"
     assert row.local_path is not None and row.duration_s is not None
+    frames = rescore.p5_frames(shots, row.duration_s)
+    if frames is not None:
+        return visuals.check_frames(frames, lane=lane, clip_id=row.id, client=deps.ai_client)
     return visuals.look_at_file(
         Path(row.local_path),
         row.duration_s,
@@ -282,6 +286,9 @@ def _hand_off(clip_id: str, deps: GateDeps) -> tuple[SpikeRun | None, str | None
 def run_gate(clip_id: str, *, deps: GateDeps | None = None) -> GateOutcome:
     """Judge the clip `clip_id` if it is in `gating`. Safe to call again: a judged clip is left alone.
 
+    With `ai.visual_score` on, the clip is first scored from its frames (`gate.rescore`, prompt P9V) and
+    judged on that score; if that call fails, on the clip writer's score.
+
     Raises when the clip does not exist, when a gate setting is malformed, or when P5 cannot be asked
     (API error, daily budget): the clip then stays in `gating` and the caller retries.
     """
@@ -299,13 +306,20 @@ def run_gate(clip_id: str, *, deps: GateDeps | None = None) -> GateOutcome:
         now = deps.clock()
         state = precheck_state.current_state(_youtube(deps), now)
         frames = store.music_frames(row.id)
+        # The visual score replaces the clip writer's score before anything is decided, unless the clip
+        # would be rejected even with a perfect score (then the call is not paid for).
+        shots: rescore.Shots | None = None
+        if rescore.wanted(row):
+            best = _decide(rescore.with_top_score(row), file, _NOTHING_SEEN, state, settings, now, frames)
+            if best.verdict is not Verdict.REJECT:
+                row, shots = rescore.run(row, client=deps.ai_client, ffmpeg=deps.ffmpeg)
         optimistic = _decide(row, file, _NOTHING_SEEN, state, settings, now, frames)
         if optimistic.verdict is Verdict.REJECT:
             try:
                 return _finish(row, file, _NOTHING_SEEN, None, settings, deps, frames=frames, p5_skipped=True)
             except _VisualNeededError:
                 get_logger("gate").info("gate_p5_needed_after_all")
-        return _finish(row, file, _look(row, deps), None, settings, deps, frames=frames)
+        return _finish(row, file, _look(row, deps, shots), None, settings, deps, frames=frames)
 
 
 def resolve_precheck(clip_id: str, state: PrecheckState, *, deps: GateDeps | None = None) -> GateOutcome:

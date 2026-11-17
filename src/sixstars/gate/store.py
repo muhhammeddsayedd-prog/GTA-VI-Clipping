@@ -45,8 +45,8 @@ RECENT_LIMIT = 1000
 _CLIP_SQL = """
 select c.id::text as id, c.creator_id::text as creator_id, c.spike_id::text as spike_id, c.status, c.lane,
        c.gate_profile, c.source_platform, c.source_id, c.start_s, c.end_s, c.duration_s, c.score,
-       c.music_ratio, c.spoiler, c.safety_flags, c.hook, c.title, c.caption, c.hashtags, c.topic,
-       c.commentary,
+       c.score_parts, c.music_ratio, c.spoiler, c.safety_flags, c.hook, c.title, c.caption, c.hashtags,
+       c.topic, c.commentary,
        c.transcript, c.local_path, c.storage_path, c.gate_result, c.precheck_video_id, c.created_at
 from clips c
 """
@@ -140,6 +140,38 @@ def music_frames(clip_id: str) -> tuple[bool, ...] | None:
     if not isinstance(frames, list) or not frames or not all(flag in (0, 1, True, False) for flag in frames):
         return None
     return tuple(bool(flag) for flag in frames)
+
+
+def spike_row(spike_id: str | None) -> Mapping[str, Any] | None:
+    """What the visual score needs of the chat spike a clip was cut around; None when there is none."""
+    if not spike_id:
+        return None
+    return db.fetch_one(
+        "select mode, spike_offset_s, msgs_in_bucket, unique_chatters, reaction_count, tier, chat_sample "
+        "from spikes where id = %s",
+        (spike_id,),
+    )
+
+
+def store_visual_score(clip_id: str, score: int, score_parts: Mapping[str, object]) -> bool:
+    """Write the visual score on a clip that is still in `gating`, with its `clip.scored` event.
+    `score_parts` is the whole new document (see `gate.rescore.score_document`). Returns False, and
+    writes nothing, when the clip left `gating` in the meantime."""
+    with db.transaction():
+        changed = db.execute(
+            "update clips set score = %s, score_parts = %s where id = %s and status = %s",
+            (score, Jsonb(dict(score_parts)), clip_id, STATUS_GATING),
+        )
+        if changed:
+            events.emit(
+                "clip.scored",
+                entity_type="clip",
+                entity_id=clip_id,
+                message=f"visual score {score}",
+                data={"score": score, "score_parts": dict(score_parts)},
+                service="gate",
+            )
+    return bool(changed)
 
 
 def clip_facts(row: ClipRow, file: FileFacts | None, frames: tuple[bool, ...] | None) -> ClipFacts:

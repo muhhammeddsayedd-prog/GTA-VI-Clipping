@@ -1,7 +1,7 @@
 """Loads the prompt files in `ai/prompts/`. Each `<prompt id>.md` has a `## System` section (static, cached
 by the API) and a `## User template` section; both use `{placeholders}` filled with `str.format_map`.
 `_preamble.md` is the common first paragraph of every system prompt and `_score_rubric.md` the scoring
-scales shared by the clip writer (P2) and the clip scorer (P9); a system section includes them with
+scales shared by the clip writer (P2) and the clip scorers (P9, P9V); a system section includes them with
 `{preamble}` and `{score_rubric}`. Implemented in M05.
 """
 
@@ -21,6 +21,7 @@ PROMPT_IDS = (
     "p7_takedown_classify",
     "p8_translate_lines",
     "p9_clip_score",
+    "p9_visual_score",
     "p10_sentence_ends",
 )
 SYSTEM_HEADING = "## System"
@@ -87,5 +88,5 @@ def preamble_text() -> str:
 
 @cache
 def score_rubric_text() -> str:
-    """The scoring scales and bands, word for word the same in P2 and P9."""
+    """The scoring scales and bands, word for word the same in P2, P9 and P9V."""
     return (PROMPTS_DIR / "_score_rubric.md").read_text(encoding="utf-8").strip()

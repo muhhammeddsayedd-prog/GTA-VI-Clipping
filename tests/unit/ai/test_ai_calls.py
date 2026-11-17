@@ -8,13 +8,20 @@ from datetime import UTC, datetime
 from typing import Any
 
 import pytest
-from ai_samples import clip_context, spike, verdict_reply, writing_reply
+from ai_samples import LINES, clip_context, spike, verdict_reply, writing_reply
 from PIL import Image
 from structlog.testing import capture_logs
 
 from sixstars.ai import calls
-from sixstars.ai.calls import BudgetExceededError, Segment, TranscriptChunk
-from sixstars.ai.schemas import ClipScore, ClipWriting, Moment
+from sixstars.ai.calls import (
+    BudgetExceededError,
+    ChatLine,
+    ChatReaction,
+    RenderedClip,
+    Segment,
+    TranscriptChunk,
+)
+from sixstars.ai.schemas import ClipScore, ClipWriting, Moment, VisualClipScore
 from sixstars.clients.anthropic_client import (
     AnthropicClient,
     AnthropicError,
@@ -559,6 +566,173 @@ def test_write_clip_keeps_the_writers_score_when_the_scorer_fails(ai_settings: d
     fake = FakeAnthropicClient({calls.P2: writing_reply(start_s=8.9, end_s=29.0), calls.P9: scored(6)})
     lines = [line for line in clip_context().lines if line.index in (0, 4)]
     assert calls.write_clip(clip_context(now=NOW, lines=lines), client=fake).score == 8
+
+
+# ── P9V ──────────────────────────────────────────────────────
+
+
+def seen_score(score: int, **parts: int) -> dict[str, Any]:
+    return {"seen": f"A fall, scored {score}.", **scored(score, **{"clarity": 7, "payoff": 7, **parts})}
+
+
+def rendered(**overrides: Any) -> RenderedClip:
+    chat = ChatReaction(
+        msgs=20,
+        uniq=18,
+        reactions=15,
+        tier="A",
+        peak_s=12.0,
+        lines=(ChatLine(-40.0, "old message"), ChatLine(-1.0, "LUL"), ChatLine(3.0, "no  parachute\nKEKW")),
+    )
+    values: dict[str, Any] = {
+        "hook": "Parachute? Sure 😭",
+        "length_s": 20.7,
+        "lines": LINES[:2],
+        "chat": chat,
+        "clip_id": "clip-7",
+    }
+    return RenderedClip(**{**values, **overrides})
+
+
+def test_score_clip_visual_sends_frames_lines_and_chat(ai_settings: dict[str, Any]) -> None:
+    fake = FakeAnthropicClient({calls.P9V: seen_score(8, payoff=8)})
+    frames = [frame(1080, 1920)] * 6
+    times = [2.0, 7.0, 9.0, 12.0, 15.0, 17.5]
+    result = calls.score_clip_visual(rendered(), frames, times, client=fake)
+
+    assert isinstance(result, VisualClipScore) and result.score == 8 and result.seen.startswith("A fall")
+    call = only_call(fake)
+    assert call["prompt_id"] == "p9_visual_score" and call["ref_id"] == "clip-7"
+    assert call["model"] == WRITER and call["images"] == 6 and call["schema"] is VisualClipScore
+    user = call["user_content"]
+    assert "Clip length: 21 s" in user and "Hook on screen: Parachute? Sure 😭" in user
+    assert "6 frames from the rendered clip" in user and "2.0, 7.0, 9.0, 12.0, 15.0, 17.5" in user
+    assert "2.00-3.10 | okay watch this" in user and "Commentary line on screen: (none)" in user
+    assert "20 messages from 18 chatters in the peak window" in user
+    assert "15 of them (75%) laughter or shock reactions" in user and "spike tier A" in user
+    # chat near the peak only, in clip time, one message per line
+    assert "11s  LUL" in user and "15s  no parachute KEKW" in user and "old message" not in user
+    # the system prompt: the shared rubric, our overlay named, the transcript-only bias gone
+    system = call["system"]
+    assert "First `score_parts`" in system and "@6starsclipping" in system
+    for ours in (
+        "the hook:",
+        "the subtitles:",
+        "watermark",
+        "creator credit",
+        "progress bar",
+        '"LIVE" badge',
+    ):
+        assert ours in system
+    assert "from the frames and the chat reaction as well as the words" in system
+    assert "give the lower one" not in system and "do not assume a visual payoff" not in system
+
+    ai_settings["ai.visual_score_model"] = "fast"
+    fast = FakeAnthropicClient({calls.P9V: seen_score(7)})
+    calls.score_clip_visual(rendered(), frames, times, client=fast)
+    assert only_call(fast)["model"] == FAST
+
+
+def test_score_clip_visual_shrinks_the_frames(monkeypatch: pytest.MonkeyPatch) -> None:
+    sizes: list[int] = []
+    real = calls.prepare_jpeg
+
+    def spy(data: bytes, max_side: int = 1280, quality: int = 85) -> Any:
+        prepared = real(data, max_side=max_side, quality=quality)
+        sizes.append(max(prepared.width, prepared.height))
+        return prepared
+
+    monkeypatch.setattr(calls, "prepare_jpeg", spy)
+    fake = FakeAnthropicClient({calls.P9V: seen_score(7)})
+    calls.score_clip_visual(rendered(), [frame(1080, 1920)] * 2, [1.0, 2.0], client=fake)
+    assert sizes == [768, 768]
+
+
+def test_score_clip_visual_without_chat_or_speech() -> None:
+    fake = FakeAnthropicClient({calls.P9V: seen_score(7)})
+    calls.score_clip_visual(rendered(chat=None, lines=[]), [frame(64, 64)], [1.0], client=fake)
+    user = only_call(fake)["user_content"]
+    assert "(no chat data for this clip)" in user and "(nobody speaks)" in user
+    # a live spike has no position in the clip: the messages are shown relative to the peak
+    live = ChatReaction(msgs=5, lines=(ChatLine(2.0, "LMAO"),))
+    assert "+2s  LMAO" in calls._reaction_block(live)
+    assert calls.chat_summary(live) == "5 messages in the peak window."
+    assert calls.chat_summary(ChatReaction()) == "(no chat counts for this clip)"
+
+
+def test_score_clip_visual_takes_the_median_of_several_asks() -> None:
+    replies = [seen_score(8, payoff=8), seen_score(6, payoff=6), seen_score(7)]
+    fake = FakeAnthropicClient({calls.P9V: replies})
+    result = calls.score_clip_visual(rendered(), [frame(64, 64)], [1.0], samples=3, client=fake)
+    assert len(fake.calls) == 3
+    assert result.score == 7 and result.score_parts.payoff == 7 and result.seen == "A fall, scored 7."
+
+
+@pytest.mark.parametrize(
+    ("score", "payoff", "clarity", "expected"),
+    [
+        (8, 8, 8, 8),
+        (7, 7, 7, 7),
+        (8, 6, 9, 6),  # not in the 7-8 band without a payoff of 7
+        (7, 9, 6, 6),  # nor without a clarity of 7
+        (9, 9, 7, 8),  # the 9-10 band needs both at 8
+        (10, 8, 8, 9),  # never more than one above payoff
+        (6, 3, 9, 4),
+        (6, 9, 2, 4),  # never more than two above clarity
+        (5, 5, 5, 5),
+        (1, 1, 1, 1),
+    ],
+)
+def test_bounded_score_enforces_the_rubric(score: int, payoff: int, clarity: int, expected: int) -> None:
+    item = ClipScore.model_validate(scored(score, payoff=payoff, clarity=clarity))
+    assert calls.bounded_score(item) == expected <= score
+
+
+def test_the_models_score_is_bounded_before_it_is_returned() -> None:
+    fake = FakeAnthropicClient({calls.P9V: seen_score(9, payoff=6)})
+    assert calls.score_clip_visual(rendered(), [frame(64, 64)], [1.0], client=fake).score == 6
+
+
+def test_score_clip_visual_refuses_bad_input_and_respects_the_budget(ai_settings: dict[str, Any]) -> None:
+    fake = FakeAnthropicClient({calls.P9V: seen_score(7)})
+    with pytest.raises(ValueError, match="at least one frame"):
+        calls.score_clip_visual(rendered(), [], [], client=fake)
+    with pytest.raises(ValueError, match="at most"):
+        calls.score_clip_visual(rendered(), [frame(64, 64)] * 9, [1.0] * 9, client=fake)
+    with pytest.raises(ValueError, match="one time"):
+        calls.score_clip_visual(rendered(), [frame(64, 64)] * 2, [1.0], client=fake)
+    with pytest.raises(ValueError, match="samples"):
+        calls.score_clip_visual(rendered(), [frame(64, 64)], [1.0], samples=0, client=fake)
+    ai_settings["ai.visual_score_model"] = "opus"
+    with pytest.raises(ValueError, match="'fast' or 'writer'"):
+        calls.score_clip_visual(rendered(), [frame(64, 64)], [1.0], client=fake)
+    ai_settings["ai.visual_score_model"] = "writer"
+    assert fake.calls == []
+
+    ai_settings["_spent"] = 25.0
+    with pytest.raises(BudgetExceededError):
+        calls.score_clip_visual(rendered(), [frame(64, 64)], [1.0], client=fake)
+    calls.score_clip_visual(rendered(), [frame(64, 64)], [1.0], lane="express", client=fake)
+    assert len(fake.calls) == 1
+
+    failing = FakeAnthropicClient({calls.P9V: AnthropicError("overloaded")})
+    with pytest.raises(AnthropicError):
+        calls.score_clip_visual(rendered(), [frame(64, 64)], [1.0], lane="express", client=failing)
+
+
+def test_score_clip_visual_records_usage_under_its_own_operation(
+    scripted: Scripted, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    recorded: list[tuple[Any, ...]] = []
+    monkeypatch.setattr(calls.anthropic_client.usage, "record", lambda *a, **k: recorded.append((a, k)))
+    client, sdk = scripted(json.dumps(seen_score(7)))
+    calls.score_clip_visual(rendered(), [frame(64, 64)] * 2, [1.0, 2.0], client=client)
+    ((args, kwargs),) = recorded
+    assert args == ("anthropic", "p9_visual_score") and kwargs["model"] == WRITER
+    request = sdk.requests[0]
+    content = request["messages"][0]["content"]
+    assert [block["type"] for block in content] == ["image", "image", "text"]
+    assert request["output_config"]["format"]["type"] == "json_schema"
 
 
 # ── P10 ──────────────────────────────────────────────────────

@@ -54,7 +54,7 @@ def test_clip_writer_and_clip_scorer_share_one_rubric() -> None:
     for part in ("`hook`", "`clarity`", "`payoff`", "`rewatch`"):
         assert part in rubric
     assert "never more than one above `payoff`" in rubric
-    for prompt_id in ("p2_clip_writer", "p9_clip_score"):
+    for prompt_id in ("p2_clip_writer", "p9_clip_score", "p9_visual_score"):
         assert rubric in prompt_files.load(prompt_id).render_system(SYSTEM_VALUES)
     assert rubric not in prompt_files.load("p5_visual_check").render_system(SYSTEM_VALUES)
 
