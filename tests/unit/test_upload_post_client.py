@@ -301,3 +301,106 @@ def test_delete_post() -> None:
         with pytest.raises(NotSupported):
             client.delete_post("default", platform, "1")
     assert route.call_count == 2
+
+
+# The three status answers of the first real uploads (2026-11-17, private staging posts; account details
+# removed). The answer changes shape between "processing" and "completed".
+REAL_PROCESSING = {
+    "request_id": "post:c1:tiktok_main",
+    "job_id": "8fb5",
+    "status": "processing",
+    "scheduler_status": "running",
+    "completed": 0,
+    "failed": 0,
+    "retryable": 0,
+    "skipped": 0,
+    "total": 1,
+    "results": [{"platform": "tiktok", "status": "processing", "attempts": 1, "success": False}],
+    "external_id": None,
+    "last_update": "Tue, 17 Nov 2026 09:14:10 GMT",
+    "message": "Upload is currently being processed",
+}
+REAL_COMMON = {
+    "profile_username": "default",
+    "media_type": "video",
+    "upload_timestamp": {"$date": "2026-11-17T09:12:29.534Z"},
+    "success": True,
+    "error_message": None,
+    "error_signature": None,
+    "error_code": None,
+    "failure_stage": None,
+    "media_size_bytes": 23925395,
+    "is_async": True,
+    "source": "api",
+    "video_was_transcoded": False,
+    "changes": [],
+    "target_linkedin_page_id": None,
+    "job_id": "50f0",
+    "request_total_platforms": 1,
+}
+REAL_YOUTUBE_PRIVATE = {
+    "status": "completed",
+    "completed": 1,
+    "total": 1,
+    "results": [
+        {
+            **REAL_COMMON,
+            "platform": "youtube",
+            "platform_post_id": "kwtCUdnP_Zk",
+            "post_url": "Post uploaded as Private. No public URL available.",
+            "warnings": [
+                "first_comment was not posted on YouTube: YouTube does not allow comments on private videos."
+            ],
+            "request_id": "post:c1:youtube_main",
+        }
+    ],
+    "external_id": None,
+    "last_update": {"$date": "2026-11-17T09:12:29.534Z"},
+    "request_id": "post:c1:youtube_main",
+}
+REAL_TIKTOK_SELF_ONLY = {
+    "status": "completed",
+    "completed": 1,
+    "total": 1,
+    "results": [
+        {
+            **REAL_COMMON,
+            "platform": "tiktok",
+            "platform_post_id": None,
+            "post_url": None,
+            "original_publish_id": "v_pub_url~v2.7709065962657630260",
+            "warnings": [
+                "TikTok published the video but has not released its public post ID yet (it does so once "
+                "moderation finishes, which can take hours).",
+                "First comment skipped: TikTok has not returned the post id yet.",
+            ],
+            "request_id": "post:c1:tiktok_main",
+        }
+    ],
+    "external_id": None,
+    "last_update": {"$date": "2026-11-17T09:17:24.921Z"},
+    "request_id": "post:c1:tiktok_main",
+}
+
+
+def test_real_status_answers_of_the_first_private_uploads() -> None:
+    processing = upload_post.parse_status("post:c1:tiktok_main", REAL_PROCESSING)
+    assert processing.status == "processing" and not processing.finished and processing.total == 1
+    running = processing.result_for("tiktok")
+    # Not final: `success: false` here does not mean the platform failed, and it carries no error.
+    assert running is not None and not running.success and running.status == "processing"
+    assert running.error is None and running.post_id is None
+
+    youtube = upload_post.parse_status("post:c1:youtube_main", REAL_YOUTUBE_PRIVATE)
+    assert youtube.finished and youtube.request_id == "post:c1:youtube_main"
+    video = youtube.result_for("youtube")
+    assert video is not None and video.success and video.post_id == "kwtCUdnP_Zk"
+    assert video.post_url is None  # a note, not a link
+    assert video.error is None and video.error_kind is None and not video.skipped
+
+    tiktok = upload_post.parse_status("post:c1:tiktok_main", REAL_TIKTOK_SELF_ONLY)
+    post = tiktok.result_for("tiktok")
+    assert tiktok.finished and post is not None and post.success
+    # The publish id is not a post id: nothing can be looked up or linked with it.
+    assert post.post_id is None and post.post_url is None
+    assert not post.raw.get("fallback_to_inbox") and len(post.raw["warnings"]) == 2

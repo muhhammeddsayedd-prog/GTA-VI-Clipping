@@ -16,8 +16,9 @@ Safety rules, in the order they are applied:
 `failed`, `skipped` (cancelled) or `pending` with a `post.retry` job queued.
 """
 
+import re
 from collections.abc import Callable, Iterable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
 from enum import StrEnum
 from pathlib import Path
@@ -36,7 +37,7 @@ from sixstars.logging import get_logger
 from sixstars.posting.caps import on_rate_limit
 from sixstars.posting.captions import UploadRequest, build_upload_request
 from sixstars.posting.gate import check_gate
-from sixstars.posting.models import CLIP_APPROVED, Account, Lane
+from sixstars.posting.models import CLIP_APPROVED, Account, Lane, Platform
 from sixstars.posting.params import PostingParams
 from sixstars.posting.slots import slot_is_open
 from sixstars.posting.store import LoadedClip, PostRow, PublisherStore, utcnow
@@ -51,6 +52,8 @@ LINK_REFRESH_S = 300  # a published post without a URL (TikTok) is read again af
 LINK_REFRESH_WINDOW = timedelta(minutes=20)
 AUTH_PAUSE = timedelta(hours=24)  # pause after an authorisation error; a human has to reconnect
 MAX_ERROR_CHARS = 500
+YOUTUBE_ID = re.compile(r"[A-Za-z0-9_-]{11}")
+YOUTUBE_WATCH_URL = "https://www.youtube.com/watch?v={video_id}"
 
 
 class Outcome(StrEnum):
@@ -82,6 +85,21 @@ class _Work:
 
 def _short(text: str) -> str:
     return text[:MAX_ERROR_CHARS]
+
+
+def post_link(platform: Platform, result: PlatformResult) -> str | None:
+    """The link to store for a published post.
+
+    For a private YouTube upload Upload-Post answers with a note instead of a URL ("Post uploaded as
+    Private. No public URL available.", seen on the first real upload), and it never sends one later. The
+    video id is there, so the watch link is built from it: the owner can open it, and the guardian and the
+    report have a link. Other platforms keep what Upload-Post gave (TikTok sends the URL later).
+    """
+    if result.post_url is not None:
+        return result.post_url
+    if platform is Platform.YOUTUBE and result.post_id and YOUTUBE_ID.fullmatch(result.post_id):
+        return YOUTUBE_WATCH_URL.format(video_id=result.post_id)
+    return None
 
 
 def _key_in_use(exc: PostRejected) -> bool:
@@ -208,6 +226,9 @@ class Publisher:
         return self._after_upload(work, request, status)
 
     def _after_upload(self, work: _Work, request: UploadRequest, status: UploadStatus) -> PublishResult:
+        # Sending the file takes a minute or more (75 to 80 s for 24 MB on the first real uploads), so the
+        # time read before it is stale: everything after the upload is timed from now.
+        work = replace(work, now=self._clock())
         if not status.finished:
             try:
                 status = self._client.wait_for_upload(request.request_id, timeout_s=self._wait_s)
@@ -258,7 +279,9 @@ class Publisher:
 
     def _published(self, work: _Work, result: PlatformResult) -> PublishResult:
         post = work.post
-        if not self._store.mark_published(post.id, result.post_id, result.post_url, work.now):
+        now = work.now
+        post_url = post_link(post.platform, result)
+        if not self._store.mark_published(post.id, result.post_id, post_url, now):
             return PublishResult(post.id, Outcome.NOOP, "the post was already final")
         self._store.emit(
             "post.published",
@@ -270,18 +293,18 @@ class Publisher:
                 "account_id": post.account_id,
                 "lane": post.lane.value,
                 "platform_post_id": result.post_id,
-                "post_url": result.post_url,
+                "post_url": post_url,
             },
         )
         self._log.info("post_published", clip_id=post.clip_id, post_id=post.id, account_id=post.account_id)
         if post.lane is Lane.SPIKE:
-            self._store.record_spike_to_post(post.clip_id, work.now)
-        self._store.settle_clip(post.clip_id, work.now)
-        if result.post_url is None:
+            self._store.record_spike_to_post(post.clip_id, now)
+        self._store.settle_clip(post.clip_id, now)
+        if post_url is None:
             self._store.schedule_publish_retry(
-                post.id, post.clip_id, post.lane, work.now + timedelta(seconds=LINK_REFRESH_S)
+                post.id, post.clip_id, post.lane, now + timedelta(seconds=LINK_REFRESH_S)
             )
-        return PublishResult(post.id, Outcome.PUBLISHED, result.post_url or "published, URL not known yet")
+        return PublishResult(post.id, Outcome.PUBLISHED, post_url or "published, URL not known yet")
 
     def _refresh_link(self, post: PostRow) -> PublishResult:
         """A published post without a URL: read the status once more and store the URL when it is there."""

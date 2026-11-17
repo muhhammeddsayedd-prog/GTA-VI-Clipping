@@ -350,3 +350,47 @@ def test_a_post_waiting_for_manual_removal_is_always_read() -> None:
     )
     observations, unverifiable = claims.observe([waiting], client, YouTube(), config(), [], lambda: 0.0)
     assert [item.post.id for item in observations] == ["tt"] and unverifiable == 0
+
+
+# ── real answers for the first private staging posts (2026-11-17) ─────────────────────────────────────────
+
+
+def test_real_answers_for_private_posts_are_never_a_finding() -> None:
+    """A private YouTube video reads fine through Upload-Post; a TikTok post that has no public post id
+    (a `SELF_ONLY` post never gets one) answers with an error that must not be read as "removed"."""
+    youtube_body = {
+        "success": True,
+        "platforms": {
+            "youtube": {
+                "success": True,
+                "platform_post_id": "kwtCUdnP_Zk",
+                "post_url": "Post uploaded as Private. No public URL available.",
+                "post_metrics": {"views": 0, "likes": 0, "comments": 0, "shares": 0},
+                "post_metrics_source": "platform_api",
+            }
+        },
+    }
+    tiktok_body = {
+        "success": True,
+        "platforms": {
+            "tiktok": {
+                "success": True,
+                "platform_post_id": None,
+                "post_url": None,
+                "original_publish_id": "v_pub_url~v2.7709065962657630260",
+                "post_metrics_error": "TikTok post ID could not be resolved yet. Moderation may still be "
+                "in progress. Please try again later.",
+                "profile_snapshot_latest": {"followers": 0, "video_count": 0},
+            }
+        },
+    }
+    video = post("yt", "youtube", privacy="private", platform_post_id="kwtCUdnP_Zk", url=None)
+    clip = post("tt", "tiktok", privacy="SELF_ONLY", platform_post_id=None, url=None)
+
+    seen = [
+        claims.analytics_observation(video, youtube_body),
+        claims.analytics_observation(clip, tiktok_body),
+    ]
+
+    assert [item.seen for item in seen] == ["ok", "unknown"]
+    assert claims.judge(seen) == ([], [])

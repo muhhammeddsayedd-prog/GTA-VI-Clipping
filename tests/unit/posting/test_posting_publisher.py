@@ -22,7 +22,7 @@ from sixstars.clients.upload_post import (
     UploadPostError,
     UploadStatus,
 )
-from sixstars.posting.models import Account, Clip
+from sixstars.posting.models import Account, Clip, Platform
 from sixstars.posting.publisher import (
     AUTH_PAUSE,
     LINK_REFRESH_S,
@@ -31,6 +31,7 @@ from sixstars.posting.publisher import (
     RETRY_BACKOFF_S,
     Outcome,
     Publisher,
+    post_link,
 )
 
 YT = "youtube_main"
@@ -389,6 +390,93 @@ def test_a_status_that_cannot_be_read_is_polled_again(tmp_path: Path) -> None:
 
     assert s.publish() is Outcome.PENDING
     assert s.post.status == "pending" and len(s.store.retries) == 1
+
+
+# ── real answers of the first private staging uploads (2026-11-17) ─────────────────────────────────────────
+def test_a_private_youtube_upload_gets_its_watch_link_and_is_not_asked_for_a_url(tmp_path: Path) -> None:
+    """Upload-Post answers a private YouTube upload with the video id and a note instead of a URL."""
+    s = Setup(tmp_path, YT, app_env="staging", privacy="private")
+    s.client.platform_results["youtube"] = PlatformResult(
+        "youtube",
+        success=True,
+        post_id="kwtCUdnP_Zk",
+        post_url=None,
+        raw={"post_url": "Post uploaded as Private. No public URL available."},
+    )
+
+    assert s.publish() is Outcome.PUBLISHED
+
+    assert s.post.platform_post_id == "kwtCUdnP_Zk"
+    assert s.post.post_url == "https://www.youtube.com/watch?v=kwtCUdnP_Zk"
+    assert s.store.retries == []
+
+
+@pytest.mark.parametrize(
+    ("platform", "post_id", "given", "expected"),
+    [
+        (Platform.YOUTUBE, "kwtCUdnP_Zk", None, "https://www.youtube.com/watch?v=kwtCUdnP_Zk"),
+        (
+            Platform.YOUTUBE,
+            "kwtCUdnP_Zk",
+            "https://youtube.com/shorts/kwtCUdnP_Zk",
+            "https://youtube.com/shorts/kwtCUdnP_Zk",
+        ),
+        (Platform.YOUTUBE, None, None, None),
+        (Platform.YOUTUBE, "not a video id", None, None),
+        (Platform.TIKTOK, "v_pub_url~v2.7709065962657630260", None, None),
+        (Platform.TIKTOK, "73000000000", None, None),
+        (Platform.INSTAGRAM, "17900000000", None, None),
+    ],
+)
+def test_post_link(platform: Platform, post_id: str | None, given: str | None, expected: str | None) -> None:
+    result = PlatformResult(platform.value, success=True, post_id=post_id, post_url=given)
+    assert post_link(platform, result) == expected
+
+
+def test_published_at_is_the_time_after_the_upload_not_the_time_before_it(tmp_path: Path) -> None:
+    """The real uploads took 75 to 80 seconds; the time read before the upload is not when the post
+    went out."""
+
+    class SlowUpload(FakeUploadPostClient):
+        clock: Clock
+
+        def upload_video(self, *args: Any, **kwargs: Any) -> UploadStatus:
+            status = super().upload_video(*args, **kwargs)
+            self.clock.advance(80)
+            return status
+
+    client = SlowUpload()
+    s = Setup(tmp_path, TT, client=client)
+    client.clock = s.clock
+    s.client.platform_results["tiktok"] = PlatformResult("tiktok", success=True, post_id=None)
+
+    assert s.publish() is Outcome.PUBLISHED
+
+    after = NOW + timedelta(seconds=80)
+    assert s.post.published_at == after
+    assert s.store.retries == [(s.post_id, after + timedelta(seconds=LINK_REFRESH_S))]
+
+
+def test_the_status_of_a_slow_upload_is_read_again_counted_from_the_end_of_the_upload(tmp_path: Path) -> None:
+    """TikTok stayed `processing` for three minutes after the file was sent: the next read must be timed
+    from the end of the upload, or it is already due when it is queued."""
+
+    class SlowAndProcessing(Slow):
+        clock: Clock
+
+        def upload_video(self, *args: Any, **kwargs: Any) -> UploadStatus:
+            status = super().upload_video(*args, **kwargs)
+            self.clock.advance(80)
+            return status
+
+    client = SlowAndProcessing()
+    s = Setup(tmp_path, TT, client=client)
+    client.clock = s.clock
+
+    result = s.publisher.publish(s.post_id)
+
+    assert result.outcome is Outcome.PENDING and s.post.status == "pending"
+    assert result.retry_at == NOW + timedelta(seconds=80 + POLL_AGAIN_S)
 
 
 # ── TikTok: published without a URL ───────────────────────────────────────────────────────────────────────
