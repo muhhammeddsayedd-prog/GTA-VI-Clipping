@@ -100,6 +100,32 @@ Defaults below are the production values from `supabase/migrations/0002_seed_set
 | `live.buffer_s` | `1800` | Rolling buffer kept on disk. |
 | `live.max_reconnects` | `3` | Recorder reconnect attempts before releasing the slot. |
 | `live.chat_offset_s` | `{"twitch": 0, "youtube": 0}` | Extra seconds to shift chat time vs recorded video (tuned in staging). |
+| `live.poll_s` | `15` | Seconds between two looks of the live manager at the live_sessions table (start assigned sessions, stop released ones). (M14) |
+| `live.max_height` | `1080` | Highest video height the live recorder takes (streamlink picks the best stream at or below it). Lower it to 720 to halve disk and bandwidth per slot. (M14) |
+| `live.reconnect_backoff_s` | `10` | Seconds the recorder waits before it reconnects after a stream drop. (M14) |
+| `live.reconnect_reset_s` | `300` | A reconnected recorder that runs this long clears the count of failed attempts (live.max_reconnects counts failures in a row). (M14) |
+| `live.start_timeout_s` | `60` | Seconds a recorder start may take to deliver the first stream data before it counts as failed. (M14) |
+| `live.stall_timeout_s` | `45` | Seconds without new stream data after which a running recorder is restarted. (M14) |
+| `live.ad_break_max_s` | `300` | Longest Twitch ad break the recorder waits out without data (streamlink skips the ad segments) before it treats the silence as a stalled stream. (M14) |
+| `live.max_lag_s` | `30` | A recorder run whose stream arrives more than this many seconds behind real time (the platform throttles the downloads) is ended and the platform backed off like a blocked one. 0 = do not watch. (M14) |
+| `live.stop_timeout_s` | `8` | Seconds a recorder gets to close its last segment when a session stops, before it is killed. (M14) |
+| `live.blocked_backoff_s` | `1800` | Seconds a platform that refuses this machine (bot check, rate limit) is left alone before one stream probes it again. The first refusal waits a sixth of it. (M14) |
+| `live.blocked_notify_after` | `2` | Refused stream starts in a row after which a blocked live source is reported once (warn); one info follows when it records again. (M14) |
+| `live.source_health` | `null` | Written by code: refused starts in a row per live source and the end of its back-off. (M14) |
+| `live.max_buffer_bytes` | `3000000000` | Hard cap of one slot's rolling buffer in bytes: the oldest segments are deleted beyond it, whatever live.buffer_s says. (M14) |
+| `live.min_free_bytes` | `8000000000` | No new live session starts while the data volume has fewer free bytes than this (running ones continue inside their buffers). (M14) |
+| `live.cut_settle_s` | `4` | Seconds waited after the end of a window before it is cut from the buffer, so the stream data for its last seconds has arrived. (M14) |
+| `live.cut_wait_max_s` | `70` | Longest wait for a window that ends in the future before it is cut anyway. (M14) |
+| `live.express_pad_wait_s` | `6` | Seconds of context after the clip window an express (S-tier) cut waits for at most; the rest of spikes.context_pad_s is given up for speed. (M14) |
+| `live.cut_keep_s` | `2700` | Seconds a cut file is kept for its render job (and the job's retries) before the janitor deletes it. (M14) |
+| `live.anchor_span_s` | `300` | Segments within this many seconds of a window are used to align stream timestamps with the wall clock. (M14) |
+| `live.replay_delay_s` | `900` | Seconds after a YouTube stream ends before its replay scan runs (the chat replay needs time to appear). (M14) |
+| `live.replay_find_interval_s` | `600` | Seconds between two look-ups of the Twitch archive of an ended stream. (M14) |
+| `live.replay_find_max_s` | `7200` | How long the Twitch archive of an ended stream is looked for before giving up. (M14) |
+| `live.priority_express` | `100` | Job priority of an S-tier live spike (express.render, queue express). (M14) |
+| `live.priority_a` | `60` | Job priority of an A-tier live spike (clip.render, queue normal, hourly lane). (M14) |
+| `live.priority_b` | `40` | Job priority of a B-tier live spike (clip.render, queue normal, hourly lane). (M14) |
+| `live.ab_clips` | `true` | false = only S-tier live spikes become clips; A and B are left to the replay pass after the stream. (M14) |
 
 ## Spike engine
 
