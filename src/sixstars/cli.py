@@ -480,5 +480,64 @@ def notify_test() -> None:
     raise typer.Exit(code=0 if delivered else 1)
 
 
+# Quality gate (M07). Kept as one block so other milestones' edits to this file do not collide with it.
+gate_app = typer.Typer(help="Quality gate (M07): judge clips and explain verdicts.", no_args_is_help=True)
+app.add_typer(gate_app, name="gate")
+
+
+@gate_app.command("run")
+def gate_run(
+    clip_id: str = typer.Argument(..., help="Clip in status gating."),
+    no_post: bool = typer.Option(False, "--no-post", help="Do not hand an approved spike clip to posting."),
+) -> None:
+    """Judge one clip: approve, reject or hold it, and store the verdict."""
+    from sixstars.gate import commands
+
+    with _database():
+        code = commands.run(clip_id, post=not no_post)
+    raise typer.Exit(code=code)
+
+
+@gate_app.command("pending")
+def gate_pending(
+    older_than: float = typer.Option(
+        0.0, "--older-than", help="Only clips waiting at least this many seconds."
+    ),
+    no_post: bool = typer.Option(False, "--no-post", help="Do not hand approved spike clips to posting."),
+) -> None:
+    """Judge every clip still in status gating (recovery)."""
+    from sixstars.gate import commands
+
+    with _database():
+        code = commands.pending(older_than, post=not no_post)
+    raise typer.Exit(code=code)
+
+
+@gate_app.command("explain")
+def gate_explain(clip_id: str = typer.Argument(..., help="Any clip.")) -> None:
+    """Print the stored verdict of a clip with every check. Writes nothing."""
+    from sixstars.gate import commands
+
+    with _database():
+        code = commands.explain(clip_id)
+    raise typer.Exit(code=code)
+
+
+@gate_app.command("check-file")
+def gate_check_file(
+    video: str = typer.Argument(..., help="Rendered MP4 file."),
+    duration: float = typer.Option(
+        0.0, "--duration", help="Clip length without the end card (default: file)."
+    ),
+    p5: bool = typer.Option(False, "--p5", help="Also ask the vision model about four frames (costs money)."),
+) -> None:
+    """Measure a rendered file as the gate does; with --p5 also run the visual check. Writes no clip."""
+    from sixstars.gate import commands
+
+    with _database():
+        code = commands.check_file(video, duration or None, p5)
+    raise typer.Exit(code=code)
+
+
 if __name__ == "__main__":
     app()

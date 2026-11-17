@@ -1,4 +1,4 @@
-"""ffmpeg log parsing, the frame positions and the P5 call of the gate; real ffmpeg runs on synthetic video."""
+"""ffmpeg log parsing, frame positions and the P5 call of the gate; real ffmpeg runs on synthetic video."""
 
 import shutil
 import subprocess
@@ -35,10 +35,24 @@ def test_parse_freezedetect_counts_an_open_freeze_to_the_end() -> None:
     assert visual.parse_freezedetect("", 30.0) == []
 
 
+def test_parse_freezedetect_keeps_two_detectors_apart() -> None:
+    log = """
+[Parsed_freezedetect_2 @ 0a] lavfi.freezedetect.freeze_start: 1
+[Parsed_freezedetect_5 @ 0b] lavfi.freezedetect.freeze_start: 2
+[Parsed_freezedetect_2 @ 0a] lavfi.freezedetect.freeze_duration: 4
+[Parsed_freezedetect_2 @ 0a] lavfi.freezedetect.freeze_end: 5
+"""
+    assert sorted(visual.parse_freezedetect(log, 10.0)) == [4.0, 8.0]
+
+
 def test_the_filter_uses_the_configured_limits() -> None:
-    chain = visual.detect_filter(make_settings(max_black_s=1.5, max_freeze_s=3, freeze_noise=0.01))
-    assert "blackdetect=d=1.5:" in chain and "freezedetect=n=0.01:d=3" in chain
-    assert chain.startswith("crop=iw:ih*0.2708:0:ih*0.2500,")
+    settings = make_settings(
+        max_black_s=1.5, max_freeze_s=3, freeze_noise=0.01, band_freeze_noise=0.002, band_black_pixel=0.05
+    )
+    graph = visual.detect_filter(settings)
+    assert "[a]blackdetect=d=1.5:pix_th=0.1,freezedetect=n=0.01:d=3[whole]" in graph
+    band = "[b]crop=iw:ih*0.2708:0:ih*0.2500,blackdetect=d=1.5:pix_th=0.05,freezedetect=n=0.002:d=3[band]"
+    assert band in graph
 
 
 def test_frame_times() -> None:
@@ -115,7 +129,7 @@ def test_a_moving_picture_has_no_black_or_frozen_stretch(tmp_path: Path) -> None
 
 @pytest.mark.ffmpeg
 def test_black_frames_are_found_even_under_moving_overlays(tmp_path: Path) -> None:
-    """Three black seconds of gameplay with a white box that keeps blinking near the bottom (as subtitles do)."""
+    """Three black seconds of gameplay under a white box that keeps blinking, as subtitles do."""
     black = "drawbox=enable='between(t,2,5)':x=0:y=0:w=iw:h=ih:color=black:t=fill"
     overlay = "drawbox=enable='lt(mod(t,0.4),0.2)':x=20:y=400:w=120:h=40:color=white:t=fill"
     path = _make(tmp_path, "black.mp4", f"{black},{overlay}")

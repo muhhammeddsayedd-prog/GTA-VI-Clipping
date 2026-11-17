@@ -1,10 +1,19 @@
 """Measurements on the rendered file for the gate: ffprobe facts, black and frozen stretches (ffmpeg
 `blackdetect` / `freezedetect`), the four frames for P5 and the P5 call itself.
 
-Black and freeze detection look at a horizontal band of the gameplay picture only. Our own overlays never
-stop moving (subtitle highlights, progress bar) and are never black, so on the whole frame a frozen or
-black source would go unnoticed. The band lies below the hook box and above the subtitle line in both
-layouts (`sixstars.factory.layout`). Only the clip part is analysed, not the end card.
+Black and freeze detection run twice in one ffmpeg pass, and the longer result counts:
+
+- on the whole frame with the limits of docs/10 (`gate.checks.freeze_noise`, the default black pixel level
+  of ffmpeg);
+- on a horizontal band of the gameplay picture with tighter tolerances (`band_freeze_noise`,
+  `band_black_pixel`). Our own overlays never stop moving (subtitle highlights, progress bar) and are
+  never black, so on the whole frame a frozen or black source would go unnoticed. The band lies below the
+  hook box and above the subtitle line in both layouts (`sixstars.factory.layout`). The tolerances are
+  tighter there because a band of a real scene can be still or dark for a while (a parked car at night
+  measured as "frozen" at the whole-frame tolerance on two of four real renders); a frozen or black
+  source is exactly still or exactly black.
+
+Only the clip part is analysed, not the end card.
 """
 
 import re
@@ -12,9 +21,8 @@ from collections.abc import Sequence
 from pathlib import Path
 
 from sixstars.ai import calls
-from sixstars.ai.calls import BudgetKind
 from sixstars.ai.schemas import VisualVerdict
-from sixstars.clients.anthropic_client import AnthropicClient
+from sixstars.clients.anthropic_client import AnthropicClient, BudgetKind
 from sixstars.factory import layout, tools
 from sixstars.gate.models import FileFacts, GateSettings, VisualFindings
 
@@ -22,7 +30,8 @@ from sixstars.gate.models import FileFacts, GateSettings, VisualFindings
 # the two subtitle lines (reference canvas 1080x1920).
 BAND_TOP = (layout.HOOK_BOTTOM + 60) / layout.REF_HEIGHT
 BAND_BOTTOM = (min(layout.CAPTION_Y_A, layout.CAPTION_Y_B) - 150) / layout.REF_HEIGHT
-# blackdetect: a pixel darker than this share of full brightness is black (ffmpeg's default).
+# blackdetect on the whole frame: a pixel darker than this share of full brightness is black (the ffmpeg
+# default, which is what docs/10 means by plain `blackdetect`).
 BLACK_PIXEL_THRESHOLD = 0.10
 # Where in the clip the P5 frames are taken (docs/10, progress notes M05).
 FRAME_POSITIONS = (0.10, 0.35, 0.60, 0.85)
@@ -33,39 +42,46 @@ _BLACK = re.compile(
 )
 _FREEZE_START = re.compile(r"freeze_start:\s*(?P<start>[\d.]+)")
 _FREEZE_DURATION = re.compile(r"freeze_duration:\s*(?P<d>[\d.]+)")
+_INSTANCE = re.compile(r"^\[(?P<name>[^\]]+)\]")
 
 
 def parse_blackdetect(log: str) -> list[float]:
-    """The durations of the black stretches ffmpeg reported, in order."""
+    """The durations of the black stretches ffmpeg reported, in order (all detector instances)."""
     return [float(match["d"]) for match in _BLACK.finditer(log)]
 
 
 def parse_freezedetect(log: str, analysed_s: float) -> list[float]:
-    """The durations of the frozen stretches. A freeze that lasts to the end of the input has a start and
-    no duration line; it is counted up to `analysed_s`."""
+    """The durations of the frozen stretches (all detector instances). A freeze that lasts to the end of
+    the input has a start and no duration line; it is counted up to `analysed_s`."""
     durations: list[float] = []
-    open_start: float | None = None
+    open_starts: dict[str, float] = {}
     for line in log.splitlines():
+        instance = _INSTANCE.match(line.strip())
+        name = instance["name"] if instance else ""
         start = _FREEZE_START.search(line)
         if start:
-            open_start = float(start["start"])
+            open_starts[name] = float(start["start"])
             continue
         duration = _FREEZE_DURATION.search(line)
         if duration:
             durations.append(float(duration["d"]))
-            open_start = None
-    if open_start is not None:
-        durations.append(max(0.0, analysed_s - open_start))
+            open_starts.pop(name, None)
+    durations += [max(0.0, analysed_s - start_s) for start_s in open_starts.values()]
     return durations
 
 
 def detect_filter(settings: GateSettings) -> str:
-    """The ffmpeg filter chain: the gameplay band, then both detectors with the configured limits."""
+    """The ffmpeg filter graph: the whole frame with the docs/10 limits, and the gameplay band with the
+    tighter band tolerances. Outputs `[whole]` and `[band]`."""
     height = BAND_BOTTOM - BAND_TOP
+    black, freeze = f"{settings.max_black_s:g}", f"{settings.max_freeze_s:g}"
     return (
-        f"crop=iw:ih*{height:.4f}:0:ih*{BAND_TOP:.4f},"
-        f"blackdetect=d={settings.max_black_s:g}:pix_th={BLACK_PIXEL_THRESHOLD:g},"
-        f"freezedetect=n={settings.freeze_noise:g}:d={settings.max_freeze_s:g}"
+        "[0:v]split=2[a][b];"
+        f"[a]blackdetect=d={black}:pix_th={BLACK_PIXEL_THRESHOLD:g},"
+        f"freezedetect=n={settings.freeze_noise:g}:d={freeze}[whole];"
+        f"[b]crop=iw:ih*{height:.4f}:0:ih*{BAND_TOP:.4f},"
+        f"blackdetect=d={black}:pix_th={settings.band_black_pixel:g},"
+        f"freezedetect=n={settings.band_freeze_noise:g}:d={freeze}[band]"
     )
 
 
@@ -73,9 +89,11 @@ def detect_black_and_freeze(
     path: Path, clip_duration_s: float, settings: GateSettings, ffmpeg: str = "ffmpeg"
 ) -> tuple[float, float]:
     """The longest black and the longest frozen stretch (seconds) in the first `clip_duration_s` of the
-    file; 0 when there is none of at least the configured length."""
+    file, on the whole frame or in the gameplay band; 0 when there is none of at least the configured
+    length."""
     command = [ffmpeg, "-hide_banner", "-nostdin", "-t", f"{clip_duration_s:.3f}", "-i", str(path)]
-    command += ["-an", "-vf", detect_filter(settings), "-f", "null", "-"]
+    command += ["-an", "-filter_complex", detect_filter(settings)]
+    command += ["-map", "[whole]", "-f", "null", "-", "-map", "[band]", "-f", "null", "-"]
     result = tools.run(command, timeout_s=DETECT_TIMEOUT_S, what="black and freeze detection")
     log = result.stderr.decode("utf-8", errors="replace")
     black = parse_blackdetect(log)

@@ -125,6 +125,8 @@ def settings_from_values(values: Mapping[str, Any]) -> GateSettings:
         max_black_s=_number(checks.get("max_black_s"), "gate.checks.max_black_s"),
         max_freeze_s=_number(checks.get("max_freeze_s"), "gate.checks.max_freeze_s"),
         freeze_noise=_number(checks.get("freeze_noise"), "gate.checks.freeze_noise"),
+        band_freeze_noise=_number(checks.get("band_freeze_noise"), "gate.checks.band_freeze_noise"),
+        band_black_pixel=_ratio(checks.get("band_black_pixel"), "gate.checks.band_black_pixel"),
         max_subtitle_drift_s=_number(checks.get("max_subtitle_drift_s"), "gate.checks.max_subtitle_drift_s"),
         source_pad_s=_number(duplicate.get("source_pad_s"), "gate.duplicate.source_pad_s"),
         max_file_mb=_number(checks.get("max_file_mb"), "gate.checks.max_file_mb"),

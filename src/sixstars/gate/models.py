@@ -203,7 +203,9 @@ class GateSettings:
     music_min_run_frames: int  # flagged frames in a shorter run are ignored; 1 counts every frame
     max_black_s: float
     max_freeze_s: float
-    freeze_noise: float
+    freeze_noise: float  # freezedetect tolerance on the whole frame (docs/10)
+    band_freeze_noise: float  # the same inside the gameplay band (tighter)
+    band_black_pixel: float  # blackdetect pixel level inside the gameplay band (tighter)
     max_subtitle_drift_s: float
     source_pad_s: float
     max_file_mb: float

@@ -54,6 +54,8 @@ DEFAULT_VALUES: dict[str, Any] = {
         "max_black_s": 2.0,
         "max_freeze_s": 2.0,
         "freeze_noise": 0.003,
+        "band_freeze_noise": 0.001,
+        "band_black_pixel": 0.03,
         "max_subtitle_drift_s": 0.3,
         "max_file_mb": 100,
         "width": 1080,
