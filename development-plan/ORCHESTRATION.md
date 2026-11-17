@@ -63,3 +63,16 @@ Allowed scope cuts, in order: M14 live lane; YouTube pre-check (already cut); st
 - Every brief names the milestone file, owned files, forbidden files, contracts, tests, definition of done, and "do not ask the owner; report blockers with options".
 - Roles: implementer, independent test writer (M04, M07, M10), reviewer per milestone, infra agent, API verifier for ⚠️ items.
 - Orchestrator runs `ruff`, `mypy --strict`, `pytest` and the acceptance tests itself before merging.
+
+## Status log (orchestrator)
+
+### 2026-11-17 07:40 UTC
+- Merged to `develop`, CI green: M00, M01, M02, M03, M04, M05, M06, M07, M08, M09, M10, M11, M12. Per-milestone detail is in `development-plan/progress-notes/` (one file per milestone; `PROGRESS.md` holds M00–M02).
+- Staging is live: `https://api-staging.46.224.14.255.sslip.io/v1/health` OK over HTTPS; server `46.224.14.255` (user `deploy`, key `~/.ssh/6stars_ed25519`); every merge to `develop` builds, migrates (`supabase db push --remote --yes --include-all`) and deploys.
+- n8n staging: WF01, WF02, WF07, WF09 active; WF03–WF06 wait for M13; `[STG] WF08` is never activated. Build script: `n8n/build_workflows.py`.
+- Supabase pooler size raised to 40 on both projects; `DB_POOL_MAX=3` per container.
+- Test database for agents: Postgres 17 container `sixstars-test-pg` on the staging server, reached through an SSH tunnel on local port 54330 (databases `v1`…`v6`, one per agent). Local Docker Desktop is hung (drive C: full); do not use it. The whole integration suite takes 30+ minutes through the tunnel: run touched files locally and let CI run the rest.
+- **Launch blocker (owner alerted twice on Telegram):** from the Hetzner IP, YouTube refuses video downloads (bot check) and yt-dlp search; there are no Twitch keys, proxy or cookies. Needs one of: residential `PROXY_URL`, Twitch keys, `YOUTUBE_COOKIES_FILE`. Production stays `launch.dry_run = true` until footage can be fetched on the server and the queue rule in `docs/20` is met.
+- Yield finding (M08): chat spikes on thin YouTube chat rarely make clips (13.7 h of streams → 1 clip); the transcript fallback on edited uploads does (6 of 6). Tuning in progress.
+- In progress: M13 guardian (`m13-guardian`), source hardening (`hardening-sources`: Data API `search.list` fallback, RSS, language, doctor CLI, migration 0010), AI/factory hardening (`hardening-ai-factory`: structured outputs, snap cuts to pauses, music run-length, score stability, migration 0011).
+- Not started: M14 live lane (first scope cut), M15 staging acceptance, M16 production (production server not yet created; production GitHub secrets not yet set; `[PROD]` n8n set not yet created; first real private staging post not yet made).
