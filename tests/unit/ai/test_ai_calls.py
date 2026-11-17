@@ -111,7 +111,7 @@ def test_write_clip_sends_the_context_and_returns_the_writing() -> None:
     assert "spike_floor_s (latest allowed start): 9.00" in user
     assert "Clip length must be between 20 and 60 seconds." in user
     assert "Current date (UTC): 2026-11-20 12:00" in user
-    assert "Story spoilers are blocked until (UTC): 2026-12-03 00:00" in user
+    assert "Story spoilers right now: BLOCKED until 2026-12-03 00:00 UTC (reject a spoiler clip)" in user
     assert "real-world politics, gambling, sponsored segment" in user
     assert "{" not in call["system"]
 
@@ -124,7 +124,7 @@ def test_write_clip_reads_policy_from_settings(ai_settings: dict[str, Any]) -> N
     writing = calls.write_clip(clip_context(now=NOW), client=fake)
     call = only_call(fake)
     assert call["model"] == "claude-opus-5-5"
-    assert "blocked until (UTC): (not blocked)" in call["user_content"]
+    assert "Story spoilers right now: allowed (do not reject" in call["user_content"]
     assert "always rejects: gambling\n" in call["user_content"]
     assert not writing.reject  # no block date: a spoiler clip is allowed
 
@@ -433,3 +433,10 @@ def test_every_prompt_has_limits_and_effort() -> None:
     from sixstars.ai import prompt_files
 
     assert set(calls.MAX_TOKENS) == set(prompt_files.PROMPT_IDS) == set(calls.EFFORT)
+
+
+def test_spoiler_status_compares_the_dates_in_code() -> None:
+    block = datetime(2026, 12, 3, tzinfo=UTC)
+    assert calls.spoiler_status(NOW, block).startswith("BLOCKED until 2026-12-03 00:00 UTC")
+    assert calls.spoiler_status(block, block).startswith("allowed")
+    assert calls.spoiler_status(NOW, None).startswith("allowed")

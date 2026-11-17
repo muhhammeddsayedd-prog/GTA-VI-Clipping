@@ -265,7 +265,17 @@ def test_p2_blocks_a_story_spoiler_and_keeps_it_out_of_the_hook(out_dir: Path) -
     assert writing.spoiler
     assert writing.reject and writing.reject_reason
     shown = f"{writing.hook} {writing.title}".lower()
-    for word in ("michael", "trevor", "devin", "deathwish", "survive", "option c"):
+    for word in (
+        "michael",
+        "trevor",
+        "devin",
+        "deathwish",
+        "survive",
+        "option c",
+        "choice",
+        "choose",
+        "ending",
+    ):
         assert word not in shown
 
 

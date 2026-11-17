@@ -319,6 +319,13 @@ def _setting_strings(key: str) -> list[str]:
     return [str(item) for item in raw] if isinstance(raw, list) else []
 
 
+def spoiler_status(now: datetime, spoiler_block_until: datetime | None) -> str:
+    """The spoiler rule in words. The date is compared here, not by the model."""
+    if spoiler_block_until is not None and now < spoiler_block_until:
+        return f"BLOCKED until {spoiler_block_until:%Y-%m-%d %H:%M} UTC (reject a spoiler clip)"
+    return "allowed (do not reject a clip only for being a spoiler)"
+
+
 def enforce_policy(writing: ClipWriting, now: datetime, spoiler_block_until: datetime | None) -> ClipWriting:
     """Code-side backstop for D20 and D21: a clip with a safety flag, or a story spoiler before the
     block date, is rejected even if the model left `reject` false."""
@@ -364,7 +371,7 @@ def write_clip(
         "stream_title": _one_line(ctx.stream_title),
         "moment": moment,
         "now": now.strftime("%Y-%m-%d %H:%M"),
-        "spoiler_block_until": block_until.strftime("%Y-%m-%d %H:%M") if block_until else "(not blocked)",
+        "spoiler_status": spoiler_status(now, block_until),
         "reject_topics": ", ".join(topics) if topics else "(none)",
         "profanity_hint": ", ".join(ctx.profanity_hint) if ctx.profanity_hint else "(none given)",
         "window_s": _seconds(ctx.window_s),

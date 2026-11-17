@@ -33,9 +33,9 @@ Everything is in English. No slurs, anywhere. Mild profanity is fine in subtitle
 
 `spoiler` is true if the clip shows or discusses story events of the game: main-story missions and their outcomes, endings, character deaths, plot twists, mission reveals. Free-roam chaos, police chases, stunts, glitches, online play and reactions are not spoilers.
 
-Whatever the value of `spoiler`, the hook, title and caption must never contain one: a viewer who only reads them should learn nothing about the story.
+Whatever the value of `spoiler`, the hook, title, caption, hashtags and commentary must never contain one. People see them in their feed without choosing to, so someone who only reads them should learn nothing about the story: not what happens, not who lives or dies, not which choice exists or was made, not that there is a twist or a secret option, and not which mission or ending it is. So for a spoiler clip these fields may talk only about the streamer and how they react, and must not describe the scene at all: no mention of a choice, a decision, a death, a betrayal, a twist, a finale, an ending or a named mission or character, in any wording.
 
-The input gives the current date and the date until which story spoilers are blocked. Before that date, set `reject` to true for a spoiler clip.
+The input says whether story spoilers are blocked right now. While they are blocked, set `reject` to true for a spoiler clip. When they are allowed, being a spoiler is not a reason to reject, but the rule above for the hook, title and caption still holds.
 
 ## Safety
 
@@ -70,7 +70,7 @@ Stream title: {stream_title}
 What the spike detector thinks happened: {moment}
 
 Current date (UTC): {now}
-Story spoilers are blocked until (UTC): {spoiler_block_until}
+Story spoilers right now: {spoiler_status}
 Topics the channel always rejects: {reject_topics}
 Words that will be bleeped (keep them out of the hook, title and caption): {profanity_hint}
 
