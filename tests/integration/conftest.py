@@ -26,7 +26,7 @@ create schema if not exists storage;
 create table if not exists storage.buckets (id text primary key, name text, public bool);
 """
 FORBIDDEN_HOST_PARTS = ("supabase.co", "supabase.com", "supabase.net")
-MUTABLE_TABLES = "jobs, events, notify_outbox, heartbeats"
+MUTABLE_TABLES = "jobs, events, notify_outbox, heartbeats, api_usage"
 
 
 @pytest.fixture(scope="session")
