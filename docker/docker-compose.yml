@@ -8,7 +8,7 @@
 #   docker-compose.override.yml   staging only: a copy of docker-compose.staging.yml (compose loads it
 #                                 automatically, so plain `docker compose ...` commands work on the server)
 #   data/                         shared scratch volume, mounted at /data
-#   secrets/                      cookie files, mounted read-only at /secrets
+#   secrets/                      cookie files, mounted at /secrets (writable: yt-dlp saves refreshed cookies back)
 #
 # Deploy:    IMAGE_TAG is written to .env by the deploy workflow, then `docker compose pull && docker compose up -d`.
 # Rollback:  set IMAGE_TAG in .env to the previous tag, then `docker compose up -d`.
@@ -30,7 +30,7 @@ x-app: &app
   stop_grace_period: 60s
   volumes:
     - ./data:/data
-    - ./secrets:/secrets:ro
+    - ./secrets:/secrets
   logging: *logging
 
 services:
