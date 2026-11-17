@@ -334,3 +334,12 @@ Defaults below are the production values from `supabase/migrations/0002_seed_set
 | `stats.collect_budget_s` | `20` | Stats: seconds one pass may spend on Upload-Post calls. (M13) |
 | `stats.account_min_interval_s` | `1800` | Stats: an account gets at most one snapshot per this many seconds, so a repeated trigger stores nothing twice. (M13) |
 | `launch.summary_lead_s` | `900` | The scheduler sends one health summary this many seconds before `launch.launch_at`. (M13) |
+
+## Admin console
+
+| Key | Default | Meaning |
+|---|---|---|
+| `admin.statement_timeout_ms` | `5000` | Statement timeout of one admin console read (`GET /v1/admin/*`); a slower query answers 504. (M17) |
+| `admin.list_max_limit` | `200` | Largest page an admin console list returns; the default page is 50. (M17) |
+| `admin.month_ceiling_usd` | `840` | Monthly spend ceiling shown on the Spend page (top of the docs/23 cost model). Display only. (M17) |
+| `admin.noisy_event_types` | `["post.dry_run", "post.link_updated", "stats.collected", "clip.scored", "job.recovered"]` | Event types left out of the overview's recent events. (M17) |

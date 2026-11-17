@@ -16,6 +16,7 @@ import uuid
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from sixstars import notify
+from sixstars.api.auth import ACTOR_STATE
 from sixstars.api.errors import REQUEST_ID_STATE, error_body
 from sixstars.logging import bind_context, clear_context, get_logger
 
@@ -146,7 +147,14 @@ class RequestMiddleware:
         finally:
             duration_ms = round((time.monotonic() - started) * 1000, 1)
             if path not in _QUIET_PATHS or status >= 400 or failure:
+                actor = scope.get("state", {}).get(ACTOR_STATE)
                 log.info(
-                    "request", method=method, path=path, status=status, duration_ms=duration_ms, **failure
+                    "request",
+                    method=method,
+                    path=path,
+                    status=status,
+                    duration_ms=duration_ms,
+                    actor=actor if isinstance(actor, str) else None,
+                    **failure,
                 )
             clear_context()

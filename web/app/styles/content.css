@@ -1,0 +1,23 @@
+﻿/* content pages: pipeline, live, videos, spikes */
+
+.pipe-flow { display: grid; grid-template-columns: 1fr 18px 1fr 18px 1fr 18px 1fr 18px 1fr 18px 1fr 18px 1fr 18px 1fr; column-gap: 4px; align-items: stretch; }
+.pipe-node { padding: 16px; display: block; transition: transform .18s ease, box-shadow .18s ease, border-color .18s ease; }
+.pipe-node:hover { transform: translateY(-2px); border-color: var(--ps2); box-shadow: 0 14px 30px rgba(90, 74, 244, .12); }
+.pipe-big { font-size: 26px; font-weight: 600; margin-top: 16px; letter-spacing: -.01em; }
+.pipe-arrow { display: grid; place-items: center; color: var(--mute2); }
+
+.slot-free { border: 1.5px dashed var(--line2); background: transparent; display: grid; place-items: center; min-height: 230px; text-align: center; }
+.chatline { display: flex; gap: 10px; padding: 7px 10px; border-radius: 12px; color: #e8e8f2; font-size: 12.5px; align-items: baseline; }
+.chatline.on { background: var(--p); color: #fff; }
+.chatline .u { font-weight: 600; color: #a79fff; min-width: 84px; }
+.chatline.on .u { color: #fff; }
+.chatline .ts { font-family: var(--font-jbmono), Consolas, monospace; font-size: 11px; color: #9c9cb3; }
+.chatline.on .ts { color: #fff; }
+
+@media (max-width: 1180px) {
+  .pipe-flow { grid-template-columns: repeat(4, 1fr); row-gap: 12px; column-gap: 12px; }
+  .pipe-arrow { display: none; }
+}
+@media (max-width: 760px) {
+  .pipe-flow { grid-template-columns: repeat(2, 1fr); }
+}
