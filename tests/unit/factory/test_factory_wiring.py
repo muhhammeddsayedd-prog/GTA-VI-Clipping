@@ -507,3 +507,36 @@ def test_fake_storage_keeps_objects(tmp_path: Path) -> None:
     assert fake.objects == {"clips/test/c1.mp4": b"abc"}
     assert "clips/test/c1.mp4" in fake.signed_url("clips/test/c1.mp4")
     assert fake.delete("clips/test/c1.mp4") and not fake.delete("clips/test/c1.mp4")
+
+
+# ── CLI ──────────────────────────────────────────────────────
+
+
+def test_clip_commands_report_usage_errors(tmp_path: Path) -> None:
+    from typer.testing import CliRunner
+
+    from sixstars.cli import app
+
+    runner = CliRunner()
+    no_source = runner.invoke(app, ["clip", "render", "spike-1"])
+    assert no_source.exit_code == 2 and "--source is needed" in no_source.output
+    missing = runner.invoke(app, ["clip", "render", "spike-1", "--source", str(tmp_path / "none.mp4")])
+    assert missing.exit_code == 2 and "no such file" in missing.output
+    base = [
+        "clip",
+        "render-file",
+        str(tmp_path / "none.mp4"),
+        "--start",
+        "1",
+        "--end",
+        "20",
+        "--creator",
+        "x",
+    ]
+    assert runner.invoke(app, base).exit_code == 2
+    video = tmp_path / "v.mp4"
+    video.write_bytes(b"")
+    bad_lane = runner.invoke(app, [*base[:2], str(video), *base[3:], "--lane", "daily"])
+    assert bad_lane.exit_code == 2 and "lane must be one of" in bad_lane.output
+    bad_set = runner.invoke(app, [*base[:2], str(video), *base[3:], "--set", "factory.crf"])
+    assert bad_set.exit_code == 2 and "key=json" in bad_set.output

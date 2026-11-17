@@ -33,7 +33,6 @@ def test_cli_version_reports_app_env(monkeypatch: pytest.MonkeyPatch) -> None:
         ["scheduler"],
         ["discovery", "run-once"],
         ["vod", "process", "https://example.com/v"],
-        ["clip", "render", "spike-1"],
         ["post", "hourly", "--dry-run"],
     ],
 )
