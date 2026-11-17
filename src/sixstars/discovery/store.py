@@ -13,7 +13,7 @@ from psycopg.types.json import Jsonb
 
 from sixstars import db, jobs
 from sixstars.discovery.assign import ACTIVE_STATUSES, Session, SlotPlan
-from sixstars.discovery.models import Creator, Scored
+from sixstars.discovery.models import FORBIDDEN_TIERS, Creator, Scored
 
 VOD_JOB_TYPE = "vod.process"
 VOD_JOB_PRIORITY = 30
@@ -119,11 +119,62 @@ def youtube_units_today() -> float:
     row = db.fetch_one(
         """
         select coalesce(sum(units), 0) as total from api_usage
-        where provider = 'youtube' and operation like '%%.list'
+        where provider = 'youtube' and operation like '%%.list' and operation <> 'search.list'
           and created_at >= date_trunc('day', now(), 'UTC')
         """
     )
     return float(row["total"]) if row is not None else 0.0
+
+
+def youtube_search_calls_today() -> int:
+    """`search.list` calls recorded since 00:00 UTC. They have their own quota bucket (100 calls a day by
+    default), so they are counted apart from `youtube_units_today`."""
+    row = db.fetch_one(
+        """
+        select count(*) as total from api_usage
+        where provider = 'youtube' and operation = 'search.list'
+          and created_at >= date_trunc('day', now(), 'UTC')
+        """
+    )
+    return int(row["total"]) if row is not None else 0
+
+
+def recent_live_sources(now: datetime, window_s: int, limit: int) -> list[dict[str, Any]]:
+    """YouTube streams to look at again: every stream that holds a live slot, then the streams whose
+    newest observation within `window_s` was live, best score first, `limit` in all. Forbidden creators
+    are left out. Rows: `source_id`, `title`, `channel_id`, `channel_name`, `viewers`."""
+    if limit <= 0:
+        return []
+    rows = db.fetch_all(
+        """
+        with latest as (
+          select distinct on (c.source_id) c.source_id, c.source_type, c.title, c.viewers, c.trend_score,
+                 c.creator_id
+          from candidates c
+          where c.platform = 'youtube' and c.checked_at between %(since)s and %(now)s
+          order by c.source_id, c.checked_at desc
+        ), wanted as (
+          select l.source_id, l.title, l.viewers, l.trend_score, l.creator_id, false as held
+          from latest l where l.source_type = 'live'
+          union all
+          select s.source_id, null, null, s.trend_score, s.creator_id, true
+          from live_sessions s where s.platform = 'youtube' and s.status = any(%(active)s)
+        )
+        select distinct on (w.source_id) w.source_id, w.title, w.viewers, w.trend_score, w.held,
+               cr.channel_id, coalesce(cr.display_name, cr.handle) as channel_name
+        from wanted w join creators cr on cr.id = w.creator_id
+        where not (cr.tier = any(%(forbidden)s))
+        order by w.source_id, w.held desc
+        """,
+        {
+            "since": now - timedelta(seconds=window_s),
+            "now": now,
+            "active": list(ACTIVE_STATUSES),
+            "forbidden": sorted(FORBIDDEN_TIERS),
+        },
+    )
+    rows.sort(key=lambda row: (not row["held"], -float(row["trend_score"] or 0), str(row["source_id"])))
+    return [dict(row) for row in rows[:limit]]
 
 
 def apify_spend() -> tuple[float, float]:

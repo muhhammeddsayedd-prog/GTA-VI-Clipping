@@ -261,7 +261,8 @@ def _gates(video: Video, cfg: VodConfig, deps: Deps, *, force: bool) -> None:
         )
     if force:
         return
-    retry_at = store.block_retry_at(video.platform, cfg.blocked_backoff_s)
+    access = ytdlp.access_for(video.platform).described
+    retry_at = store.block_retry_at(video.platform, cfg.blocked_backoff_s, access)
     if retry_at is not None:
         raise DeferredError("download_blocked", f"{video.platform} downloads were refused", retry_at)
     if store.count_processing(video.id, cfg.processing_stale_s) >= cfg.max_concurrent:

@@ -18,6 +18,24 @@ thin chat):
   `discovery.passive_views_engagement` the views-per-hour part and the view-based chat estimate are scaled
   down in proportion (`activity`). This is what keeps "Shorts feed" live streams with millions of passive
   views and no comments from outranking streams with a real, talking audience.
+
+How the score favours videos that are likely to yield clips (hardening, from the VOD lane's real runs:
+13.7 hours of chat-replay streams gave one clip, one 25-minute edited upload gave six through the
+transcript fallback):
+- An edited upload or stream highlight (not a past live stream, at most `discovery.edited_max_duration_s`
+  long) gets up to `discovery.edited_upload_bonus` points, in proportion to its engagement
+  (`(likes + 2 x comments) / views` against `discovery.edited_engagement_full`). Unknown engagement gives
+  half of it.
+- A long past stream (at least `discovery.long_stream_min_s`) whose chat replay is estimated below
+  `discovery.chat_min_messages` (the 1,500-message finding of M04) has its score multiplied by a factor
+  between `discovery.thin_chat_factor` (no chat at all) and 1 (enough chat). A long upload without any
+  chat replay that is too long to be an edit gets the full factor: nothing suggests it is dense.
+
+Language: `detect_language` adds what YouTube's `defaultAudioLanguage` cannot be trusted for. Channels set
+that field once and often wrongly (seen live: Hindi streams marked `en`), so the script of the title, the
+channel name and the description, and a list of words that announce a language
+(`discovery.non_english_terms`), can overrule a reported `en`. A stream whose metadata is entirely English
+is still taken as English: only the transcript could tell, and discovery does not have one.
 """
 
 import math
@@ -38,7 +56,8 @@ REACH_OTHER: Final = 0.6
 REACH_SPREAD_BONUS: Final = 0.2
 SPREAD_THRESHOLD: Final = 0.5
 CLAIM_PENALTY: Final = 0.5
-NON_LATIN_SHARE: Final = 0.3  # share of non-Latin letters above which a title is not English
+NON_LATIN_SHARE: Final = 0.3  # default of `discovery.non_latin_share`
+DESCRIPTION_CHARS: Final = 500  # how much of a description the script check reads
 ALWAYS_BLOCKED: Final[tuple[str, ...]] = ("leak",)  # M09: skipped whatever the blocklist setting holds
 
 
@@ -68,13 +87,62 @@ def matches_terms(title: str, terms: Sequence[str]) -> bool:
     return any(squash(term) in squashed for term in terms if squash(term))
 
 
-def title_language(title: str) -> str | None:
-    """`"und"` (not English) when most letters of the title are not Latin script, else None (unknown)."""
-    letters = [char for char in title if char.isalpha()]
+def non_latin_share(text: str) -> float | None:
+    """Share of the letters of `text` that are not Latin script (0..1); None when it has no letters."""
+    letters = [char for char in text if char.isalpha()]
     if not letters:
         return None
     foreign = sum(1 for char in letters if "LATIN" not in unicodedata.name(char, ""))
-    return "und" if foreign / len(letters) > NON_LATIN_SHARE else None
+    return foreign / len(letters)
+
+
+def title_language(title: str, threshold: float = NON_LATIN_SHARE) -> str | None:
+    """`"und"` (not English) when most letters of the title are not Latin script, else None (unknown)."""
+    share = non_latin_share(title)
+    return "und" if share is not None and share > threshold else None
+
+
+def hashtags(text: str) -> str:
+    """The hashtags of a description, joined (creators announce the language there: `#gta5hindi`)."""
+    return " ".join(word for word in text.split() if word.startswith("#"))
+
+
+def language_signal(
+    *,
+    title: str,
+    channel_name: str = "",
+    description: str = "",
+    tags: Sequence[str] = (),
+    terms: Sequence[str] = (),
+    share_threshold: float = NON_LATIN_SHARE,
+) -> str | None:
+    """Why this video is probably not in English, or None when nothing says so.
+
+    Two cheap signals, no API call: (1) the share of non-Latin letters in the title, the channel name or
+    the start of the description is above `share_threshold` (`"script:title"`, ...); (2) the title, the
+    channel name, a tag or a hashtag of the description contains one of `terms` as a substring, ignoring
+    case (`"term:hindi"`). The body of the description is not searched for terms: an English creator may
+    write "also in Hindi" there.
+    """
+    described = description[:DESCRIPTION_CHARS]
+    for name, text in (("title", title), ("channel", channel_name), ("description", described)):
+        share = non_latin_share(text)
+        if share is not None and share > share_threshold:
+            return f"script:{name}"
+    haystack = " ".join([title, channel_name, *tags, hashtags(description)]).casefold()
+    for term in terms:
+        wanted = term.strip().casefold()
+        if wanted and wanted in haystack:
+            return f"term:{wanted}"
+    return None
+
+
+def detect_language(reported: str | None, signal: str | None) -> str | None:
+    """The language discovery works with: a reported non-English language stands; a reported `en` or no
+    report becomes `"und"` (not English, language unknown) when `signal` says so; otherwise the report."""
+    if reported is not None and not is_english(reported):
+        return reported
+    return "und" if signal is not None else reported
 
 
 def is_english(language: str | None) -> bool:
@@ -126,8 +194,9 @@ def _finish(
     preferred: bool,
     bonus: float,
     config: ScoreConfig,
+    factor: float = 1.0,
 ) -> float:
-    score = 100.0 * sum(weights.get(name, 0.0) * value for name, value in parts.items())
+    score = 100.0 * sum(weights.get(name, 0.0) * value for name, value in parts.items()) * factor
     if not is_english(language):
         score *= config.non_english_penalty
     if preferred:
@@ -196,6 +265,47 @@ def estimate_chat_messages(
     return None
 
 
+def video_kind(duration_s: int | None, has_chat: bool, config: ScoreConfig) -> str:
+    """`stream` (a past live stream with a chat replay), `edited` (an upload or highlight short enough
+    to be cut material), `long_upload` (no chat replay and too long to be an edit) or `unknown` (an upload
+    whose length nobody reported: no adjustment)."""
+    if has_chat:
+        return "stream"
+    if duration_s is None:
+        return "unknown"
+    return "edited" if duration_s <= config.edited_max_duration_s else "long_upload"
+
+
+def yield_adjustment(
+    *,
+    kind: str,
+    duration_s: int | None,
+    engagement_ratio: float | None,
+    chat_share: float | None,
+    config: ScoreConfig,
+) -> tuple[float, float]:
+    """`(bonus points, score factor)` for how likely a video is to yield clips. See the module docstring.
+
+    `engagement_ratio` is `(likes + 2 x comments) / views` (None when unknown), `chat_share` the estimated
+    chat replay size against `discovery.chat_min_messages`, 0..1 (None when unknown).
+    """
+    if kind == "edited":
+        if config.edited_engagement_full <= 0:
+            return config.edited_upload_bonus, 1.0
+        share = (
+            UNKNOWN if engagement_ratio is None else clamp(engagement_ratio / config.edited_engagement_full)
+        )
+        return config.edited_upload_bonus * share, 1.0
+    long_enough = duration_s is not None and duration_s >= config.long_stream_min_s
+    if kind not in ("stream", "long_upload") or not long_enough:
+        return 0.0, 1.0
+    low = clamp(config.thin_chat_factor)
+    if kind == "long_upload":
+        return 0.0, low
+    share = UNKNOWN if chat_share is None else clamp(chat_share)
+    return 0.0, low + (1.0 - low) * share
+
+
 def score_vod(
     *,
     views: int | None,
@@ -215,10 +325,12 @@ def score_vod(
 ) -> tuple[float, dict[str, Any], float | None]:
     """Trend score of a finished video, its parts, and its views per hour (None when unknown)."""
     vph = None if views is None or age_hours is None else views / max(age_hours, 1.0)
+    ratio: float | None = None
     if views is None or views <= 0 or (likes is None and comments is None):
         engagement = UNKNOWN
     else:
-        engagement = clamp(((likes or 0) + 2 * (comments or 0)) / views / ENGAGEMENT_FULL)
+        ratio = ((likes or 0) + 2 * (comments or 0)) / views
+        engagement = clamp(ratio / ENGAGEMENT_FULL)
     if views is None or followers is None:
         size_ratio = UNKNOWN
     else:
@@ -232,6 +344,7 @@ def score_vod(
         "history": history,
     }
     chat_messages: float | None = None
+    chat_share: float | None = None
     bonus = 0.0
     if has_chat:
         chat_messages = estimate_chat_messages(
@@ -242,10 +355,18 @@ def score_vod(
             config=config,
             activity=activity,
         )
-        chat_share = UNKNOWN if chat_messages is None else clamp(chat_messages / config.chat_min_messages)
-        bonus = config.chat_replay_bonus * chat_share
-    score = _finish(parts, config.weights_vod, language, preferred, bonus, config)
+        if chat_messages is not None and config.chat_min_messages > 0:
+            chat_share = clamp(chat_messages / config.chat_min_messages)
+        bonus = config.chat_replay_bonus * (UNKNOWN if chat_share is None else chat_share)
+    kind = video_kind(duration_s, has_chat, config)
+    yield_bonus, factor = yield_adjustment(
+        kind=kind, duration_s=duration_s, engagement_ratio=ratio, chat_share=chat_share, config=config
+    )
+    score = _finish(parts, config.weights_vod, language, preferred, bonus + yield_bonus, config, factor)
     detail: dict[str, Any] = {name: round(value, 4) for name, value in parts.items()}
+    detail["kind"] = kind
+    detail["yield_bonus"] = round(yield_bonus, 2)
+    detail["yield_factor"] = round(factor, 4)
     detail["activity"] = round(activity, 4)
     detail["chat_bonus"] = round(bonus, 2)
     detail["chat_messages_est"] = None if chat_messages is None else round(chat_messages)

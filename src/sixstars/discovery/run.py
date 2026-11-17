@@ -3,7 +3,8 @@ database. Implemented in M09.
 
 `run_discovery()` is what `POST /v1/discovery/run` (M11) and `sixstars discovery run-once` call. One pass:
 
-1. gather candidates from every configured source (a failing or unconfigured source is skipped);
+1. gather candidates from every configured source (a failing or unconfigured source is skipped; a
+   source that fails pass after pass is reported once and announced again when it recovers: `health.py`);
 2. drop blocked titles, short or old videos, and everything from forbidden creators;
 3. upsert creators, fetch missing follower counts, score every candidate;
 4. run permission checks (P6) for the creators about to be picked, queue `creator.permission` jobs for
@@ -22,13 +23,13 @@ from datetime import UTC, datetime, timedelta
 from typing import Any, Final
 
 from sixstars import db, events, notify
-from sixstars.chat.net import proxy_for
+from sixstars.chat.net import cookies_file, proxy_for
 from sixstars.clients._http import ClientError
 from sixstars.clients.anthropic_client import AnthropicClient
 from sixstars.clients.apify import ApifyClient
 from sixstars.clients.twitch import TwitchClient
 from sixstars.clients.youtube import YouTubeClient
-from sixstars.discovery import assign, scoring, sources, store, tiers
+from sixstars.discovery import assign, health, scoring, sources, store, tiers
 from sixstars.discovery.config import DiscoveryConfig
 from sixstars.discovery.models import Candidate, Creator, Scored
 from sixstars.discovery.sources import Gathered, SourceReport
@@ -59,7 +60,12 @@ class DiscoveryClients:
             twitch=TwitchClient(),
             youtube=YouTubeClient(),
             apify=ApifyClient(),
-            search=YtDlpSearch(proxy=proxy_for("youtube"), timeout_s=config.ytdlp_timeout_s),
+            search=YtDlpSearch(
+                proxy=proxy_for("youtube"),
+                timeout_s=config.ytdlp_timeout_s,
+                # owner-supplied cookies, off unless `discovery.ytdlp_use_cookies` is set
+                cookies_file=cookies_file() if config.ytdlp_use_cookies else None,
+            ),
         )
 
 
@@ -89,10 +95,13 @@ class DiscoverySummary:
     youtube_searches: int = 0
     youtube_quota_units: int = 0
     youtube_quota_units_today: float = 0.0
+    youtube_search_api_calls: int = 0
+    youtube_search_api_calls_today: int = 0
     apify_cost_usd: float = 0.0
     apify_spent_today_usd: float = 0.0
     apify_spent_month_usd: float = 0.0
     errors: list[str] = field(default_factory=list)
+    notes: list[str] = field(default_factory=list)  # said once: a budget that ran out, a source's health
     timings_s: dict[str, float] = field(default_factory=dict)
     top_live: list[dict[str, Any]] = field(default_factory=list)
     top_videos: list[dict[str, Any]] = field(default_factory=list)
@@ -176,6 +185,8 @@ def score_candidate(
             config=config.score,
         )
         parts["origin"] = candidate.origin
+        if candidate.language_signal:
+            parts["language_signal"] = candidate.language_signal
         return Scored(candidate, creator, score, parts)
     began = candidate.started_at or candidate.published_at
     age_hours = float(config.vod_lookback_h) if began is None else (now - began).total_seconds() / 3600.0
@@ -197,6 +208,8 @@ def score_candidate(
         config=config.score,
     )
     parts["origin"] = candidate.origin
+    if candidate.language_signal:
+        parts["language_signal"] = candidate.language_signal
     return Scored(candidate, creator, score, parts, vph)
 
 
@@ -232,7 +245,12 @@ def top_rows(
 # ── steps ────────────────────────────────────────────────────
 
 
-def gather(clients: DiscoveryClients, config: DiscoveryConfig, now: datetime) -> Gathered:
+def gather(
+    clients: DiscoveryClients,
+    config: DiscoveryConfig,
+    now: datetime,
+    source_health: dict[str, dict[str, Any]] | None = None,
+) -> Gathered:
     """Ask every source. Twitch is skipped with one info log while its keys are absent (decision D100)."""
     gathered = Gathered()
     twitch = clients.twitch
@@ -248,8 +266,8 @@ def gather(clients: DiscoveryClients, config: DiscoveryConfig, now: datetime) ->
                 SourceReport("twitch", "ok" if found else "empty", len(found or []), detail)
             )
         except ClientError as exc:
-            _log.warning("discovery_twitch_failed", error=str(exc)[:200])
-            gathered.reports.append(SourceReport("twitch", "error", 0, str(exc)[:200]))
+            _log.warning("discovery_twitch_failed", error=str(exc)[:300])
+            gathered.reports.append(SourceReport("twitch", "error", 0, str(exc)[:300]))
     sources.youtube_candidates(
         youtube=clients.youtube,
         search=clients.search,
@@ -257,8 +275,34 @@ def gather(clients: DiscoveryClients, config: DiscoveryConfig, now: datetime) ->
         config=config,
         now=now,
         gathered=gathered,
+        source_health=source_health,
     )
     return gathered
+
+
+def track_source_health(
+    state: dict[str, dict[str, Any]],
+    gathered: Gathered,
+    config: DiscoveryConfig,
+    now: datetime,
+    search: YtDlpSearch | None = None,
+) -> None:
+    """Fold this pass's source reports into the health state; a source that failed
+    `discovery.source_failure_notify_after` passes in a row is announced once, and once more when it
+    works again. Never raises: bookkeeping must not fail a pass."""
+    try:
+        notices = health.update(
+            state,
+            [(report.name, report.status, report.detail) for report in gathered.reports],
+            now,
+            notify_after=config.source_failure_notify_after,
+            backoff={health.YTDLP_SOURCE: (config.ytdlp_backoff_after_failures, config.ytdlp_backoff_s)},
+            access={health.YTDLP_SOURCE: search.access} if search is not None else None,
+        )
+    except Exception as exc:
+        _log.warning("discovery_source_health_failed", error=type(exc).__name__)
+        return
+    gathered.notes.extend(notice.title for notice in notices)
 
 
 def fill_followers(
@@ -479,7 +523,13 @@ def _run(clients: DiscoveryClients | None, now: datetime) -> DiscoverySummary:
         summary.timings_s[step] = round(time.monotonic() - lap, 2)
         lap = time.monotonic()
 
-    gathered = gather(clients, config, now)
+    try:
+        source_health = health.load()
+    except Exception as exc:  # an unreadable state row must not stop discovery
+        _log.warning("discovery_source_health_failed", error=type(exc).__name__)
+        source_health = {}
+    gathered = gather(clients, config, now, source_health)
+    track_source_health(source_health, gathered, config, now, clients.search)
     timed("sources")
     candidates, skipped = filter_candidates(gathered.candidates, config, now)
     for reason, count in skipped.items():
@@ -540,6 +590,9 @@ def _run(clients: DiscoveryClients | None, now: datetime) -> DiscoverySummary:
     summary.youtube_searches = gathered.searches
     summary.youtube_quota_units = gathered.youtube_quota_units
     summary.youtube_quota_units_today = store.youtube_units_today()
+    summary.youtube_search_api_calls = gathered.search_api_calls
+    summary.youtube_search_api_calls_today = store.youtube_search_calls_today()
+    summary.notes = list(gathered.notes)
     summary.apify_cost_usd = round(gathered.apify_cost_usd, 4)
     spent_day, spent_month = store.apify_spend()
     summary.apify_spent_today_usd, summary.apify_spent_month_usd = round(spent_day, 4), round(spent_month, 4)

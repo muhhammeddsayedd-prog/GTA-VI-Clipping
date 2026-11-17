@@ -114,7 +114,11 @@ def test_config_defaults_match_the_migration() -> None:
         key: json.loads(raw.replace("''", "'"))
         for key, raw in re.findall(r"^\s*\('([\w.]+)', '(.*?)'::jsonb, '", sql, re.MULTILINE)
     }
-    assert seeded == DEFAULTS
+    # Migration 0010 raised `vod.fallback_below_spikes` from the 1 seeded here to 3 (hardening-sources).
+    later = (Path(__file__).resolve().parents[3] / "supabase/migrations/0010_sources.sql").read_text("utf-8")
+    assert "where key = 'vod.fallback_below_spikes' and value = '1'::jsonb" in later
+    assert seeded.pop("vod.fallback_below_spikes") == 1
+    assert {**seeded, "vod.fallback_below_spikes": 3} == DEFAULTS
 
 
 def test_config_reads_every_value() -> None:

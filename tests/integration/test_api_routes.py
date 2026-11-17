@@ -131,11 +131,12 @@ def test_the_hourly_route_queues_nothing_under_the_emergency_stop(
     assert "trigger:hourly" in heartbeat_names()
 
 
-def test_the_placeholder_triggers_write_their_heartbeats(client: TestClient) -> None:
-    assert client.post("/v1/guardian/check", headers=AUTH).status_code == 501
-    assert client.post("/v1/stats/collect", headers=AUTH).status_code == 501
-    assert client.post("/v1/guardian/takedown", headers=AUTH, json={"message_id": "m1"}).status_code == 501
-    assert client.get("/v1/reports/daily", headers=AUTH).status_code == 501
+def test_the_scheduled_triggers_write_their_heartbeats(client: TestClient) -> None:
+    # No API keys and no posts here: the M13 routes answer with an empty result (their behaviour is
+    # tested in test_guardian_routes.py). The takedown and report routes are not schedules.
+    assert client.post("/v1/guardian/check", headers=AUTH).status_code == 200
+    assert client.post("/v1/stats/collect", headers=AUTH).status_code == 200
+    assert client.get("/v1/reports/daily", headers=AUTH).status_code == 200
     assert client.post("/v1/discovery/run", headers=AUTH).status_code in (200, 501)
     assert heartbeat_names() == {"trigger:guardian", "trigger:stats", "trigger:discovery"}
 

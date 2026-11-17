@@ -77,12 +77,17 @@ def test_stop_signals_are_only_installed_in_the_main_thread(monkeypatch: pytest.
     assert sorted(installed) == sorted([_runtime.signal.SIGINT, _runtime.signal.SIGTERM])
 
 
-def test_the_scheduler_has_the_m11_tasks_with_their_intervals() -> None:
+def test_the_scheduler_has_the_m11_and_m13_tasks_with_their_intervals() -> None:
     assert {task.name: task.interval_s for task in scheduler.tasks()} == {
         "heartbeat": 30.0,
         "notify_retry": 60.0,
         "stale_jobs": 60.0,
         "ranking_refresh": 600.0,
+        "guardian_health": 60.0,
+        "stuck_jobs": 300.0,
+        "clip_expiry": 600.0,
+        "prune": 3600.0,
+        "launch_summary": 60.0,
     }
 
 

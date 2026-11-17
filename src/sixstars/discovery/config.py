@@ -1,11 +1,12 @@
 """Every setting one discovery pass reads, loaded once at the start of the pass into `DiscoveryConfig`.
 
 Keys seeded by migration `0002` are required. Keys added by migration `0006_discovery.sql` fall back to
-`DEFAULTS` (the values that migration seeds) so that discovery keeps running on a database where the
-migration has not been applied yet; an integration test keeps the two in step.
+`DEFAULTS` and keys added by `0010_sources.sql` to `SOURCES_DEFAULTS` (the values those migrations seed) so
+that discovery keeps running on a database where a migration has not been applied yet; integration tests
+keep code and migrations in step.
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Final
 
 from sixstars import settings
@@ -17,7 +18,7 @@ DEFAULTS: Final[dict[str, Any]] = {
     "discovery.ytdlp_workers": 6,
     "discovery.ytdlp_timeout_s": 25,
     "discovery.youtube_quota_daily_units": 3000,
-    "discovery.rss_max_channels_per_run": 25,
+    "discovery.rss_max_channels_per_run": 50,  # 25 in 0006, raised by 0010
     "discovery.rss_cursor": None,
     "discovery.apify_interval_s": 21600,
     "discovery.apify_max_results": 5,
@@ -45,17 +46,107 @@ DEFAULTS: Final[dict[str, Any]] = {
     "discovery.excluded_channels": [],
 }
 
+# Values of migration 0010 (source hardening). Only used when a key is missing.
+SOURCES_DEFAULTS: Final[dict[str, Any]] = {
+    # Data API search.list as a discovery source
+    "discovery.search_api_mode": "fallback",
+    "discovery.search_api_calls_per_pass": 1,
+    "discovery.search_api_interval_s": 1800,
+    "discovery.search_api_daily_calls": 60,
+    "discovery.search_api_modes": ["live", "recent"],
+    "discovery.search_api_combined_modes": ["recent", "completed"],
+    "discovery.search_api_durations": {"recent": "long", "completed": "long"},
+    "discovery.search_api_orders": {"live": "viewCount", "recent": "viewCount", "completed": "viewCount"},
+    "discovery.search_api_relevance_language": "en",
+    "discovery.search_api_category_id": "20",
+    "discovery.search_api_state": None,
+    # live streams seen before are looked at again each pass (1 quota unit per 50)
+    "discovery.live_recheck_max": 50,
+    "discovery.live_recheck_window_s": 5400,
+    # source health
+    "discovery.source_failure_notify_after": 3,
+    "discovery.ytdlp_backoff_after_failures": 2,
+    "discovery.ytdlp_backoff_s": 3600,
+    "discovery.ytdlp_use_cookies": False,
+    "discovery.source_health": None,
+    # language
+    "discovery.non_latin_share": 0.3,
+    "discovery.non_english_terms": [
+        "hindi",
+        "\u0939\u093f\u0902\u0926\u0940",
+        "\u0939\u093f\u0928\u094d\u0926\u0940",
+        "urdu",
+        "tamil",
+        "telugu",
+        "malayalam",
+        "kannada",
+        "bangla",
+        "bengali",
+        "marathi",
+        "punjabi",
+        "nepali",
+        "indonesia",
+        "tagalog",
+        "pinoy",
+        "espa\u00f1ol",
+        "espanol",
+        "en vivo",
+        "en directo",
+        "portugu\u00eas",
+        "portugues",
+        "ao vivo",
+        "brasil",
+        "deutsch",
+        "fran\u00e7ais",
+        "francais",
+        "t\u00fcrk\u00e7e",
+        "turkce",
+        # not a language: the "Shorts feed" mod-showcase streams (no usable speech), seen 2026-11-17
+        "shortsfeed",
+        "shortslive",
+        "secret mod",
+    ],
+    # yield
+    "discovery.edited_upload_bonus": 6,
+    "discovery.edited_max_duration_s": 3600,
+    "discovery.edited_engagement_full": 0.04,
+    "discovery.long_stream_min_s": 3600,
+    "discovery.thin_chat_factor": 0.75,
+}
+
+_ALL_DEFAULTS: Final[dict[str, Any]] = {**DEFAULTS, **SOURCES_DEFAULTS}
+SEARCH_API_MODES: Final[tuple[str, ...]] = ("off", "fallback", "always")
+
 
 def _int(key: str) -> int:
-    return settings.get_int(key, DEFAULTS[key]) if key in DEFAULTS else settings.get_int(key)
+    return settings.get_int(key, _ALL_DEFAULTS[key]) if key in _ALL_DEFAULTS else settings.get_int(key)
 
 
 def _float(key: str) -> float:
-    return settings.get_float(key, DEFAULTS[key]) if key in DEFAULTS else settings.get_float(key)
+    if key in _ALL_DEFAULTS:
+        return settings.get_float(key, _ALL_DEFAULTS[key])
+    return settings.get_float(key)
+
+
+def _bool(key: str) -> bool:
+    return settings.get_bool(key, bool(_ALL_DEFAULTS[key]))
+
+
+def _str(key: str) -> str:
+    value = settings.get(key, _ALL_DEFAULTS[key])
+    return str(value).strip() if value is not None else ""
+
+
+def _strs(key: str) -> dict[str, str]:
+    values = settings.get_dict(key, dict(_ALL_DEFAULTS[key]))
+    return {str(name): str(value) for name, value in values.items()}
 
 
 def _strings(key: str) -> tuple[str, ...]:
-    values = settings.get_list(key, list(DEFAULTS[key])) if key in DEFAULTS else settings.get_list(key)
+    if key in _ALL_DEFAULTS:
+        values = settings.get_list(key, list(_ALL_DEFAULTS[key]))
+    else:
+        values = settings.get_list(key)
     return tuple(str(value) for value in values if str(value).strip())
 
 
@@ -76,6 +167,13 @@ class ScoreConfig:
     chat_msgs_per_view: float
     chat_min_messages: float
     passive_views_engagement: float
+    # Yield (migration 0010). The defaults are neutral so that callers which build a config by hand keep
+    # the M09 behaviour; `DiscoveryConfig.from_settings` always passes the settings.
+    edited_upload_bonus: float = 0.0
+    edited_max_duration_s: float = 3600.0
+    edited_engagement_full: float = 0.04
+    long_stream_min_s: float = 3600.0
+    thin_chat_factor: float = 1.0
 
 
 @dataclass(frozen=True)
@@ -122,10 +220,30 @@ class DiscoveryConfig:
     permission_checks_per_run: int
     permission_jobs_per_run: int
     excluded_channels: tuple[str, ...]
+    # sources hardening (migration 0010); the defaults switch the additions off for hand-built configs
+    search_api_mode: str = "off"  # off | fallback | always
+    search_api_calls_per_pass: int = 1
+    search_api_interval_s: int = 1800
+    search_api_daily_calls: int = 60
+    search_api_modes: tuple[str, ...] = ("live", "recent")
+    search_api_combined_modes: tuple[str, ...] = ("recent", "completed")
+    search_api_durations: dict[str, str] = field(default_factory=dict)
+    search_api_orders: dict[str, str] = field(default_factory=dict)
+    search_api_relevance_language: str = "en"
+    search_api_category_id: str = "20"
+    live_recheck_max: int = 0
+    live_recheck_window_s: int = 5400
+    source_failure_notify_after: int = 3
+    ytdlp_backoff_after_failures: int = 2
+    ytdlp_backoff_s: int = 3600
+    ytdlp_use_cookies: bool = False
+    non_latin_share: float = 0.3
+    non_english_terms: tuple[str, ...] = ()
 
     @classmethod
     def from_settings(cls) -> "DiscoveryConfig":
         """Read the settings table (through the 30-second cache)."""
+        mode = _str("discovery.search_api_mode").casefold()
         return cls(
             target_game=settings.get_str("env.target_game"),
             search_terms=_strings("env.search_terms"),
@@ -151,6 +269,11 @@ class DiscoveryConfig:
                 chat_msgs_per_view=_float("discovery.chat_msgs_per_view"),
                 chat_min_messages=_float("discovery.chat_min_messages"),
                 passive_views_engagement=_float("discovery.passive_views_engagement"),
+                edited_upload_bonus=_float("discovery.edited_upload_bonus"),
+                edited_max_duration_s=_float("discovery.edited_max_duration_s"),
+                edited_engagement_full=_float("discovery.edited_engagement_full"),
+                long_stream_min_s=_float("discovery.long_stream_min_s"),
+                thin_chat_factor=_float("discovery.thin_chat_factor"),
             ),
             youtube_search_results=_int("discovery.youtube_search_results"),
             youtube_recent_sorts=_strings("discovery.youtube_recent_sorts"),
@@ -176,4 +299,22 @@ class DiscoveryConfig:
             permission_checks_per_run=_int("discovery.permission_checks_per_run"),
             permission_jobs_per_run=_int("discovery.permission_jobs_per_run"),
             excluded_channels=_strings("discovery.excluded_channels"),
+            search_api_mode=mode if mode in SEARCH_API_MODES else "off",
+            search_api_calls_per_pass=max(0, _int("discovery.search_api_calls_per_pass")),
+            search_api_interval_s=max(0, _int("discovery.search_api_interval_s")),
+            search_api_daily_calls=max(0, _int("discovery.search_api_daily_calls")),
+            search_api_modes=_strings("discovery.search_api_modes"),
+            search_api_combined_modes=_strings("discovery.search_api_combined_modes"),
+            search_api_durations=_strs("discovery.search_api_durations"),
+            search_api_orders=_strs("discovery.search_api_orders"),
+            search_api_relevance_language=_str("discovery.search_api_relevance_language"),
+            search_api_category_id=_str("discovery.search_api_category_id"),
+            live_recheck_max=max(0, _int("discovery.live_recheck_max")),
+            live_recheck_window_s=max(0, _int("discovery.live_recheck_window_s")),
+            source_failure_notify_after=max(1, _int("discovery.source_failure_notify_after")),
+            ytdlp_backoff_after_failures=max(1, _int("discovery.ytdlp_backoff_after_failures")),
+            ytdlp_backoff_s=max(0, _int("discovery.ytdlp_backoff_s")),
+            ytdlp_use_cookies=_bool("discovery.ytdlp_use_cookies"),
+            non_latin_share=_float("discovery.non_latin_share"),
+            non_english_terms=_strings("discovery.non_english_terms"),
         )

@@ -495,16 +495,22 @@ def note_block(video: Video, detail: str, access: str) -> None:
     )
 
 
-def block_retry_at(platform: str, backoff_s: float) -> datetime | None:
+def block_retry_at(platform: str, backoff_s: float, access: str | None = None) -> datetime | None:
     """When downloads of `platform` may be tried again after a refusal, or None when they may be tried
-    now. Measured on the database clock, the one clock every worker shares."""
+    now. Measured on the database clock, the one clock every worker shares.
+
+    `access` is `Access.described` of this process. A refusal recorded under a different access (before
+    the owner set `PROXY_URL` or mounted the cookies file) says nothing about the present one and is
+    ignored, so the lane tries again right after the restart instead of waiting out the back-off."""
     row = db.fetch_one(
         """
         select max(created_at) + make_interval(secs => %s) as retry_at,
                max(created_at) + make_interval(secs => %s) > now() as waiting
-        from events where type = %s and data->>'platform' = %s
+        from events
+        where type = %s and data->>'platform' = %s
+          and (%s::text is null or data->>'access' is null or data->>'access' = %s)
         """,
-        (backoff_s, backoff_s, EVENT_BLOCKED, platform),
+        (backoff_s, backoff_s, EVENT_BLOCKED, platform, access, access),
     )
     if row is None or not row["waiting"]:
         return None
