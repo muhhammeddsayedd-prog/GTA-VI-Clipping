@@ -113,6 +113,9 @@ def spikes_scan(
     set_pairs: list[str] = typer.Option(
         [], "--set", help="Override one setting for this run, as key=json (repeatable)."
     ),
+    end_guard: float = typer.Option(
+        0.0, "--end-guard", help="Drop spikes in the last N seconds of the chat."
+    ),
 ) -> None:
     """Print the spikes found in a chat file."""
     from pathlib import Path
@@ -127,6 +130,7 @@ def spikes_scan(
             sample=sample,
             settings_file=Path(settings_file) if settings_file else None,
             set_pairs=set_pairs,
+            end_guard_s=end_guard,
         )
 
     if settings_file:

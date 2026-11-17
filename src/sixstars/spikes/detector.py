@@ -225,12 +225,15 @@ def analyse_replay(
     config: SpikeConfig | None = None,
     bot_names: Iterable[str] | None = None,
     loudness: Iterable[tuple[float, float]] | None = None,
+    end_guard_s: float = 0.0,
 ) -> ReplayScan:
     """Scan a whole chat replay. Pure when `config` is passed; with `config=None` the settings are read
     once from the table.
 
     `bot_names=None` learns the bots from the whole file. `loudness` is optional `(t, dB)` readings on
     the chat clock for the audio-jump feature; without it the audio part of the score is 0.
+    `end_guard_s` drops spikes whose peak lies in the last seconds of the chat: on real streams the
+    goodbye messages at the end look like a spike. It is off by default (there is no setting for it yet).
     """
     cfg = config or SpikeConfig.from_settings()
     ordered = sort_messages(messages)
@@ -283,7 +286,8 @@ def analyse_replay(
         found, cfg.merge_gap_s, peak_t=lambda spike: spike.peak_t, score=lambda spike: spike.score_z
     ):
         kept.absorbed = absorbed
-        spikes.append(kept)
+        if end_guard_s <= 0 or kept.peak_t < items[-1].t - end_guard_s:
+            spikes.append(kept)
     log.debug(
         "replay_scanned",
         platform=platform,
@@ -304,10 +308,16 @@ def scan_replay(
     config: SpikeConfig | None = None,
     bot_names: Iterable[str] | None = None,
     loudness: Iterable[tuple[float, float]] | None = None,
+    end_guard_s: float = 0.0,
 ) -> list[DetectedSpike]:
     """The spikes of a whole chat replay, in time order. See `analyse_replay`."""
     return analyse_replay(
-        messages, stream_start, config=config, bot_names=bot_names, loudness=loudness
+        messages,
+        stream_start,
+        config=config,
+        bot_names=bot_names,
+        loudness=loudness,
+        end_guard_s=end_guard_s,
     ).spikes
 
 

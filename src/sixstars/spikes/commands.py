@@ -127,6 +127,7 @@ def scan(
     sample: int,
     settings_file: Path | None,
     set_pairs: Sequence[str],
+    end_guard_s: float = 0.0,
 ) -> int:
     """Run `sixstars spikes scan`. Returns the process exit code."""
     reconfigure = getattr(sys.stdout, "reconfigure", None)
@@ -141,7 +142,7 @@ def scan(
     except OSError as exc:
         typer.echo(f"cannot read {exc.filename}: {exc.strerror}", err=True)
         return EXIT_ERROR
-    result = analyse_replay(messages, config=config)
+    result = analyse_replay(messages, config=config, end_guard_s=end_guard_s)
     best = ranked(result.spikes)[:top] if top > 0 else ranked(result.spikes)
     typer.echo(format_summary(chat_file, result, len(best)))
     for line in format_table(best):

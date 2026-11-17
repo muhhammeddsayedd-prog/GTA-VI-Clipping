@@ -427,3 +427,13 @@ def test_tracker_state_machine(
 
 def test_tracker_ignores_high_scores_with_too_few_messages(cfg: SpikeConfig) -> None:
     assert track(cfg, [0, 9, 9, 0], msgs=14) == []
+
+
+def test_end_guard_drops_the_goodbye_spike_at_the_end_of_a_stream(cfg: SpikeConfig) -> None:
+    chat = synthetic.merge(
+        synthetic.flat_chat(3000, 5),
+        synthetic.burst(1200.0, 120, 80),
+        synthetic.burst(2900.0, 120, 80, seed=9, user_prefix="bye"),
+    )
+    assert [spike.peak_t for spike in scan_replay(chat, config=cfg)] == [1200.0, 2900.0]
+    assert [spike.peak_t for spike in scan_replay(chat, config=cfg, end_guard_s=300.0)] == [1200.0]
