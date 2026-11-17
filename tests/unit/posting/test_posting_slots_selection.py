@@ -586,8 +586,8 @@ def test_a_slot_asked_for_too_early_or_too_late_posts_nothing() -> None:
 @pytest.mark.parametrize(
     ("youtube_cap", "youtube_reserve", "youtube_posts"),
     [
-        (40, 8, 22),  # the seed: capped at Upload-Post's 30, and 8 of those are kept for spikes
-        (28, 4, 24),  # the proposed values: every hourly slot posts and 4 stay free for spikes
+        (40, 8, 22),  # the old seed: capped at Upload-Post's 30, and 8 of those are kept for spikes
+        (28, 4, 24),  # the seeded values (migration 0005): every hourly slot posts and 4 stay free for spikes
         (30, 6, 24),
         (28, 8, 20),
     ],

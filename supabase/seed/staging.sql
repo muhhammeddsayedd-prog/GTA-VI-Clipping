@@ -17,6 +17,6 @@ insert into platform_accounts (id, platform, upload_post_user, handle, lanes, ca
   ('tiktok_main',    'tiktok',    'default', '@6starsclipping',  '{hourly,spike}', 14, 4,  900, 'SELF_ONLY', null, true),
   ('tiktok_live',    'tiktok',    'default', '@6starsclipping',  '{spike}',        14, 14, 900, 'SELF_ONLY', null, false),
   ('instagram_main', 'instagram', 'default', '@6starsclippy',    '{hourly,spike}', 45, 10, 900, null,        null, true),
-  ('youtube_main',   'youtube',   'default', '@6starsclips-m3x', '{hourly,spike}', 40, 8,  900, 'private',   null, true)
+  ('youtube_main',   'youtube',   'default', '@6starsclips-m3x', '{hourly,spike}', 28, 4,  900, 'private',   null, true)
 on conflict (id) do nothing;
 -- Note: staging dry_run starts true. Set it to false only for the end-to-end private posting test (M15).

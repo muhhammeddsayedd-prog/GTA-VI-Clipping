@@ -11,7 +11,7 @@ from sixstars.posting.params import PostingParams
 T0 = datetime(2026, 11, 20, 12, 0, tzinfo=UTC)
 LAUNCH_AT = datetime(2026, 11, 18, 11, 0, tzinfo=UTC)
 
-# Defaults from docs/16-settings-reference.md, plus the proposed `posting.platform_max_24h`.
+# Defaults from docs/16-settings-reference.md, plus `posting.platform_max_24h` (migration 0005).
 DEFAULT_SETTINGS: dict[str, object] = {
     "control.emergency_stop": False,
     "launch.dry_run": True,
@@ -70,7 +70,7 @@ def production_accounts() -> dict[str, Account]:
             False,
         ),
         Account("instagram_main", Platform.INSTAGRAM, "default", "@6starsclippy", BOTH, 45, 10, 900),
-        Account("youtube_main", Platform.YOUTUBE, "default", "@6starsclips-m3x", BOTH, 40, 8, 900, "public"),
+        Account("youtube_main", Platform.YOUTUBE, "default", "@6starsclips-m3x", BOTH, 28, 4, 900, "public"),
     ]
     return {row.id: row for row in rows}
 
