@@ -4,8 +4,9 @@ factory. Implemented in M08.
 Steps of `process_video` (job types `vod.process` and `replay.scan`):
 
 1. Gates: creator still allowed, `vod.paused_until`, `control.emergency_stop`, downloads of the platform
-   not blocked a moment ago, fewer than `vod.max_concurrent` videos in work. Then `videos.status` becomes
-   `processing`.
+   not blocked a moment ago. Then the video and a concurrency slot are claimed in one step
+   (`store.claim`): `videos.status` becomes `processing` unless as many videos as the lane may process
+   at once are really in work (`concurrency_limit`).
 2. Chat replay (kept as JSON Lines under `DATA_DIR/chat`), `chat_files` row, replay scan with
    `spikes.end_guard_s`, best `vod.max_spikes_per_video` spikes stored. After a live stream, spikes on
    ranges the live lane already clipped are left out.
@@ -19,6 +20,11 @@ A video that cannot go on for a reason that is not its fault (downloads blocked,
 emergency stop, lane paused, too many videos in work) is *deferred*: status back to `new`, the job queued
 again for later, no attempt used up. Every step can be repeated: a retried or duplicated job finds the
 stored chat, spikes, verdicts, window files and render jobs and continues after them.
+
+A video left in `processing` by a worker that was restarted does not hold a slot: only videos with a
+running job (or touched in the last `vod.orphan_grace_s`) count, the job of such a video takes it over
+when it runs again, and `recover_orphans` (scheduler task, and the start of every job) puts the others
+back to `new` (fix-stale-processing).
 """
 
 import contextvars
@@ -26,7 +32,7 @@ import shutil
 import threading
 import time
 from collections import Counter
-from collections.abc import Callable, Iterator, Sequence
+from collections.abc import Callable, Iterator, Mapping, Sequence
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from contextlib import contextmanager, suppress
 from dataclasses import dataclass, field, replace
@@ -47,7 +53,7 @@ from sixstars.factory.pipeline import next_budget_reset
 from sixstars.logging import get_logger
 from sixstars.spikes import DetectedSpike, SpikeConfig, analyse_replay, persist_spike
 from sixstars.spikes.buckets import tokenise
-from sixstars.vod import captions, fallback, health, sections, store, ytdlp
+from sixstars.vod import captions, fallback, health, sections, slots, store, ytdlp
 from sixstars.vod.captions import Track
 from sixstars.vod.common import DeferredError, Deps, VideoGoneError
 from sixstars.vod.config import VodConfig
@@ -68,6 +74,9 @@ FAILED_TITLE: Final = "VOD processing failed"
 # Shape of the confirmation prompt, not runtime settings.
 CONFIRMED_STATUSES: Final = ("confirmed", "rendering", "clipped")
 TOP_TOKENS: Final = 5
+WORKER_QUEUE: Final = "normal"
+RECOVERY_JOB_PRIORITY: Final = 30  # the priority discovery gives a `vod.process` job
+DEFERRALS_KEY: Final = "deferrals"  # payload: times in a row the job found no free slot
 TRANSCRIPT_MAX_CHARS: Final = 1500
 
 Status = Literal["done", "deferred", "skipped", "failed", "ignored"]
@@ -266,12 +275,29 @@ def _gates(video: Video, cfg: VodConfig, deps: Deps, *, force: bool) -> None:
     retry_at = store.block_retry_at(video.platform, cfg.blocked_backoff_s, access)
     if retry_at is not None:
         raise DeferredError("download_blocked", f"{video.platform} downloads were refused", retry_at)
-    if store.count_processing(video.id, cfg.processing_stale_s) >= cfg.max_concurrent:
-        raise DeferredError(
-            "concurrency",
-            "vod.max_concurrent videos are in work",
-            now + timedelta(seconds=cfg.concurrency_retry_s),
-        )
+
+
+def concurrency_limit(cfg: VodConfig) -> int:
+    """Videos the lane may process at once right now: `vod.max_concurrent`, but one live worker of the
+    `normal` queue always stays free for renders (`slots.effective_concurrency`)."""
+    live = jobs.live_workers(WORKER_QUEUE, cfg.worker_fresh_s)
+    return slots.effective_concurrency(cfg.max_concurrent, live)
+
+
+def _no_slot(cfg: VodConfig, deps: Deps, limit: int, deferrals: int) -> NoReturn:
+    """Every slot is taken: defer with a jittered wait that grows with each deferral in a row."""
+    delay_s = slots.deferral_delay(
+        deferrals,
+        cfg.concurrency_retry_s,
+        cfg.concurrency_retry_max_s,
+        cfg.concurrency_retry_jitter,
+        deps.rand(),
+    )
+    raise DeferredError(
+        "concurrency",
+        f"{limit} video(s) are in work (vod.max_concurrent {cfg.max_concurrent})",
+        deps.now() + timedelta(seconds=delay_s),
+    )
 
 
 def download_chat(platform: str, source_id: str, raw_path: Path | None = None) -> ReplayChat | None:
@@ -666,12 +692,43 @@ def give_up(video_id: str, error: str, *, deps: Deps | None = None) -> str:
     return status
 
 
+def recover_orphans() -> list[str]:
+    """Heal videos left in `processing` with nothing working on them (their worker was restarted).
+
+    Each is put back to `new` (`store.reset_orphans`, one `video.recovered` event per video). Then its
+    job decides what happens next: a queued job resumes it; when the last job failed for good the video
+    is closed (`give_up`); when there is no job any more a new `vod.process` job is queued. Returns the
+    ids of the videos reset. Safe to run from several processes at once.
+    """
+    log = get_logger("vod")
+    cfg = VodConfig.load()
+    reset = store.reset_orphans(cfg.orphan_grace_s)
+    for video_id in reset:
+        status = store.latest_job_status(video_id)
+        action = "waits for its queued job"
+        if status == "failed":
+            action = f"closed as {give_up(video_id, 'the job failed and left the video in processing')}"
+        elif status in (None, "done"):
+            job_id = jobs.enqueue(
+                "normal",
+                JOB_VOD_PROCESS,
+                {"video_id": video_id},
+                priority=RECOVERY_JOB_PRIORITY,
+                dedupe_key=f"vod:{video_id}",
+            )
+            action = f"queued again as job {job_id}"
+        log.warning("vod_orphan_recovered", video_id=video_id, last_job=status, action=action)
+    return reset
+
+
 def process_video(
     video_id: str,
     *,
     deps: Deps | None = None,
     final_attempt: bool = False,
     force: bool = False,
+    job_id: int | None = None,
+    deferrals: int = 0,
 ) -> Outcome:
     """Process one video and say what happened.
 
@@ -679,13 +736,24 @@ def process_video(
     creator forbids clipping), `failed` (the video is gone) or `ignored` (unknown, finished, or another
     worker has it). Any other problem is raised so the job is retried; with `final_attempt` the video is
     closed first (`give_up`). `force` skips the blocked-downloads and concurrency gates and takes over a
-    video that looks in work (the CLI uses it).
+    video that looks in work (the CLI uses it). `job_id` is the job this call runs in: it may take over
+    a video left in `processing` when no other job is running for it. `deferrals` is how often in a row
+    the job already found no free slot (it sets the length of the next wait).
     """
     with structlog.contextvars.bound_contextvars(video_id=video_id):
-        return _process(video_id, deps or Deps(), final_attempt=final_attempt, force=force)
+        return _process(
+            video_id,
+            deps or Deps(),
+            final_attempt=final_attempt,
+            force=force,
+            job_id=job_id,
+            deferrals=deferrals,
+        )
 
 
-def _process(video_id: str, deps: Deps, *, final_attempt: bool, force: bool) -> Outcome:
+def _process(
+    video_id: str, deps: Deps, *, final_attempt: bool, force: bool, job_id: int | None, deferrals: int
+) -> Outcome:
     log = get_logger("vod")
     video = store.load_video(video_id)
     if video is None:
@@ -701,8 +769,18 @@ def _process(video_id: str, deps: Deps, *, final_attempt: bool, force: bool) -> 
     stats = _Stats()
     try:
         _gates(video, cfg, deps, force=force)
-        if not store.claim(video.id, 0.0 if force else cfg.processing_stale_s):
+        limit = None if force else concurrency_limit(cfg)
+        claimed = store.claim(
+            video.id,
+            0.0 if force else cfg.processing_stale_s,
+            limit=limit,
+            grace_s=cfg.orphan_grace_s,
+            job_id=job_id,
+        )
+        if claimed == "busy":
             return Outcome("ignored", "another worker is processing this video")
+        if claimed == "full" and limit is not None:
+            _no_slot(cfg, deps, limit, deferrals)
         log.info(
             "vod_started", platform=video.platform, source_id=video.source_id, attempt=video.attempts + 1
         )
@@ -711,7 +789,7 @@ def _process(video_id: str, deps: Deps, *, final_attempt: bool, force: bool) -> 
         _defer(video, deferred)
         _remove_scratch(video.id)
         _queue_cleanup(video.id, cfg, deps)
-        log.warning(
+        log.info(
             "vod_deferred",
             kind=deferred.kind,
             reason=deferred.reason,
@@ -763,12 +841,26 @@ def video_id_for(payload: dict[str, Any]) -> str | None:
     return store.video_for_live_session(str(session_id)) if session_id else None
 
 
-def requeue(job: jobs.Job, run_after: datetime) -> int | None:
-    """Queue the same work again for `run_after`; the current job then ends as done."""
+def deferrals_of(payload: Mapping[str, Any]) -> int:
+    """How often in a row the job with this payload found no free slot (0 for a fresh job)."""
+    value = payload.get(DEFERRALS_KEY)
+    return value if isinstance(value, int) and not isinstance(value, bool) and value > 0 else 0
+
+
+def requeue_payload(payload: Mapping[str, Any], kind: str) -> dict[str, Any]:
+    """Payload of the job that replaces a deferred one: the deferral count goes up after a wait for a
+    slot and starts again after any other reason."""
+    rest = {key: value for key, value in payload.items() if key != DEFERRALS_KEY}
+    return {**rest, DEFERRALS_KEY: deferrals_of(payload) + 1} if kind == "concurrency" else rest
+
+
+def requeue(job: jobs.Job, run_after: datetime, kind: str = "") -> int | None:
+    """Queue the same work again for `run_after`; the current job then ends as done. The new job starts
+    with no attempts used: a deferral is not a failure."""
     return jobs.enqueue(
         "express" if job.queue == "express" else "normal",
         job.type,
-        job.payload,
+        requeue_payload(job.payload, kind),
         priority=job.priority,
         run_after=run_after,
         dedupe_key=requeue_key(job.dedupe_key),
@@ -783,11 +875,19 @@ def handle(job: jobs.Job, deps: Deps | None = None) -> Outcome:
     if video_id is None:
         log.error("vod_job_without_video", job_type=job.type)
         return Outcome("ignored", "the job names no video")
+    try:
+        recover_orphans()  # also here, so the lane heals itself when the scheduler is down
+    except Exception as exc:
+        log.warning("vod_orphan_recovery_failed", error=type(exc).__name__, exc_info=True)
     outcome = process_video(
-        video_id, deps=deps or _deps_factory(), final_attempt=job.attempts >= job.max_attempts
+        video_id,
+        deps=deps or _deps_factory(),
+        final_attempt=job.attempts >= job.max_attempts,
+        job_id=job.id,
+        deferrals=deferrals_of(job.payload),
     )
     if outcome.status == "deferred" and outcome.run_after is not None:
-        requeue(job, outcome.run_after)
+        requeue(job, outcome.run_after, outcome.kind)
     elif outcome.status == "ignored":
         log.info("vod_job_ignored", video_id=video_id, reason=outcome.reason)
     return outcome

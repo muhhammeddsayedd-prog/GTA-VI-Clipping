@@ -169,9 +169,9 @@ Defaults below are the production values from `supabase/migrations/0002_seed_set
 | `vod.paused_until` | `null` | Set by guardian when the spend cap is hit; VOD jobs wait until this time. |
 | `downloads.proxy_platforms` | `["youtube"]` | Platforms whose downloads (yt-dlp, streamlink) go through PROXY_URL. |
 | `downloads.max_height` | `1080` | Max source video height downloaded. |
-| `vod.max_concurrent` | `1` | Videos the VOD lane processes at the same time. A job over the limit waits vod.concurrency_retry_s. (M08) |
-| `vod.concurrency_retry_s` | `120` | Seconds a vod.process job waits when vod.max_concurrent videos are already being processed. (M08) |
-| `vod.processing_stale_s` | `7200` | A video in status processing that was not updated for this long no longer counts as being processed (its worker died). (M08) |
+| `vod.max_concurrent` | `1` | Videos the VOD lane processes at the same time. The lane never uses every live worker of the normal queue: the limit in force is min(this, live normal workers - 1), at least 1. A job over the limit waits vod.concurrency_retry_s, longer each time. (M08, fix-stale-processing) |
+| `vod.concurrency_retry_s` | `120` | Seconds a vod.process job waits the first time no slot is free; the wait doubles with every further deferral up to vod.concurrency_retry_max_s. (M08, fix-stale-processing) |
+| `vod.processing_stale_s` | `7200` | A video in status processing that was not updated for this long may be taken over by a run that has no job (CLI). Slots are counted with vod.orphan_grace_s instead. (M08, fix-stale-processing) |
 | `vod.render_priority` | `{"S": 55, "A": 55, "B": 40}` | Priority of the clip.render job per spike tier. (M08) |
 | `vod.clipped_range_margin_s` | `30` | Replay pass after a live stream: spikes closer than this to a range the live lane already clipped are dropped. (M08) |
 | `vod.chat_retry_delay_s` | `20` | Seconds before the single retry when YouTube reports no chat replay for a past stream. (M08) |
@@ -200,6 +200,11 @@ Defaults below are the production values from `supabase/migrations/0002_seed_set
 | `vod.section_retention_s` | `93600` | Downloaded windows whose render never finished are deleted after this many seconds. (M08) |
 | `vod.chat_retention_s` | `604800` | Chat replay files are deleted this many seconds after the download. (M08) |
 | `vod.cleanup_interval_s` | `900` | Seconds between clean-up passes over one video's downloaded windows. (M08) |
+| `vod.orphan_grace_s` | `300` | A video in status processing with no running vod.process or replay.scan job stops counting as in work, and is put back to new, once it was not updated for this many seconds (covers runs started by hand with the CLI, which have no job). (fix-stale-processing) |
+| `vod.recovery_interval_s` | `60` | Seconds between scheduler passes that put orphaned processing videos back to new. (fix-stale-processing) |
+| `vod.concurrency_retry_max_s` | `600` | Longest wait of a vod.process job that keeps finding no free slot: the wait doubles from vod.concurrency_retry_s up to this. (fix-stale-processing) |
+| `vod.concurrency_retry_jitter` | `0.2` | Share (0..1) by which the wait for a free slot is randomly shortened, so deferred jobs do not all wake at once. (fix-stale-processing) |
+| `vod.worker_fresh_s` | `90` | A worker of the normal queue counts as live for the VOD concurrency limit when its heartbeat (written every 30 s) is not older than this many seconds. (fix-stale-processing) |
 
 ## Clip factory
 

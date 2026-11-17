@@ -2,6 +2,7 @@
 early without having failed. Implemented in M08.
 """
 
+import random
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -40,6 +41,7 @@ class Deps:
     transcriber: Transcriber | None = None
     sleep: Callable[[float], None] = time.sleep
     now: Callable[[], datetime] = utc_now
+    rand: Callable[[], float] = random.random  # 0..1, jitter of the wait for a free slot
     ffmpeg: str = "ffmpeg"
     ffprobe: str = "ffprobe"
 

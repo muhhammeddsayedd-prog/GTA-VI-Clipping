@@ -769,6 +769,7 @@ def test_a_paused_lane_waits_until_the_given_time(lane: Lane) -> None:
 def test_only_max_concurrent_videos_are_in_work(lane: Lane) -> None:
     busy, waiting = lane.video("vodtest0002"), lane.video()
     db.execute("update videos set status = 'processing' where id = %s", (busy,))
+    settings.set("vod.concurrency_retry_jitter", 0)
     lane.enqueue(waiting)
 
     outcome = lane.run_next()
@@ -779,18 +780,34 @@ def test_only_max_concurrent_videos_are_in_work(lane: Lane) -> None:
 
     settings.set("vod.max_concurrent", 2)
     make_due()
+    assert lane.run_next().kind == "concurrency"  # no live worker is known: the lane keeps to one video
+    for name in ("a", "b", "c"):  # with three workers two may run videos and one stays free for renders
+        db.heartbeat(f"worker-normal-{name}", {"queue": "normal"})
+    make_due()
     assert lane.run_next().status == "done"
 
 
 def test_a_video_whose_worker_died_is_taken_over_only_when_stale(lane: Lane) -> None:
     video_id = lane.video()
     db.execute("update videos set status = 'processing' where id = %s", (video_id,))
-    lane.enqueue(video_id)
-    outcome = lane.run_next()
+    outcome = process.process_video(video_id, deps=lane.deps())  # a run without a job
     assert outcome.status == "ignored" and "another worker" in outcome.reason
     assert spikes(video_id) == []
 
     settings.set("vod.processing_stale_s", 0)
+    assert process.process_video(video_id, deps=lane.deps()).status == "done"
+
+
+def test_a_job_resumes_its_video_left_in_processing_by_a_restarted_worker(lane: Lane) -> None:
+    video_id = lane.video()
+    db.execute("update videos set status = 'processing' where id = %s", (video_id,))
+    lane.enqueue(video_id)  # the job was released at shutdown and runs again
+    other = jobs.enqueue("normal", "replay.scan", {"video_id": video_id})
+    db.execute("update jobs set status = 'running' where id = %s", (other,))
+    outcome = lane.run_next()
+    assert outcome.status == "ignored" and "another worker" in outcome.reason
+
+    db.execute("update jobs set status = 'done' where id = %s", (other,))
     lane.enqueue(video_id)
     assert lane.run_next().status == "done"
 

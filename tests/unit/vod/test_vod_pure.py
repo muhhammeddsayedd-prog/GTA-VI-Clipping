@@ -11,7 +11,7 @@ from sixstars.ai.calls import TranscriptChunk
 from sixstars.ai.schemas import Moment
 from sixstars.factory.pipeline import next_budget_reset
 from sixstars.spikes.detector import DetectedSpike
-from sixstars.vod import cleanup, commands, fallback, process
+from sixstars.vod import cleanup, commands, fallback, process, slots
 from sixstars.vod.captions import Track, Word
 from sixstars.vod.config import DEFAULTS, VodConfig, VodConfigError
 from sixstars.vod.store import SpikeRow, Video
@@ -124,7 +124,62 @@ def test_config_defaults_match_the_migration() -> None:
     ).read_text("utf-8")
     assert "where key = 'vod.fallback_transcribe_max_s' and value = '5400'::jsonb" in off
     assert seeded.pop("vod.fallback_transcribe_max_s") == 5400
-    assert {**seeded, "vod.fallback_below_spikes": 3, "vod.fallback_transcribe_max_s": 0} == DEFAULTS
+    # Migration 0015 adds the recovery and back-off settings (fix-stale-processing).
+    recovery = (Path(__file__).resolve().parents[3] / "supabase/migrations/0015_vod_recovery.sql").read_text(
+        "utf-8"
+    )
+    added = {
+        key: json.loads(raw.replace("''", "'"))
+        for key, raw in re.findall(r"^\s*\('([\w.]+)', '(.*?)'::jsonb, '", recovery, re.MULTILINE)
+    }
+    assert len(added) == 5 and not set(added) & set(seeded)
+    assert {
+        **seeded,
+        **added,
+        "vod.fallback_below_spikes": 3,
+        "vod.fallback_transcribe_max_s": 0,
+    } == DEFAULTS
+
+
+# ── concurrency slots (fix-stale-processing) ─────────────────
+
+
+@pytest.mark.parametrize(
+    ("max_concurrent", "live_workers", "expected"),
+    [
+        (1, 1, 1),  # one worker: the floor, the lane still runs
+        (3, 1, 1),
+        (1, 2, 1),
+        (3, 2, 1),  # two workers: one for videos, one free for renders
+        (1, 4, 1),
+        (3, 4, 3),  # four workers: up to three videos
+        (8, 4, 3),
+        (3, 0, 1),  # no heartbeat known
+    ],
+)
+def test_the_lane_never_takes_every_normal_worker(
+    max_concurrent: int, live_workers: int, expected: int
+) -> None:
+    assert slots.effective_concurrency(max_concurrent, live_workers) == expected
+
+
+def test_the_wait_for_a_slot_doubles_up_to_the_cap_and_jitter_only_shortens_it() -> None:
+    waits = [slots.deferral_delay(n, 120, 600, 0.2, 0.0) for n in range(5)]
+    assert waits == [120, 240, 480, 600, 600]
+    assert slots.deferral_delay(0, 120, 600, 0.2, 1.0) == pytest.approx(96)
+    assert slots.deferral_delay(9, 120, 600, 0.2, 0.5) == pytest.approx(540)
+    assert slots.deferral_delay(10_000, 120, 600, 0.0, 1.0) == 600
+    assert slots.deferral_delay(3, 120, 60, 0.0, 0.0) == 120  # a cap below the base never shortens it
+    assert slots.deferral_delay(-1, 120, 600, 5.0, 2.0) == 0  # out-of-range inputs are clamped
+
+
+def test_the_deferral_count_travels_in_the_payload_and_restarts_after_another_reason() -> None:
+    assert process.deferrals_of({"video_id": "v"}) == 0
+    assert process.deferrals_of({"deferrals": "3"}) == 0 and process.deferrals_of({"deferrals": True}) == 0
+    once = process.requeue_payload({"video_id": "v", "url": "u"}, "concurrency")
+    assert once == {"video_id": "v", "url": "u", "deferrals": 1}
+    assert process.requeue_payload(once, "concurrency")["deferrals"] == 2
+    assert process.requeue_payload(once, "download_blocked") == {"video_id": "v", "url": "u"}
 
 
 def test_config_reads_every_value() -> None:
