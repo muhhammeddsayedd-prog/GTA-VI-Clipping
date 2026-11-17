@@ -11,6 +11,9 @@ FROM mwader/static-ffmpeg:${FFMPEG_VERSION} AS ffmpeg
 
 FROM ghcr.io/astral-sh/uv:${UV_VERSION} AS uv
 
+# yt-dlp needs a JavaScript runtime to solve YouTube's signature challenges when cookies are used.
+FROM denoland/deno:bin-2.9.8 AS deno
+
 # ── Downloads that need curl/unzip only (kept out of the runtime image) ──────────────────────────────────
 FROM debian:bookworm-slim AS fetch
 RUN apt-get update \
@@ -80,6 +83,7 @@ RUN apt-get update \
 
 COPY --from=ffmpeg /ffmpeg /ffprobe /usr/local/bin/
 COPY --from=uv /uv /usr/local/bin/uv
+COPY --from=deno /deno /usr/local/bin/deno
 COPY --from=fetch /out/bin/TwitchDownloaderCLI /usr/local/bin/TwitchDownloaderCLI
 COPY --from=fetch /out/fonts/ /usr/share/fonts/truetype/montserrat/
 RUN fc-cache -f \
