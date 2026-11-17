@@ -19,5 +19,10 @@
   .pipe-arrow { display: none; }
 }
 @media (max-width: 760px) {
-  .pipe-flow { grid-template-columns: repeat(2, 1fr); }
+  .pipe-flow { grid-template-columns: repeat(2, 1fr); gap: 10px; }
+  .pipe-node { padding: 12px; }
+  .pipe-big { font-size: 22px; margin-top: 10px; }
+  .slot-free { min-height: 120px; }
+  .chatline { font-size: 12px; gap: 8px; flex-wrap: wrap; }
+  .chatline .u { min-width: 0; }
 }

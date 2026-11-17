@@ -17,11 +17,11 @@ type LiveDetail = Omit<LiveSession, "spikes"> & {
 };
 
 const spikeCols: Col<Spike>[] = [
-  { key: "t", head: "Tier", render: (s) => <TierChip tier={s.tier} /> },
+  { key: "t", head: "Tier", mobile: "lead", render: (s) => <TierChip tier={s.tier} /> },
   { key: "at", head: "Detected", render: (s) => <span className="num">{spikeAt(s)}</span> },
   { key: "z", head: "z-score", align: "right", render: (s) => <b className="num">{s.score_z ?? "—"}</b> },
   { key: "c", head: "Claude", align: "right", render: (s) => (s.claude_confidence !== null ? s.claude_confidence.toFixed(2) : "—") },
-  { key: "m", head: "Moment", render: (s) => <span className="ink2">{s.claude_reason ?? "—"}</span> },
+  { key: "m", head: "Moment", mobile: "primary", render: (s) => <span className="ink2">{s.claude_reason ?? "—"}</span> },
   { key: "st", head: "Status", render: (s) => <Badge status={s.status} /> },
   { key: "clip", head: "Clip", render: (s) => <ClipLink id={s.clip_id} no={s.clip_series_no} /> },
 ];

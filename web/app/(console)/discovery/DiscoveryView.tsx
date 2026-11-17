@@ -5,7 +5,7 @@ import { Compass, SlidersHorizontal, X } from "lucide-react";
 
 import AnimatedContent from "@/components/reactbits/AnimatedContent";
 import { HBars, Ring } from "@/components/kit/charts";
-import { Pager } from "@/components/kit/data";
+import { DataTable, Pager, type Col } from "@/components/kit/data";
 import { Drawer } from "@/components/kit/overlays";
 import {
   Badge, Btn, Card, CardHead, ErrorState, Grid, KV, PageHead, Prog, RefreshBtn, Seg, SkeletonCards, SkeletonTable, Two, When, Who,
@@ -84,73 +84,57 @@ function Sources({ d }: { d: Discovery }) {
 
 function num(v: unknown): string { return typeof v === "number" ? fmtNum(v) : "—"; }
 
+const RUN_COLS: Col<Event>[] = [
+  { key: "run", head: "Run", render: (r) => <span className="semi"><When iso={r.created_at} /></span> },
+  { key: "dur", head: "Duration", mobile: "hide", render: (r) => { const x = (r.data ?? {}) as Record<string, unknown>; return typeof x.duration_s === "number" ? `${x.duration_s} s` : "—"; } },
+  { key: "live", head: "Live seen", align: "right", render: (r) => runNum(r, "live_seen") },
+  { key: "asg", head: "Assigned", align: "right", render: (r) => runNum(r, "assigned") },
+  { key: "rel", head: "Released", align: "right", mobile: "hide", render: (r) => runNum(r, "released") },
+  { key: "vid", head: "Videos", align: "right", render: (r) => runNum(r, "videos_queued") },
+  { key: "new", head: "New creators", align: "right", render: (r) => runNum(r, "new_creators") },
+  { key: "src", head: "Source", mobile: "hide", render: (r) => { const x = (r.data ?? {}) as Record<string, unknown>; return <Badge tone={x.source === "failover" ? "amber" : "gray"} dot={false}>{x.source === "failover" ? "failover" : "n8n WF01"}</Badge>; } },
+  { key: "result", head: "Result", render: (r) => r.type === "discovery.failed" ? <span title={r.message ?? undefined}><Badge status="failed" /></span> : <Badge status="ok" /> },
+];
+function runNum(r: Event, k: string): string { return r.type === "discovery.failed" ? "—" : num(((r.data ?? {}) as Record<string, unknown>)[k]); }
+
 function Runs({ runs }: { runs: Event[] }) {
-  if (!runs.length) return <div className="muted small" role="status">No discovery passes recorded yet.</div>;
-  return (
-    <div className="scroll-x">
-      <table className="t dense">
-        <caption className="sr-only">Recent discovery passes</caption>
-        <thead><tr><th scope="col">Run</th><th scope="col">Duration</th><th scope="col" className="r">Live seen</th><th scope="col" className="r">Assigned</th><th scope="col" className="r">Released</th><th scope="col" className="r">Videos</th><th scope="col" className="r">New creators</th><th scope="col">Source</th><th scope="col">Result</th></tr></thead>
-        <tbody>
-          {runs.map((r) => {
-            const x = (r.data ?? {}) as Record<string, unknown>;
-            const failed = r.type === "discovery.failed";
-            return (
-              <tr key={r.id}>
-                <td><When iso={r.created_at} /></td>
-                <td>{typeof x.duration_s === "number" ? `${x.duration_s} s` : "—"}</td>
-                <td className="r">{failed ? "—" : num(x.live_seen)}</td>
-                <td className="r">{failed ? "—" : num(x.assigned)}</td>
-                <td className="r">{failed ? "—" : num(x.released)}</td>
-                <td className="r">{failed ? "—" : num(x.videos_queued)}</td>
-                <td className="r">{failed ? "—" : num(x.new_creators)}</td>
-                <td><Badge tone={x.source === "failover" ? "amber" : "gray"} dot={false}>{x.source === "failover" ? "failover" : "n8n WF01"}</Badge></td>
-                <td>{failed ? <span title={r.message ?? undefined}><Badge status="failed" /></span> : <Badge status="ok" />}</td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
-    </div>
-  );
+  return <DataTable dense caption="Recent discovery passes" cols={RUN_COLS} rows={runs} rowKey={(r) => r.id} empty="No discovery passes recorded yet." />;
+}
+
+function candidateCols(): Col<Candidate>[] {
+  return [
+    { key: "who", head: "Creator", render: (c) => <Who name={c.creator.handle} p={c.platform} size={28} /> },
+    { key: "type", head: "Type", render: (c) => <Badge tone={c.source_type === "live" ? "purple" : "blue"}>{c.source_type === "live" ? "live" : "VOD"}</Badge> },
+    {
+      key: "title", head: "Title", render: (c) => {
+        const metric = c.source_type === "live" ? `${fmtCompact(c.viewers)} viewers` : `${fmtCompact(c.views)} views · ${fmtCompact(c.views_per_hour)}/h`;
+        return <div style={{ maxWidth: 240 }}><Two a={<span className="ellipsis" style={{ display: "block" }}>{c.title ?? "—"}</span>} b={metric} /></div>;
+      },
+    },
+    {
+      key: "trend", head: "Trend", render: (c) => {
+        const cutoff = c.source_type === "live" ? 55 : 50;
+        return (
+          <div className="row" style={{ gap: 10 }}>
+            <b className="num" style={{ width: 22 }}>{Math.round(c.trend_score)}</b>
+            <Prog pct={c.trend_score} tone={c.trend_score >= cutoff ? undefined : "amber"} thin width={80} label={`Trend score ${Math.round(c.trend_score)} of 100`} />
+          </div>
+        );
+      },
+    },
+    {
+      key: "result", head: "Result", render: (c) => {
+        const cutoff = c.source_type === "live" ? 55 : 50;
+        return c.picked ? <Badge status="picked" tone="green" />
+          : c.trend_score >= cutoff ? <Badge tone={c.creator.tier === "blocked" ? "red" : "amber"}>skipped · {c.creator.tier}</Badge>
+          : <Badge tone="gray">below cutoff</Badge>;
+      },
+    },
+  ];
 }
 
 function CandidateTable({ rows, onOpen }: { rows: Candidate[]; onOpen: (c: Candidate) => void }) {
-  if (!rows.length) return <div className="muted small" role="status" style={{ padding: "26px 4px", textAlign: "center" }}>No candidates in this view.</div>;
-  return (
-    <div className="scroll-x">
-      <table className="t dense">
-        <caption className="sr-only">Candidates from the latest passes</caption>
-        <thead><tr><th scope="col">Creator</th><th scope="col">Type</th><th scope="col">Title</th><th scope="col">Trend</th><th scope="col">Result</th></tr></thead>
-        <tbody>
-          {rows.map((c) => {
-            const cutoff = c.source_type === "live" ? 55 : 50;
-            const metric = c.source_type === "live" ? `${fmtCompact(c.viewers)} viewers` : `${fmtCompact(c.views)} views · ${fmtCompact(c.views_per_hour)}/h`;
-            return (
-              <tr key={c.id} className="link" onClick={() => onOpen(c)}>
-                <td>
-                  <button type="button" onClick={(e) => { e.stopPropagation(); onOpen(c); }} aria-label={`Score breakdown for ${c.creator.handle}`} style={{ all: "unset", cursor: "pointer" }}>
-                    <Who name={c.creator.handle} p={c.platform} size={28} />
-                  </button>
-                </td>
-                <td><Badge tone={c.source_type === "live" ? "purple" : "blue"}>{c.source_type === "live" ? "live" : "VOD"}</Badge></td>
-                <td style={{ maxWidth: 240 }}><Two a={<span className="ellipsis" style={{ display: "block" }}>{c.title ?? "—"}</span>} b={metric} /></td>
-                <td>
-                  <div className="row" style={{ gap: 10 }}>
-                    <b className="num" style={{ width: 22 }}>{Math.round(c.trend_score)}</b>
-                    <Prog pct={c.trend_score} tone={c.trend_score >= cutoff ? undefined : "amber"} thin width={100} label={`Trend score ${Math.round(c.trend_score)} of 100`} />
-                  </div>
-                </td>
-                <td>{c.picked ? <Badge status="picked" tone="green" />
-                  : c.trend_score >= cutoff ? <Badge tone={c.creator.tier === "blocked" ? "red" : "amber"}>skipped · {c.creator.tier}</Badge>
-                  : <Badge tone="gray">below cutoff</Badge>}</td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
-    </div>
-  );
+  return <DataTable dense caption="Candidates from the latest passes (tap for the score breakdown)" cols={candidateCols()} rows={rows} rowKey={(c) => c.id} onRow={onOpen} empty="No candidates in this view." />;
 }
 
 const PART_WEIGHTS: Record<string, number> = { viewers: 0.3, growth: 0.2, chat_rate: 0.2, global_reach: 0.15, history: 0.15, views_per_hour: 0.4, engagement: 0.25, size_ratio: 0.15 };

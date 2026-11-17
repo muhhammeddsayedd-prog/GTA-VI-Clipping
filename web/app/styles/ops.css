@@ -15,3 +15,12 @@
   .settings-side ul { display: flex; flex-wrap: wrap; gap: 4px; }
   .settings-side .side-item { width: auto; }
 }
+@media (max-width: 760px) {
+  /* group picker becomes one sideways-scrolling strip of chips */
+  .settings-side { padding: 6px !important; position: sticky; top: 0; z-index: 5; }
+  .settings-side .ph { display: none; }
+  .settings-side ul { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; scroll-snap-type: x proximity; }
+  .settings-side ul::-webkit-scrollbar { display: none; }
+  .settings-side li { flex: none; scroll-snap-align: start; }
+  .settings-side .side-item { padding: 8px 12px; white-space: nowrap; gap: 8px; }
+}

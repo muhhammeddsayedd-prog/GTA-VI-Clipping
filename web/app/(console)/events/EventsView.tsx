@@ -36,7 +36,7 @@ export function EventsView() {
     { key: "ty", head: "Type", render: (e) => <Mono className="semi">{e.type}</Mono> },
     { key: "s", head: "Service", render: (e) => e.service ?? "—" },
     { key: "en", head: "Entity", render: (e) => e.entity_type ? <span>{e.entity_type}{e.entity_id ? <span className="muted"> · {e.entity_id.slice(0, 12)}</span> : null}</span> : <span className="muted">—</span> },
-    { key: "m", head: "Message", render: (e) => <span className="ellipsis" style={{ display: "inline-block", maxWidth: 420 }} title={e.message ?? undefined}>{e.message ?? "—"}</span> },
+    { key: "m", head: "Message", mobile: "primary", render: (e) => <span className="ellipsis" style={{ display: "inline-block", maxWidth: 420 }} title={e.message ?? undefined}>{e.message ?? "—"}</span> },
   ];
 
   return (

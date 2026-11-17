@@ -16,10 +16,10 @@ const DEFAULTS = {};
 
 const COLS: Col<Creator>[] = [
   { key: "who", head: "Creator", render: (c) => <Who name={c.handle ?? c.display_name ?? c.channel_id} p={c.platform} size={32} sub={c.language ? c.language.toUpperCase() : undefined} /> },
-  { key: "tier", head: "Tier", render: (c) => <Badge status={c.tier} /> },
+  { key: "tier", head: "Tier", mobile: "aside", render: (c) => <Badge status={c.tier} /> },
   { key: "reason", head: "Reason / evidence", render: (c) => <span className="ink2 clamp2" style={{ maxWidth: 340 }}>{c.tier_reason ?? "—"}</span> },
   { key: "fol", head: "Followers", align: "right", render: (c) => <span className="num">{fmtCompact(c.follower_count)}</span> },
-  { key: "avg", head: "Avg clip views", align: "right", render: (c) => <span className="num">{fmtCompact(c.avg_clip_views)}</span> },
+  { key: "avg", head: "Avg clip views", align: "right", mobile: "hide", render: (c) => <span className="num">{fmtCompact(c.avg_clip_views)}</span> },
   { key: "clips", head: "Clips", align: "right", render: (c) => <span className="num">{c.clips_posted}</span> },
   { key: "claims", head: "Claims", align: "right", render: (c) => <b className={c.claims_count ? "down" : undefined}>{c.claims_count}</b> },
   { key: "checked", head: "Checked", render: (c) => <When iso={c.description_checked_at} mode="ago" /> },

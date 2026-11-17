@@ -56,8 +56,13 @@ function EditFlow({ req, onClose }: { req: EditRequest; onClose: () => void }) {
           <label className="flabel" htmlFor="setting-json" style={{ margin: 0 }}>Value · JSON {jsonKind(s.value)}</label>
           <span className="right" aria-live="polite">{parsed.ok ? (unchanged ? <Badge tone="gray">unchanged</Badge> : <Badge tone="green">valid JSON · same type</Badge>) : <Badge tone="red">invalid</Badge>}</span>
         </div>
-        <textarea id="setting-json" data-autofocus className="mono-edit mt" spellCheck={false} value={text} onChange={(e) => setText(e.target.value)}
-          aria-invalid={!parsed.ok} aria-describedby="setting-err" rows={Math.min(16, Math.max(4, text.split("\n").length + 1))} />
+        {typeof s.value === "number" ? (
+          <input id="setting-json" data-autofocus className="mono-edit mt" inputMode="decimal" autoComplete="off" spellCheck={false} value={text}
+            onChange={(e) => setText(e.target.value)} aria-invalid={!parsed.ok} aria-describedby="setting-err" style={{ display: "block" }} />
+        ) : (
+          <textarea id="setting-json" data-autofocus className="mono-edit mt" spellCheck={false} value={text} onChange={(e) => setText(e.target.value)}
+            aria-invalid={!parsed.ok} aria-describedby="setting-err" rows={Math.min(14, Math.max(2, text.split("\n").length + 1))} />
+        )}
         {!parsed.ok && <div id="setting-err" className="err-text" role="alert">{parsed.error}</div>}
         <p className="muted xs" style={{ marginTop: 10 }}>Updated {new Date(s.updated_at).toUTCString()}. Clips already approved are not re-checked.</p>
       </Modal>

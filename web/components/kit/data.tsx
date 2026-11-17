@@ -21,16 +21,76 @@ export interface Col<T> {
   render: (row: T) => ReactNode;
   align?: "right";
   width?: number | string;
+  /**
+   * Phone layout (rows become cards): "primary" is the card title (default: first column), "lead" sits before it
+   * (e.g. a tier chip or thumbnail), "aside" goes top-right (default: a status-like column), "hide" is left out.
+   * Everything else is shown as label/value pairs.
+   */
+  /** "meta" forces the column into the card's details (they are capped at MOBILE_META_MAX otherwise). */
+  mobile?: "primary" | "lead" | "aside" | "meta" | "hide";
 }
 
-export function DataTable<T>({ cols, rows, rowKey, href, selected, dense, caption, empty = "Nothing here yet." }: {
+const ASIDE_KEYS = /^(status|state|st|decision|result|verdict|severity|sev|level)$/i;
+const MOBILE_META_MAX = 4;
+
+function mobileRoles<T>(cols: Col<T>[]) {
+  const primary = cols.find((c) => c.mobile === "primary") ?? cols.find((c) => c.mobile !== "lead" && c.mobile !== "hide") ?? cols[0];
+  const lead = cols.filter((c) => c.mobile === "lead");
+  const aside = cols.find((c) => c.mobile === "aside") ?? cols.find((c) => c !== primary && !c.mobile && ASIDE_KEYS.test(c.key));
+  const rest = cols.filter((c) => c !== primary && c !== aside && !lead.includes(c) && c.mobile !== "hide");
+  const forced = rest.filter((c) => c.mobile === "meta");
+  const fill = rest.filter((c) => c.mobile !== "meta").slice(0, Math.max(0, MOBILE_META_MAX - forced.length));
+  const meta = rest.filter((c) => forced.includes(c) || fill.includes(c)); // keep column order
+  return { primary, lead, aside, meta };
+}
+
+export function DataTable<T>({ cols, rows, rowKey, href, onRow, selected, dense, caption, empty = "Nothing here yet." }: {
   cols: Col<T>[]; rows: T[]; rowKey: (r: T) => string | number; href?: (r: T) => string | null; selected?: string | number | null;
+  /** Row click handler for rows that open a drawer instead of navigating. */
+  onRow?: (r: T) => void;
   dense?: boolean; caption?: string; empty?: ReactNode;
 }) {
   const router = useRouter();
+  /** Click handler for a row (or undefined when rows are not interactive). Clicks on inner links/buttons pass through. */
+  const clickFor = (r: T, to: string | null) => (to || onRow)
+    ? (e: React.MouseEvent) => {
+      if ((e.target as HTMLElement).closest("a,button")) return;
+      if (onRow) onRow(r); else router.push(to!);
+    }
+    : undefined;
   if (!rows.length) return <div className="muted small" style={{ padding: "26px 4px", textAlign: "center" }} role="status">{empty}</div>;
+  const m = mobileRoles(cols);
   return (
-    <div className="scroll-x">
+    <>
+    <ul className="mcards" aria-label={caption}>
+      {rows.map((r) => {
+        const k = rowKey(r);
+        const to = href?.(r) ?? null;
+        return (
+          <li key={k} className={cn("mcard", (to || onRow) && "link", selected === k && "sel")} onClick={clickFor(r, to)}>
+            <div className="mc-head">
+              {m.lead.map((c) => <div key={c.key} className="mc-lead">{c.render(r)}</div>)}
+              <div className="mc-primary">
+                {to && <Link href={to} className="sr-only">Open</Link>}
+                {m.primary.render(r)}
+              </div>
+              {m.aside && <div className="mc-aside">{m.aside.render(r)}</div>}
+              {to && <ChevronRight size={16} className="mc-chev" aria-hidden />}
+            </div>
+            {m.meta.length > 0 && (
+              <dl className="mc-meta">
+                {m.meta.map((c) => (
+                  <div key={c.key} className={c.align === "right" ? "num" : undefined}>
+                    <dt>{c.head}</dt><dd>{c.render(r)}</dd>
+                  </div>
+                ))}
+              </dl>
+            )}
+          </li>
+        );
+      })}
+    </ul>
+    <div className="scroll-x dt-table">
       <table className={cn("t", dense && "dense")}>
         {caption && <caption className="sr-only">{caption}</caption>}
         <thead>
@@ -41,8 +101,7 @@ export function DataTable<T>({ cols, rows, rowKey, href, selected, dense, captio
             const k = rowKey(r);
             const to = href?.(r) ?? null;
             return (
-              <tr key={k} className={cn(to && "link", selected === k && "sel")}
-                onClick={to ? (e) => { if (!(e.target as HTMLElement).closest("a,button")) router.push(to); } : undefined}>
+              <tr key={k} className={cn((to || onRow) && "link", selected === k && "sel")} onClick={clickFor(r, to)}>
                 {cols.map((c, i) => (
                   <td key={c.key} className={c.align === "right" ? "r" : undefined}>
                     {i === 0 && to && <Link href={to} className="sr-only">Open</Link>}
@@ -55,6 +114,7 @@ export function DataTable<T>({ cols, rows, rowKey, href, selected, dense, captio
         </tbody>
       </table>
     </div>
+    </>
   );
 }
 
@@ -225,7 +285,7 @@ export function Hours({ cells, labels = true }: { cells: { cls: string; title: s
   return (
     <div>
       <div className="hours">{cells.map((c, i) => <i key={i} className={c.cls} title={c.title} />)}</div>
-      {labels && <div className="hl" aria-hidden>{cells.map((_, h) => <span key={h}>{String(h).padStart(2, "0")}</span>)}</div>}
+      {labels && <div className="hl" aria-hidden>{cells.map((_, h) => <span key={h} className={h % 3 ? "hl-minor" : undefined}>{String(h).padStart(2, "0")}</span>)}</div>}
     </div>
   );
 }
