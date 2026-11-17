@@ -63,8 +63,8 @@ def replay_spikes() -> list[DetectedSpike]:
 
 def test_config_comes_from_the_settings_table_and_follows_changes() -> None:
     cfg = from_settings()
-    assert (cfg.bucket_s, cfg.lead_s, cfg.z_b, cfg.min_messages) == (10.0, 20.0, 2.5, 15.0)
-    assert cfg.weights["msgs"] == 0.4 and "streamelements" in cfg.ignore_users
+    assert (cfg.bucket_s, cfg.lead_s, cfg.z_b, cfg.min_messages) == (10.0, 20.0, 2.0, 8.0)
+    assert cfg.weights["msgs"] == 0.15 and "streamelements" in cfg.ignore_users
     settings.set("spikes.lead_s", 25)
     settings.set("spikes.z_b", 9.9)
     changed = SpikeConfig.from_settings()
