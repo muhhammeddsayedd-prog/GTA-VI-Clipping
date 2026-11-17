@@ -464,6 +464,34 @@ def test_a_dry_run_row_is_never_sent(tmp_path: Path) -> None:
     assert s.uploads() == [] and s.post.status == "skipped" and s.post.dry_run is True
 
 
+def test_a_dry_run_row_is_not_sent_even_if_its_status_says_pending(tmp_path: Path) -> None:
+    s = Setup(tmp_path, dry_run_row=True)
+    s.store.posts[s.post_id] = replace(s.post, status="pending")
+
+    assert s.publish() is Outcome.NOOP
+    assert s.uploads() == []
+
+
+def test_a_crash_on_one_post_does_not_stop_the_next_one(tmp_path: Path) -> None:
+    s = Setup(tmp_path)
+    other = s.store.add_post(
+        hourly_clip("clip-2", at=NOW), production_accounts()[IG], NOW, video=str(s.video), slot_at=SLOT
+    )
+    real_get = s.store.get_post
+
+    def flaky(post_id: str) -> Any:
+        if post_id == s.post_id:
+            raise RuntimeError("database went away")
+        return real_get(post_id)
+
+    s.store.get_post = flaky  # type: ignore[method-assign]
+
+    results = s.publisher.publish_all([s.post_id, other])
+
+    assert [r.outcome for r in results] == [Outcome.PENDING, Outcome.PUBLISHED]
+    assert s.store.posts[other].status == "published"
+
+
 @pytest.mark.parametrize(
     ("changes", "code"),
     [

@@ -106,7 +106,7 @@ def try_post_spike(
                         data=_data(decision),
                     )
             if waits:
-                store.schedule_spike_retry(clip.id, min(waits))
+                store.schedule_spike_retry(clip.id, min(waits), after_job=job_id)
                 store.emit(
                     "posting.spike_deferred",
                     entity_type="clip",
@@ -139,7 +139,7 @@ def try_post_spike(
         demoted=demoted,
     )
     publisher = Publisher(client, store, clock)
-    results = tuple(publisher.publish(post_id) for post_id in post_ids)
+    results = publisher.publish_all(post_ids)
     posted = False
     for planned in planned_clips:
         settled = store.settle_clip(planned, clock(), exclude_job_id=job_id)

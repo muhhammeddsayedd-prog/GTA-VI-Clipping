@@ -28,6 +28,7 @@ RETRY_JOB_TYPE = "post.retry"
 RETRY_QUEUE: jobs.Queue = "express"
 SPIKE_RETRY_PRIORITY = 90  # M10: `post.retry` on the express queue with priority 90
 HOURLY_RETRY_PRIORITY = 60
+SPIKE_RETRY_MARGIN = timedelta(seconds=1)  # a deferred spike is tried just after its gap has ended
 
 _CLIP_SQL = """
 select c.id::text as id, c.creator_id::text as creator_id, c.lane, c.rank_score, c.status, c.approved_at,
@@ -479,15 +480,19 @@ class DbStore:
             dedupe_key=f"{RETRY_JOB_TYPE}:publish:{post_id}:{int(run_at.timestamp())}",
         )
 
-    def schedule_spike_retry(self, clip_id: str, run_at: datetime) -> None:
-        """Queue a `post.retry` job that tries a deferred spike clip again (R4)."""
+    def schedule_spike_retry(self, clip_id: str, run_at: datetime, after_job: int | None = None) -> None:
+        """Queue a `post.retry` job that tries a deferred spike clip again (R4), just after `run_at`.
+
+        `after_job` is the retry job that is asking, if any: its number is part of the dedupe key, so a job
+        that has to wait once more is not refused as a duplicate of itself.
+        """
         jobs.enqueue(
             RETRY_QUEUE,
             RETRY_JOB_TYPE,
             {"kind": "spike", "clip_id": clip_id},
             priority=SPIKE_RETRY_PRIORITY,
-            run_after=run_at,
-            dedupe_key=f"{RETRY_JOB_TYPE}:spike:{clip_id}:{int(run_at.timestamp())}",
+            run_after=run_at + SPIKE_RETRY_MARGIN,
+            dedupe_key=f"{RETRY_JOB_TYPE}:spike:{clip_id}:{int(run_at.timestamp())}:{after_job or 0}",
         )
 
     # ── events and alerts ────────────────────────────────────

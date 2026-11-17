@@ -219,6 +219,5 @@ def run_hourly_slot(
             "Hourly queue empty",
             f"No clip could be posted in the last two hourly slots (latest {slot.isoformat()}).",
         )
-    publisher = Publisher(client, store, clock)
-    results = tuple(publisher.publish(post_id) for post_id in post_ids)
+    results = Publisher(client, store, clock).publish_all(post_ids)
     return SlotRun(slot, mode, plan, tuple(post_ids), tuple(dry_ids), results)

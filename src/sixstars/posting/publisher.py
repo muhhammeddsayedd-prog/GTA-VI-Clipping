@@ -16,7 +16,7 @@ Safety rules, in the order they are applied:
 `failed`, `skipped` (cancelled) or `pending` with a `post.retry` job queued.
 """
 
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from enum import StrEnum
@@ -106,7 +106,21 @@ class Publisher:
         self._wait_s = wait_s
         self._log = get_logger("posting")
 
-    # ── entry point ──────────────────────────────────────────
+    # ── entry points ─────────────────────────────────────────
+
+    def publish_all(self, post_ids: Iterable[str]) -> tuple[PublishResult, ...]:
+        """Publish several planned posts. An unexpected error on one post (for example the database) is
+        logged and the others still go out; the failed one is picked up by its recovery `post.retry` job."""
+        results: list[PublishResult] = []
+        for post_id in post_ids:
+            try:
+                results.append(self.publish(post_id))
+            except Exception as exc:
+                self._log.error(
+                    "post_publish_crashed", post_id=post_id, error=type(exc).__name__, exc_info=True
+                )
+                results.append(PublishResult(post_id, Outcome.PENDING, f"error: {type(exc).__name__}"))
+        return tuple(results)
 
     def publish(self, post_id: str) -> PublishResult:
         """Send, resume or finish the post `post_id`. Safe to call again at any time."""
