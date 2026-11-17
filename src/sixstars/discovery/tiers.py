@@ -35,7 +35,7 @@ PERMISSION_JOB_PRIORITY: Final = 20
 EXCLUDED_REASON: Final = "excluded by settings (discovery.excluded_channels)"
 MANUAL_PREFIX: Final = "manual"
 TITLES_FOR_PROMPT: Final = 8
-CHECK_WORKERS: Final = 6
+CHECK_WORKERS: Final = 12
 
 _log = get_logger("discovery")
 

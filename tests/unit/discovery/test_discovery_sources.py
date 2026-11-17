@@ -287,22 +287,49 @@ def test_enrich_without_key_or_over_budget_uses_the_listing() -> None:
     from sixstars.clients.fakes import FakeYouTubeClient
 
     stubs = {"live1": Stub("live1", title="GTA", channel_id="UC1", live_status="is_live", viewers=10)}
-    found, report, units = sources.enrich_youtube(None, stubs, config(), NOW)
+    found, report, units, _ = sources.enrich_youtube(None, stubs, config(), NOW)
     assert (len(found), report.status, units) == (1, "not_configured", 0)
     client = FakeYouTubeClient()
-    found, report, units = sources.enrich_youtube(
+    found, report, units, _ = sources.enrich_youtube(
         client, stubs, config(youtube_quota_daily_units=10), NOW, units_used_today=lambda: 10.0
     )
     assert (len(found), report.status, units) == (1, "skipped", 0)
     assert client.calls == []
     client.videos["live1"] = {**LIVE_ITEM, "id": "live1"}
-    found, report, units = sources.enrich_youtube(client, stubs, config(), NOW, units_used_today=lambda: 0.0)
+    found, report, units, _ = sources.enrich_youtube(
+        client, stubs, config(), NOW, units_used_today=lambda: 0.0
+    )
     assert (found[0].viewers, report.status, units) == (388, "ok", 1)
     assert client.calls_to("videos_list")[0]["parts"] == list(sources.VIDEO_PARTS)
 
 
 def test_quota_needed() -> None:
     assert [sources.quota_needed(n) for n in (1, 50, 51, 480)] == [1, 1, 2, 10]
+
+
+def test_api_results_must_be_about_the_game() -> None:
+    def item(
+        title: str, category: str = "20", tags: list[str] | None = None, description: str = ""
+    ) -> dict[str, Any]:
+        snippet = {"title": title, "categoryId": category, "tags": tags or [], "description": description}
+        return {"id": "x", "snippet": snippet}
+
+    searched, feed = Stub("x"), Stub("x", needs_title_match=True)
+    assert sources.on_topic(item("The LAST Ride in GTA 5"), searched, config())
+    assert sources.on_topic(
+        item("Welcome to Los Santos", "22", description="Playing Grand Theft Auto V"), searched, config()
+    )
+    assert sources.on_topic(item("Car meet", "22", tags=["gta v online"]), searched, config())
+    # a role-play stream that never names the game is kept when it is at least a Gaming video
+    assert sources.on_topic(item("ITS A PRIVILEGE! | Iconic RP"), searched, config())
+    # what YouTube pads a thin search with
+    assert not sources.on_topic(
+        item("Gentle Night RAIN - Rain Sounds For Sleeping", "22"), searched, config()
+    )
+    assert not sources.on_topic(item("Granny is Live || Granny Horror Gameplay", "24"), searched, config())
+    # a known creator's other uploads are not about the game just because they are Gaming videos
+    assert not sources.on_topic(item("Minecraft hardcore day 100"), feed, config())
+    assert sources.on_topic(item("GTA V heists with friends"), feed, config())
 
 
 def test_feed_entries_must_name_the_game() -> None:

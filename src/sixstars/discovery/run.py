@@ -175,6 +175,7 @@ def score_candidate(
             preferred=preferred,
             config=config.score,
         )
+        parts["origin"] = candidate.origin
         return Scored(candidate, creator, score, parts)
     began = candidate.started_at or candidate.published_at
     age_hours = float(config.vod_lookback_h) if began is None else (now - began).total_seconds() / 3600.0
@@ -195,6 +196,7 @@ def score_candidate(
         preferred=preferred,
         config=config.score,
     )
+    parts["origin"] = candidate.origin
     return Scored(candidate, creator, score, parts, vph)
 
 

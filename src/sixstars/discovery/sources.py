@@ -35,7 +35,7 @@ from sixstars import db, settings, usage
 from sixstars.clients._http import ClientError
 from sixstars.clients.apify import ApifyClient, build_youtube_search_input, normalise_youtube_item
 from sixstars.clients.twitch import TwitchClient
-from sixstars.clients.youtube import IDS_PER_REQUEST_MAX, YouTubeClient
+from sixstars.clients.youtube import CATEGORY_GAMING, IDS_PER_REQUEST_MAX, YouTubeClient
 from sixstars.config import env
 from sixstars.discovery import scoring, store
 from sixstars.discovery.config import DiscoveryConfig
@@ -340,7 +340,7 @@ def read_feeds(
                 needs_title_match=True,
             )
             for entry in entries
-            if entry.published_at >= oldest and scoring.matches_terms(entry.title, config.search_terms)
+            if entry.published_at >= oldest and scoring.matches_terms(entry.title, game_terms(config))
         ]
 
     results = list(pool.map(one, channels))
@@ -545,39 +545,70 @@ def enrich_youtube(
     config: DiscoveryConfig,
     now: datetime,
     units_used_today: Callable[[], float] = store.youtube_units_today,
-) -> tuple[list[Candidate], SourceReport, int]:
+) -> tuple[list[Candidate], SourceReport, int, int]:
     """Turn stubs into candidates with one batched `videos.list`, inside the daily quota budget. Without
     a key, over budget or on an API error the listing data alone is used. Returns the candidates, the
-    report and the quota units spent."""
+    report, the quota units spent and the number of off-topic videos dropped."""
     if not stubs:
-        return [], SourceReport("youtube_api", "skipped", 0, "nothing to look up"), 0
+        return [], SourceReport("youtube_api", "skipped", 0, "nothing to look up"), 0, 0
     fallback = [candidate for stub in stubs.values() if (candidate := candidate_from_stub(stub)) is not None]
     if client is None or not client.is_configured():
-        return fallback, SourceReport("youtube_api", "not_configured", 0, "YOUTUBE_API_KEY is not set"), 0
+        return fallback, SourceReport("youtube_api", "not_configured", 0, "YOUTUBE_API_KEY is not set"), 0, 0
     needed = quota_needed(len(stubs))
     used = units_used_today()
     if used + needed > config.youtube_quota_daily_units:
         detail = f"daily quota budget reached ({used:.0f} of {config.youtube_quota_daily_units} units)"
         _log.warning("discovery_quota_budget_reached", used=used, budget=config.youtube_quota_daily_units)
-        return fallback, SourceReport("youtube_api", "skipped", 0, detail), 0
+        return fallback, SourceReport("youtube_api", "skipped", 0, detail), 0, 0
     try:
         items = client.videos_list(list(stubs), parts=VIDEO_PARTS)
     except ClientError as exc:
         _log.warning("discovery_videos_list_failed", error=str(exc)[:200])
-        return fallback, SourceReport("youtube_api", "error", 0, str(exc)[:200]), 0
-    found = [
-        candidate
-        for item in items
-        if (candidate := candidate_from_api(item, stubs.get(str(item.get("id"))), now)) is not None
-    ]
-    return found, SourceReport("youtube_api", "ok", len(found), f"{needed} quota units"), needed
+        return fallback, SourceReport("youtube_api", "error", 0, str(exc)[:200]), 0, 0
+    found = []
+    off_topic = 0
+    for item in items:
+        stub = stubs.get(str(item.get("id")))
+        candidate = candidate_from_api(item, stub, now)
+        if candidate is None:
+            continue
+        if on_topic(item, stub, config):
+            found.append(candidate)
+        else:
+            off_topic += 1
+    detail = f"{needed} quota units" + (f", {off_topic} off topic" if off_topic else "")
+    return found, SourceReport("youtube_api", "ok", len(found), detail), needed, off_topic
+
+
+def game_terms(config: DiscoveryConfig) -> tuple[str, ...]:
+    """The words that identify the game in a title: the search terms and the game's full name."""
+    return (*config.search_terms, config.target_game)
+
+
+def on_topic(item: dict[str, Any], stub: Stub | None, config: DiscoveryConfig) -> bool:
+    """Is this video about the target game? YouTube pads a search with unrelated videos when it has few
+    matches (seen live: rain sounds and a horror game in a "GTA" live search), so a result is kept only
+    when its title, tags or description name the game, or when it is at least in the Gaming category
+    (role-play streams often do not name the game anywhere). A video found through a channel feed was
+    not matched by any search and must name the game."""
+    snippet = item.get("snippet") or {}
+    tags = snippet.get("tags") or []
+    text = " ".join(
+        [str(snippet.get("title") or ""), *(str(tag) for tag in tags), str(snippet.get("description") or "")]
+    )
+    if scoring.matches_terms(text, game_terms(config)):
+        return True
+    if stub is not None and stub.needs_title_match:
+        return False
+    return str(snippet.get("categoryId") or "") == CATEGORY_GAMING
 
 
 def keep_youtube(candidate: Candidate, stub: Stub | None, config: DiscoveryConfig) -> bool:
-    """A feed entry is kept only when its (final) title names the game; search results are trusted."""
+    """Listing-only check (used when the Data API gave nothing): a feed entry is kept only when its title
+    names the game; search results are trusted."""
     if stub is None or not stub.needs_title_match:
         return True
-    return scoring.matches_terms(candidate.title, config.search_terms)
+    return scoring.matches_terms(candidate.title, game_terms(config))
 
 
 def youtube_candidates(
@@ -625,9 +656,12 @@ def youtube_candidates(
     for _platform, video_id in known:
         stubs.pop(video_id, None)
     gathered.skip("already_queued", len(known))
-    candidates, report, units = enrich_youtube(youtube, stubs, config, now)
+    candidates, report, units, off_topic = enrich_youtube(youtube, stubs, config, now)
     gathered.youtube_quota_units += units
     gathered.reports.append(report)
-    kept = [c for c in candidates if keep_youtube(c, stubs.get(c.source_id), config)]
-    gathered.skip("off_topic", len(candidates) - len(kept))
-    gathered.candidates.extend(kept)
+    if report.status != "ok":  # listing data only: apply the title check to feed entries
+        kept = [c for c in candidates if keep_youtube(c, stubs.get(c.source_id), config)]
+        off_topic = len(candidates) - len(kept)
+        candidates = kept
+    gathered.skip("off_topic", off_topic)
+    gathered.candidates.extend(candidates)
