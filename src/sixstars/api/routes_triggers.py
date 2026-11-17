@@ -1,7 +1,8 @@
-"""Trigger routes that n8n calls on a schedule: discovery, the hourly slot and the M13 placeholders.
+"""Trigger routes that n8n calls: discovery, the hourly slot, the guardian check, takedown intake, stats
+and the daily report.
 
 Every trigger writes its heartbeat (`trigger:discovery`, `trigger:hourly`, `trigger:guardian`,
-`trigger:stats`) when the call arrives, also while the work behind it is not built yet, so the heartbeat
+`trigger:stats`) when the call arrives, before the work starts, so the heartbeat
 always means "n8n is calling".
 """
 
@@ -10,16 +11,20 @@ import dataclasses
 import importlib
 import threading
 from collections.abc import Callable
-from typing import Any
+from datetime import date
+from typing import Annotated, Any, Literal
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Query
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from sixstars import db
 from sixstars.api.errors import ApiError
+from sixstars.guardian import service as guardian_service
 from sixstars.logging import get_logger
 from sixstars.posting.hourly import schedule_hourly_slot
+from sixstars.stats import report as report_view
 
 router = APIRouter(prefix="/v1")
 
@@ -29,6 +34,7 @@ DISCOVERY_TIMEOUT_S = 60.0  # docs/17: the route answers within 60 s
 HEARTBEAT_DISCOVERY = "trigger:discovery"
 HEARTBEAT_GUARDIAN = "trigger:guardian"
 HEARTBEAT_STATS = "trigger:stats"
+MAX_COERCED_CHARS = 2000
 
 # One discovery pass at a time in this process. A pass that outlives its 60 s keeps the lock until it ends.
 _discovery_lock = threading.Lock()
@@ -118,23 +124,60 @@ def posting_hourly() -> JSONResponse:
     )
 
 
+class TakedownBody(BaseModel):
+    """The email as WF04 sends it. Every field is untrusted text from a public inbox. Unknown fields
+    are ignored and nothing is rejected for being long (the request body limit of the API still
+    applies): a refused request would lose the email, so oversized text is cut by the guardian."""
+
+    model_config = ConfigDict(extra="ignore", populate_by_name=True)
+
+    sender: str | None = Field(default=None, alias="from")
+    subject: str | None = None
+    body_text: str | None = None
+    received_at: str | int | float | None = None
+    message_id: str | None = None
+
+    @field_validator("sender", "subject", "body_text", "message_id", mode="before")
+    @classmethod
+    def _text(cls, value: Any) -> str | None:
+        """n8n may send a number, a list or an object where text is expected: keep it as text."""
+        if value is None or isinstance(value, str):
+            return value
+        return str(value)[:MAX_COERCED_CHARS]
+
+
 @router.post("/guardian/check")
-def guardian_check() -> None:
+def guardian_check() -> JSONResponse:
+    """One pass of the claims and removals check (WF03)."""
     db.heartbeat(HEARTBEAT_GUARDIAN)
-    raise not_implemented("M13", "the guardian check")
+    return JSONResponse(guardian_service.run_check())
 
 
 @router.post("/guardian/takedown")
-def guardian_takedown() -> None:
-    raise not_implemented("M13", "takedown intake")
+def guardian_takedown(body: TakedownBody) -> JSONResponse:
+    """One email from the takedown inbox (WF04). Processed once per `message_id`."""
+    received = None if body.received_at is None else str(body.received_at)
+    result = guardian_service.handle_takedown(
+        body.sender, body.subject, body.body_text, body.message_id, received
+    )
+    return JSONResponse(result)
 
 
 @router.post("/stats/collect")
-def stats_collect() -> None:
+def stats_collect() -> JSONResponse:
+    """Collect account and post numbers (WF05)."""
     db.heartbeat(HEARTBEAT_STATS)
-    raise not_implemented("M13", "stats collection")
+    return JSONResponse(guardian_service.collect_stats())
 
 
 @router.get("/reports/daily")
-def reports_daily() -> None:
-    raise not_implemented("M13", "the daily report")
+def reports_daily(
+    format: Literal["telegram", "json"] = Query("json"),  # noqa: A002
+    day: Annotated[date | None, Query()] = None,
+) -> JSONResponse:
+    """The daily report of the day that just ended (or of `day`, as YYYY-MM-DD).
+    `format=telegram` answers `{"text": "<HTML-safe text>"}`."""
+    data = guardian_service.daily_report(day)
+    if format == "telegram":
+        return JSONResponse({"text": report_view.render_telegram(data)})
+    return JSONResponse(jsonable_encoder(data))
