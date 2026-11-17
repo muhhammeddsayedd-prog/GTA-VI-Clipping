@@ -22,6 +22,7 @@ the gate defers the clip to the next budget day, as it does for P5. Switches: `a
 
 from collections.abc import Mapping, Sequence
 from dataclasses import replace
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -109,9 +110,37 @@ def chat_reaction(
     )
 
 
-def rendered_clip(row: store.ClipRow, chat: calls.ChatReaction | None) -> calls.RenderedClip:
+def audience_evidence(viewer_clip: Mapping[str, Any] | None) -> calls.AudienceEvidence | None:
+    """The `viewer_clips` row as the scorer sees it: the Twitch clip's views, its age when discovery read
+    them, and the title its maker gave it. None when the clip did not come from a viewer's clip."""
+    if viewer_clip is None:
+        return None
+    made, read = viewer_clip.get("clip_created_at"), viewer_clip.get("created_at")
+    age_h: float | None = None
+    if isinstance(made, datetime) and isinstance(read, datetime):
+        age_h = max(0.0, (read - made).total_seconds() / 3600.0)
+    return calls.AudienceEvidence(
+        views=_count(viewer_clip.get("view_count")),
+        age_h=age_h,
+        title=str(viewer_clip.get("title") or ""),
+    )
+
+
+def viewer_audience(row: store.ClipRow) -> calls.AudienceEvidence | None:
+    """The audience evidence of a clip rendered from a viewer-made clip, None for every other clip. It is
+    optional context: when it cannot be read the clip is scored without it."""
+    try:
+        return audience_evidence(store.audience_row(row.id, row.spike_id))
+    except Exception as exc:  # noqa: BLE001 - never lose the score over optional context
+        get_logger("gate").warning("gate_audience_evidence_failed", error=type(exc).__name__)
+        return None
+
+
+def rendered_clip(
+    row: store.ClipRow, chat: calls.ChatReaction | None, audience: calls.AudienceEvidence | None = None
+) -> calls.RenderedClip:
     """What P9V is told about the clip: the hook, the subtitle lines (grouped as the factory groups them,
-    in clip time) and the chat reaction."""
+    in clip time) and the chat reaction, or for a viewer-made clip the audience evidence."""
     transcript = row.raw.get("transcript")
     words = subtitle_lines.words_from_transcript(transcript) if isinstance(transcript, Mapping) else []
     commentary = row.raw.get("commentary")
@@ -122,6 +151,7 @@ def rendered_clip(row: store.ClipRow, chat: calls.ChatReaction | None) -> calls.
         commentary=str(commentary) if commentary else None,
         chat=chat,
         clip_id=row.id,
+        audience=audience,
     )
 
 
@@ -192,9 +222,10 @@ def run(
         samples = 1 if lane == "express" else settings.get_int("ai.visual_score_samples", 1)
         chat = chat_reaction(store.spike_row(row.spike_id), float(row.raw["start_s"]), row.duration_s)
         peak = chat.peak_s if chat is not None else None
+        audience = None if chat is not None else viewer_audience(row)
         shots = visuals.sample_score_frames(Path(row.local_path), row.duration_s, count, peak, ffmpeg)
         scored = calls.score_clip_visual(
-            rendered_clip(row, chat),
+            rendered_clip(row, chat, audience),
             [jpeg for _, jpeg in shots],
             [time_s for time_s, _ in shots],
             samples=samples,

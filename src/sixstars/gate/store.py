@@ -153,6 +153,22 @@ def spike_row(spike_id: str | None) -> Mapping[str, Any] | None:
     )
 
 
+def audience_row(clip_id: str, spike_id: str | None) -> Mapping[str, Any] | None:
+    """What Twitch knew about the viewer-made clip this clip was rendered from (`viewer_clips`, whose id
+    is the clip's id; decision D110): title, views and when each was read. None for every other clip: one
+    with a chat spike is not asked about, and a database without the table (before migration 0019) has
+    no such clips."""
+    if spike_id:
+        return None
+    present = db.fetch_one("select to_regclass('public.viewer_clips') is not null as present")
+    if present is None or not present["present"]:
+        return None
+    return db.fetch_one(
+        "select title, view_count, clip_created_at, created_at from viewer_clips where id::text = %s",
+        (clip_id,),
+    )
+
+
 def store_visual_score(clip_id: str, score: int, score_parts: Mapping[str, object]) -> bool:
     """Write the visual score on a clip that is still in `gating`, with its `clip.scored` event.
     `score_parts` is the whole new document (see `gate.rescore.score_document`). Returns False, and

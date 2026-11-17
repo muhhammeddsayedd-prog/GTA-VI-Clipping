@@ -88,9 +88,31 @@ def format_summary(summary: DiscoverySummary) -> str:
     lines += [format_row(row, live=True) for row in summary.top_live]
     lines += ["", f"Top {len(summary.top_videos)} videos", header("views")]
     lines += [format_row(row, live=False) for row in summary.top_videos]
+    clips = summary.twitch_clips
+    if clips or summary.top_clips:
+        skipped = ", ".join(f"{k} {v}" for k, v in sorted((clips.get("skipped") or {}).items()))
+        lines += [
+            "",
+            f"Twitch clips: {clips.get('eligible', 0)} fit, {clips.get('queued', 0)} queued"
+            + (f"; skipped: {skipped}" if skipped else ""),
+            f"{'rank':>8}  {'views':>7}  {'age h':>6}  {'len s':>5}  {'channel':<{CHANNEL_WIDTH}}  title",
+        ]
+        lines += [format_clip_row(row) for row in summary.top_clips]
     lines.append("")
     lines.append("Flags: tier (a ? means the permission check has not run yet), chat = has a chat replay.")
     return "\n".join(lines)
+
+
+def format_clip_row(row: dict[str, Any]) -> str:
+    """One line of the Twitch clips table."""
+    flag = "PICKED" if row.get("picked") else (row.get("skipped") or "")
+    language = row.get("language") or "?"
+    return (
+        f"{float(row.get('rank') or 0):>8.1f}  {int(row.get('views') or 0):>7,}  "
+        f"{float(row.get('age_h') or 0):>6.1f}  {float(row.get('duration_s') or 0):>5.0f}  "
+        f"{_cut(str(row.get('channel') or ''), CHANNEL_WIDTH):<{CHANNEL_WIDTH}}  "
+        f"{_cut(str(row.get('title') or ''), 60)}  [{language}] {flag}".rstrip()
+    )
 
 
 def run_once(as_json: bool = False) -> int:

@@ -14,6 +14,7 @@ from structlog.testing import capture_logs
 
 from sixstars.ai import calls
 from sixstars.ai.calls import (
+    AudienceEvidence,
     BudgetExceededError,
     ChatLine,
     ChatReaction,
@@ -753,3 +754,27 @@ def test_sentence_ends_outside_the_transcript_are_sent_back(scripted: Scripted) 
     client, sdk = scripted(json.dumps({"ends": [1, 9]}), json.dumps({"ends": [1, 2]}))
     assert calls.sentence_ends(["a", "b", "c"], lane="express", client=client) == [1, 2]
     assert "word numbers go from 0 to 2" in sdk.requests[1]["messages"][0]["content"][-1]["text"]
+
+
+def test_audience_evidence_replaces_the_chat_summary_only_without_a_chat_spike() -> None:
+    evidence = AudienceEvidence(views=1749, age_h=14.3, title="he did\nnot have   a parachute " + "x" * 300)
+    summary = calls.audience_summary(evidence)
+    assert summary.startswith("No chat spike: this clip was not cut around a chat peak")
+    assert "A viewer of the stream clipped this moment on Twitch by hand and named the clip" in summary
+    assert "he did not have a parachute x" in summary and "x" * 141 not in summary  # one line, cut
+    assert "That Twitch clip had 1749 views about 14 hours after it was made." in summary
+    assert summary.endswith("not a score: judge what the frames and the lines show.")
+    assert "1 hour after" in calls.audience_summary(AudienceEvidence(views=12, age_h=0.2))
+    untitled = calls.audience_summary(AudienceEvidence())
+    assert "by hand." in untitled and "views" not in untitled
+
+    fake = FakeAnthropicClient({calls.P9V: seen_score(7)})
+    calls.score_clip_visual(rendered(chat=None, audience=evidence), [frame(64, 64)], [1.0], client=fake)
+    user = only_call(fake)["user_content"]
+    assert "No chat spike" in user and "(no chat messages)" in user
+    assert "(no chat data for this clip)" not in user
+    # a clip cut around a chat spike keeps its chat summary whatever else is passed
+    fake = FakeAnthropicClient({calls.P9V: seen_score(7)})
+    calls.score_clip_visual(rendered(audience=evidence), [frame(64, 64)], [1.0], client=fake)
+    user = only_call(fake)["user_content"]
+    assert "20 messages from 18 chatters" in user and "No chat spike" not in user
