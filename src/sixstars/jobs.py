@@ -214,6 +214,18 @@ def requeue_stale(stale_after_s: float) -> list[RecoveredJob]:
     return [RecoveredJob(**row) for row in sorted(rows, key=lambda row: int(row["id"]))]
 
 
+def live_workers(queue: str, fresh_s: float) -> int:
+    """Workers of `queue` whose heartbeat (`worker-<queue>-...`) is not older than `fresh_s` seconds."""
+    row = db.fetch_one(
+        """
+        select count(*) as n from heartbeats
+        where starts_with(name, %s) and last_seen >= now() - make_interval(secs => %s)
+        """,
+        (f"worker-{queue}-", fresh_s),
+    )
+    return int(row["n"]) if row is not None else 0
+
+
 def worker_name(queue: str) -> str:
     """Name of this worker process: `worker-<queue>-<hostname>-<pid>`."""
     return f"worker-{queue}-{socket.gethostname()}-{os.getpid()}"

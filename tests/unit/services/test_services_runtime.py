@@ -88,6 +88,7 @@ def test_the_scheduler_has_the_m11_and_m13_tasks_with_their_intervals() -> None:
         "clip_expiry": 600.0,
         "prune": 3600.0,
         "launch_summary": 60.0,
+        "vod_recovery": 15.0,
     }
 
 

@@ -1,8 +1,8 @@
 """The VOD lane's parameters as one frozen object, read from the `settings` table once per job. Implemented
 in M08.
 
-Keys that migration 0008 adds have their default in `DEFAULTS`, so a database that has not received the
-migration yet behaves the same. Everything else must exist in the table.
+Keys that migrations 0008 and 0015 add have their default in `DEFAULTS`, so a database that has not
+received the migration yet behaves the same. Everything else must exist in the table.
 """
 
 from collections.abc import Mapping
@@ -43,6 +43,12 @@ DEFAULTS: Final[dict[str, Any]] = {
     "vod.section_retention_s": 93600,
     "vod.chat_retention_s": 604800,
     "vod.cleanup_interval_s": 900,
+    # supabase/migrations/0015_vod_recovery.sql
+    "vod.orphan_grace_s": 300,
+    "vod.recovery_interval_s": 60,
+    "vod.concurrency_retry_max_s": 600,
+    "vod.concurrency_retry_jitter": 0.2,
+    "vod.worker_fresh_s": 90,
 }
 TIERS: Final = ("S", "A", "B")
 
@@ -107,6 +113,11 @@ class VodConfig:
     section_retention_s: float
     chat_retention_s: float
     cleanup_interval_s: float
+    orphan_grace_s: float
+    recovery_interval_s: float
+    concurrency_retry_max_s: float
+    concurrency_retry_jitter: float
+    worker_fresh_s: float
 
     @classmethod
     def from_mapping(cls, values: Mapping[str, Any]) -> "VodConfig":
@@ -166,6 +177,11 @@ class VodConfig:
             section_retention_s=_number(merged, "vod.section_retention_s"),
             chat_retention_s=_number(merged, "vod.chat_retention_s"),
             cleanup_interval_s=_number(merged, "vod.cleanup_interval_s"),
+            orphan_grace_s=_number(merged, "vod.orphan_grace_s"),
+            recovery_interval_s=_number(merged, "vod.recovery_interval_s"),
+            concurrency_retry_max_s=_number(merged, "vod.concurrency_retry_max_s"),
+            concurrency_retry_jitter=_number(merged, "vod.concurrency_retry_jitter"),
+            worker_fresh_s=_number(merged, "vod.worker_fresh_s"),
         )
 
     @classmethod

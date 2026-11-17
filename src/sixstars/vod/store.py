@@ -9,7 +9,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Final
+from typing import Any, Final, Literal
 
 import psycopg
 from psycopg.types.json import Jsonb
@@ -195,30 +195,138 @@ def set_status(
     return True
 
 
-def claim(video_id: str, stale_s: float) -> bool:
-    """Take a video for processing: `new` (or `processing` but not updated for `stale_s`, its worker
-    died) becomes `processing`, attempts + 1, with the event. False when another worker has it."""
+# True when a `vod.process` or `replay.scan` job other than `%(job_id)s` is running for video `v`.
+_RUNNING_JOB_SQL: Final = """
+    exists (
+      select 1 from jobs j
+      where j.status = 'running' and j.type in ('vod.process', 'replay.scan')
+        and j.id is distinct from %(job_id)s::bigint
+        and (j.payload->>'video_id' = v.id::text
+             or (v.live_session_id is not null
+                 and j.payload->>'live_session_id' = v.live_session_id::text))
+    )
+"""
+SLOT_LOCK: Final = "vod.concurrency_slot"
+EVENT_RECOVERED: Final = "video.recovered"
+ClaimResult = Literal["claimed", "busy", "full"]
+
+
+def _slot_lock() -> None:
+    """Serialise slot claims and orphan resets across workers until the transaction ends."""
+    db.fetch_one("select pg_advisory_xact_lock(hashtextextended(%s, 0))", (SLOT_LOCK,))
+
+
+def count_in_work(exclude_video_id: str, grace_s: float) -> int:
+    """Other videos that are really being processed: status `processing` with a running job for them,
+    or (a run started by hand has no job) updated in the last `grace_s` seconds."""
+    row = db.fetch_one(
+        f"""
+        select count(*) as n from videos v
+        where v.status = 'processing' and v.id <> %(id)s
+          and ({_RUNNING_JOB_SQL} or v.updated_at > now() - make_interval(secs => %(grace)s))
+        """,
+        {"id": exclude_video_id, "grace": grace_s, "job_id": None},
+    )
+    return int(row["n"]) if row is not None else 0
+
+
+def claim(
+    video_id: str,
+    stale_s: float,
+    *,
+    limit: int | None = None,
+    grace_s: float = 0.0,
+    job_id: int | None = None,
+) -> ClaimResult:
+    """Take a video and a concurrency slot for processing, atomically.
+
+    The video can be taken when it is `new`, or `processing` and either not updated for `stale_s` or
+    (the caller is job `job_id`) no other job is running for it: then it was left behind by an attempt
+    that ended without closing it, and this job resumes it. `busy`: another worker has the video.
+    `full`: `limit` other videos are in work (`count_in_work`; None = no limit); nothing changes.
+    `claimed`: status `processing`, attempts + 1, with the event.
+
+    Check and update run under one advisory lock, so two workers cannot both take the last slot.
+    """
     with db.transaction():
-        changed = db.execute(
-            """
-            update videos
-            set status = 'processing', skip_reason = null, attempts = attempts + 1
-            where id = %s
-              and (status = 'new'
-                   or (status = 'processing' and updated_at <= now() - make_interval(secs => %s)))
+        _slot_lock()
+        row = db.fetch_one(
+            f"""
+            select v.status, v.updated_at <= now() - make_interval(secs => %(stale)s) as stale,
+                   {_RUNNING_JOB_SQL} as other_job
+            from videos v where v.id = %(id)s
+            for update of v
             """,
-            (video_id, stale_s),
+            {"id": video_id, "stale": stale_s, "job_id": job_id},
         )
-        if not changed:
-            return False
+        if row is None:
+            return "busy"
+        orphan = job_id is not None and not row["other_job"]
+        resumed = row["status"] == "processing" and (bool(row["stale"]) or orphan)
+        if row["status"] != "new" and not resumed:
+            return "busy"
+        if limit is not None and count_in_work(video_id, grace_s) >= limit:
+            return "full"
+        db.execute(
+            "update videos set status = 'processing', skip_reason = null, attempts = attempts + 1, "
+            "updated_at = now() where id = %s",
+            (video_id,),
+        )
         events.emit(
             "video.processing",
             entity_type="video",
             entity_id=video_id,
-            data={"status": "processing"},
+            data={"status": "processing", "resumed": resumed, "job_id": job_id},
             service=SERVICE,
         )
-    return True
+    return "claimed"
+
+
+def reset_orphans(grace_s: float) -> list[str]:
+    """Put back to `new` every video in `processing` that nothing is working on: no running job for it
+    and not updated for `grace_s` seconds. One `video.recovered` event per video. Returns the ids."""
+    reason = "recovered: left in processing without a running job"
+    with db.transaction():
+        _slot_lock()
+        rows = db.fetch_all(
+            f"""
+            update videos v set status = 'new', skip_reason = %(reason)s
+            where v.status = 'processing'
+              and v.updated_at <= now() - make_interval(secs => %(grace)s)
+              and not {_RUNNING_JOB_SQL}
+            returning v.id::text as id
+            """,
+            {"reason": reason, "grace": grace_s, "job_id": None},
+        )
+        ids = sorted(str(row["id"]) for row in rows)
+        for video_id in ids:
+            events.emit(
+                EVENT_RECOVERED,
+                level="warn",
+                entity_type="video",
+                entity_id=video_id,
+                message=reason,
+                data={"status": "new", "grace_s": grace_s},
+                service=SERVICE,
+            )
+    return ids
+
+
+def latest_job_status(video_id: str) -> str | None:
+    """Status of the newest `vod.process` or `replay.scan` job of a video, or None when it has none."""
+    row = db.fetch_one(
+        """
+        select j.status from jobs j
+        join videos v on v.id::text = %s
+        where j.type in ('vod.process', 'replay.scan')
+          and (j.payload->>'video_id' = v.id::text
+               or (v.live_session_id is not null
+                   and j.payload->>'live_session_id' = v.live_session_id::text))
+        order by j.id desc limit 1
+        """,
+        (video_id,),
+    )
+    return str(row["status"]) if row is not None else None
 
 
 def touch(video_id: str, *, title: str | None = None, duration_s: float | None = None) -> None:
@@ -233,18 +341,6 @@ def touch(video_id: str, *, title: str | None = None, duration_s: float | None =
         """,
         (title or None, int(duration_s) if duration_s else None, video_id),
     )
-
-
-def count_processing(exclude_video_id: str, stale_s: float) -> int:
-    """Videos another worker is processing right now (rows not updated for `stale_s` do not count)."""
-    row = db.fetch_one(
-        """
-        select count(*) as n from videos
-        where status = 'processing' and id <> %s and updated_at > now() - make_interval(secs => %s)
-        """,
-        (exclude_video_id, stale_s),
-    )
-    return int(row["n"]) if row is not None else 0
 
 
 # ── chat files ───────────────────────────────────────────────

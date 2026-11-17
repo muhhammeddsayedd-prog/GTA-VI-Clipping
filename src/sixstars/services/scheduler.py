@@ -16,6 +16,9 @@ M13 tasks (the rules live in `sixstars.guardian`):
 - pruning of old events and candidates, every hour;
 - one health summary shortly before `launch.launch_at`.
 
+fix-stale-processing: videos left in `processing` by a restarted worker are put back to `new`
+(`vod.process.recover_orphans`), every `vod.recovery_interval_s`.
+
 Each task is independent: one that fails is logged and tried again after its interval. The process stops
 cleanly on SIGINT or SIGTERM.
 """
@@ -24,6 +27,7 @@ import html
 import os
 import re
 import threading
+import time
 from collections.abc import Mapping
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -50,6 +54,8 @@ STUCK_JOBS_INTERVAL_S = 300.0
 CLIP_EXPIRY_INTERVAL_S = 600.0
 PRUNE_INTERVAL_S = 3600.0
 LAUNCH_SUMMARY_INTERVAL_S = 60.0
+VOD_RECOVERY_TICK_S = 15.0  # how often the task looks; the pass itself runs every vod.recovery_interval_s
+VOD_RECOVERY_SETTING = "vod.recovery_interval_s"
 LAUNCH_SUMMARY_EVENT = "launch.health_summary"
 STALE_SETTING = "guardian.heartbeat_stale_s"
 RANK_EPSILON = 1e-6
@@ -281,6 +287,25 @@ def launch_summary(now: datetime | None = None) -> bool:
     return True
 
 
+_vod_recovery_at: float | None = None
+
+
+def recover_vod_orphans(clock: float | None = None) -> list[str] | None:
+    """Put videos left in `processing` by a restarted worker back to `new`, at most once per
+    `vod.recovery_interval_s` (read on every tick, so a change applies without a restart). Returns the
+    ids reset, or None when the pass is not due yet."""
+    global _vod_recovery_at
+    from sixstars.vod import config as vod_config
+    from sixstars.vod import process as vod_process
+
+    clock = time.monotonic() if clock is None else clock
+    interval_s = settings.get_float(VOD_RECOVERY_SETTING, vod_config.DEFAULTS[VOD_RECOVERY_SETTING])
+    if _vod_recovery_at is not None and clock - _vod_recovery_at < interval_s:
+        return None
+    _vod_recovery_at = clock
+    return vod_process.recover_orphans()
+
+
 def tasks() -> list[PeriodicTask]:
     """The periodic tasks of the scheduler."""
     return [
@@ -293,6 +318,7 @@ def tasks() -> list[PeriodicTask]:
         PeriodicTask("clip_expiry", CLIP_EXPIRY_INTERVAL_S, expire_clips),
         PeriodicTask("prune", PRUNE_INTERVAL_S, prune),
         PeriodicTask("launch_summary", LAUNCH_SUMMARY_INTERVAL_S, launch_summary),
+        PeriodicTask("vod_recovery", VOD_RECOVERY_TICK_S, recover_vod_orphans),
     ]
 
 
