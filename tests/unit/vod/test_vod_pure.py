@@ -326,3 +326,14 @@ def test_parse_metadata_for_both_platforms() -> None:
     assert (twitch.channel_id, twitch.handle, twitch.was_live) == ("buddha", "buddha", True)
     with pytest.raises(ValueError):
         commands.parse_metadata(commands.parse_source("2900689447"), {})
+
+
+def test_cli_refuses_a_url_that_is_no_video() -> None:
+    from typer.testing import CliRunner
+
+    from sixstars.cli import app
+
+    runner = CliRunner()
+    for command in ("process", "scan-only"):
+        result = runner.invoke(app, ["vod", command, "https://example.com/v"])
+        assert result.exit_code == commands.EXIT_USAGE
