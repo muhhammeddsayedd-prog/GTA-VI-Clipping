@@ -16,3 +16,14 @@ def clean_env(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
     config.env.cache_clear()
     yield
     config.env.cache_clear()
+
+
+@pytest.fixture(autouse=True)
+def sleeps(monkeypatch: pytest.MonkeyPatch) -> list[float]:
+    """Replace the sleep hook of the clients (retry backoff, polling) so no test waits. Returns the list
+    of delays that were asked for."""
+    from sixstars.clients import _http
+
+    delays: list[float] = []
+    monkeypatch.setattr(_http, "sleep", delays.append)
+    return delays
