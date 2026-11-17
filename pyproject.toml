@@ -1,0 +1,77 @@
+[project]
+name = "sixstars"
+dynamic = ["version"]
+description = "6 Stars Clips: fully automated GTA 6 clipping system"
+readme = "README.md"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "fastapi",
+    "uvicorn[standard]",
+    "psycopg[binary,pool]",
+    "httpx",
+    "tenacity",
+    "structlog",
+    "pydantic",
+    "pydantic-settings",
+    "typer",
+    "anthropic",
+    "supabase",
+    "websockets",
+    "chat-downloader",
+    "yt-dlp",
+    "streamlink",
+    "faster-whisper",
+    "panns-inference",
+    "numpy",
+    "pillow",
+    "python-multipart",
+]
+
+[project.scripts]
+sixstars = "sixstars.cli:app"
+
+[dependency-groups]
+dev = [
+    "pytest",
+    "pytest-asyncio",
+    "respx",
+    "ruff",
+    "mypy",
+    "types-requests",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.version]
+path = "src/sixstars/__init__.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/sixstars"]
+
+[tool.ruff]
+line-length = 110
+target-version = "py312"
+src = ["src", "tests"]
+# Ruff also formats Python code blocks in Markdown; the kit docs are reference text and must stay untouched.
+extend-exclude = [".claude", "*.md"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "N", "SIM"]
+
+[tool.ruff.lint.flake8-bugbear]
+# typer declares CLI arguments and options as call defaults.
+extend-immutable-calls = ["typer.Argument", "typer.Option"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+plugins = ["pydantic.mypy"]
+files = ["src"]
+mypy_path = "src"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"

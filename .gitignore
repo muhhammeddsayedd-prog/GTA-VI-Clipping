@@ -30,3 +30,7 @@ tmp/
 Thumbs.db
 .vscode/
 .claude/settings.local.json
+
+# Runtime data and stream segments
+data/
+*.ts
