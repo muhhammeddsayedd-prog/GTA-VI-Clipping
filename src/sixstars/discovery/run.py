@@ -240,8 +240,11 @@ def gather(clients: DiscoveryClients, config: DiscoveryConfig, now: datetime) ->
     else:
         try:
             found = sources.twitch_candidates(twitch, config, now)
-            gathered.candidates.extend(found)
-            gathered.reports.append(SourceReport("twitch", "ok" if found else "empty", len(found)))
+            detail = f"no Twitch category named {config.target_game!r}" if found is None else ""
+            gathered.candidates.extend(found or [])
+            gathered.reports.append(
+                SourceReport("twitch", "ok" if found else "empty", len(found or []), detail)
+            )
         except ClientError as exc:
             _log.warning("discovery_twitch_failed", error=str(exc)[:200])
             gathered.reports.append(SourceReport("twitch", "error", 0, str(exc)[:200]))

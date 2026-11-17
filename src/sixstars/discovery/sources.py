@@ -163,11 +163,12 @@ def twitch_game_id(client: TwitchClient, name: str, now: datetime) -> str | None
     return game_id
 
 
-def twitch_candidates(client: TwitchClient, config: DiscoveryConfig, now: datetime) -> list[Candidate]:
-    """Live streams (by viewers) and the day's most viewed archives of the target game."""
+def twitch_candidates(client: TwitchClient, config: DiscoveryConfig, now: datetime) -> list[Candidate] | None:
+    """Live streams (by viewers) and the day's most viewed archives of the target game. None when Twitch
+    has no category of that name (yet): before the game's release that is normal, not an error."""
     game_id = twitch_game_id(client, config.target_game, now)
     if game_id is None:
-        raise ClientError(f"Twitch has no game named {config.target_game!r}")
+        return None
     streams = client.get_streams(game_id, max_items=config.twitch_max_streams)
     videos = client.get_videos_by_game(
         game_id, period="day", sort="views", type="archive", first=config.twitch_max_videos

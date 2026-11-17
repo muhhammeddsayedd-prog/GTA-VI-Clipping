@@ -14,7 +14,7 @@ Implemented in M09.
 from collections.abc import Collection, Mapping, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, replace
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from typing import Any, Final
 
 from psycopg.types.json import Jsonb
@@ -394,8 +394,6 @@ def handle_permission_job(job: jobs.Job) -> None:
 
     Raises when the check could not be made, so the job queue retries it with backoff.
     """
-    from datetime import UTC
-
     creator_id = str(job.payload.get("creator_id", ""))
     row = store.creators_by_id([creator_id]).get(creator_id) if creator_id else None
     if row is None:
