@@ -1,14 +1,16 @@
 """Pydantic schemas for the structured responses expected from each Claude prompt (docs/15, P1 to P8).
 Implemented in M05.
 
-The Anthropic client appends the JSON Schema of the model to the system prompt and validates the reply
-against it; a reply that fails validation is sent back once with the error. The limits of docs/15 (hook
-length, title length, hashtag shape, score range) are therefore validators here, so a reply that breaks
-one is repaired by the model instead of reaching the renderer.
+The Anthropic client sends the JSON Schema of the model as the structured output format, so the API
+returns JSON of that shape, and then validates the reply with the model; a reply that fails validation is
+sent back with the error. The limits of docs/15 (hook length, title length, hashtag shape, score range)
+cannot be expressed in the API's schema dialect, so they are validators here and a reply that breaks one
+is repaired by the model instead of reaching the renderer. Field order matters: the model writes the
+fields in the order they are declared.
 
 Limits that depend on the call (the window length, the frame size, the spike ids) are added by the
 `*_schema(...)` factories: they return a subclass with the same title and JSON Schema as the base model,
-so the cached system prompt stays byte-identical between calls.
+so the API compiles and caches one output grammar per prompt.
 """
 
 import re
@@ -60,9 +62,14 @@ def _contains(line: Sequence[str], phrase: Sequence[str]) -> bool:
 
 
 def _max_words(value: str, limit: int, name: str) -> str:
-    words = count_words(value)
-    if words > limit:
-        raise ValueError(f"{name} has {words} words, the maximum is {limit}")
+    """The error lists the words as they were counted: sent back to the model, that is what lets it
+    shorten the text instead of rewording it at the same length."""
+    words = [token for token in value.split() if _WORD_RE.search(token)]
+    if len(words) > limit:
+        raise ValueError(
+            f"{name} has {len(words)} words ({' | '.join(words)}), the maximum is {limit}: "
+            f"rewrite it with at least {len(words) - limit} fewer"
+        )
     return value
 
 
@@ -170,8 +177,8 @@ class ClipWriting(Reply):
     keywords: list[KeywordHighlight] = Field(default_factory=list)
     spoiler: bool
     safety: SafetyFlags
-    score: int = Field(ge=1, le=10)
     score_parts: ScoreParts
+    score: int = Field(ge=1, le=10)
     reject: bool
     reject_reason: str | None = None
 

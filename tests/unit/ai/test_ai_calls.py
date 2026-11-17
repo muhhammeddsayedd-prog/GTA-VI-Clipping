@@ -10,11 +10,17 @@ from typing import Any
 import pytest
 from ai_samples import clip_context, spike, verdict_reply, writing_reply
 from PIL import Image
+from structlog.testing import capture_logs
 
 from sixstars.ai import calls
 from sixstars.ai.calls import BudgetExceededError, Segment, TranscriptChunk
 from sixstars.ai.schemas import Moment
-from sixstars.clients.anthropic_client import AnthropicClient, AnthropicRefusal, InvalidModelOutput
+from sixstars.clients.anthropic_client import (
+    AnthropicClient,
+    AnthropicError,
+    AnthropicRefusal,
+    InvalidModelOutput,
+)
 from sixstars.clients.fakes import FakeAnthropicClient
 
 Scripted = Callable[..., tuple[AnthropicClient, Any]]
@@ -159,7 +165,8 @@ def test_write_clip_invalid_then_valid_is_repaired(scripted: Scripted) -> None:
     assert writing.hook == "He did NOT stick this landing 😭"
     assert len(sdk.requests) == 2
     repair = sdk.requests[1]["messages"][0]["content"][-1]["text"]
-    assert "hook has 13 words, the maximum is 8" in repair
+    assert "hook has 13 words (this | hook | is | far" in repair and "the maximum is 8" in repair
+    assert "at least 5 fewer" in repair
     assert sdk.requests[0]["system"][0]["cache_control"] == {"type": "ephemeral"}
     assert sdk.requests[0]["system"] == sdk.requests[1]["system"]
 
@@ -172,11 +179,24 @@ def test_write_clip_trim_outside_the_rules_is_sent_back(scripted: Scripted) -> N
 
 
 @pytest.mark.parametrize("bad", ["not json at all", '{"hook": "missing everything else"}'])
-def test_write_clip_invalid_twice_fails(scripted: Scripted, bad: str) -> None:
+def test_write_clip_still_invalid_after_the_repairs_fails(scripted: Scripted, bad: str) -> None:
     client, sdk = scripted(bad, bad)
-    with pytest.raises(InvalidModelOutput, match="p2_clip_writer"):
+    with pytest.raises(InvalidModelOutput, match="p2_clip_writer: reply is not valid for ClipWriting"):
         calls.write_clip(clip_context(now=NOW), client=client)
-    assert len(sdk.requests) == 2
+    assert len(sdk.requests) == 3
+
+
+def test_write_clip_request_carries_the_schema_as_output_format(scripted: Scripted) -> None:
+    client, sdk = scripted(json.dumps(writing_reply()))
+    calls.write_clip(clip_context(now=NOW), client=client)
+    request = sdk.requests[0]
+    schema = request["output_config"]["format"]["schema"]
+    assert request["output_config"]["effort"] == "medium"
+    assert schema["title"] == "ClipWriting" and schema["additionalProperties"] is False
+    # The parts are written before the overall score, so the score follows from them.
+    names = list(schema["properties"])
+    assert names.index("score_parts") < names.index("score")
+    assert "JSON Schema" not in request["system"][0]["text"]
 
 
 def test_write_clip_needs_lines_and_passes_a_refusal_on() -> None:
@@ -265,6 +285,40 @@ def test_pick_moments_slices_long_videos_and_merges() -> None:
     assert "Pick between 0 and 3" in fake.calls[0][1]["user_content"]
     assert "covers 1800 s to 3600 s" in fake.calls[1][1]["user_content"]
     assert [(m.start_s, m.confidence) for m in moments] == [(120, 0.9), (2000, 0.8), (900, 0.7)]
+
+
+def test_pick_moments_keeps_the_other_slices_when_one_reply_is_unusable() -> None:
+    chunks = [TranscriptChunk(index * 30.0, index * 30.0 + 30.0, "talk") for index in range(130)]  # 65 min
+    replies = [
+        {"moments": [moment(100, 140, 0.5)]},
+        InvalidModelOutput("p3_vod_moment_picker: reply is not valid for MomentList: bad"),
+        {"moments": [moment(3700, 3740, 0.8)]},
+    ]
+    fake = FakeAnthropicClient({calls.P3: replies})
+    with capture_logs() as logs:
+        moments = calls.pick_moments(chunks, 3, 3, 20, 60, ref_id="video-1", client=fake)
+    assert [m.start_s for m in moments] == [3700, 100]
+    assert len(fake.calls) == 3
+    event = next(item for item in logs if item["event"] == "moment_slice_failed")
+    assert (event["slice_start_s"], event["slice_end_s"], event["ref_id"]) == (1800, 3600, "video-1")
+    assert "not valid for MomentList" in event["error"]
+
+
+def test_pick_moments_raises_when_every_slice_fails() -> None:
+    chunks = [TranscriptChunk(index * 30.0, index * 30.0 + 30.0, "talk") for index in range(130)]
+    fake = FakeAnthropicClient({calls.P3: InvalidModelOutput("bad reply")})
+    with pytest.raises(InvalidModelOutput, match="bad reply"):
+        calls.pick_moments(chunks, 3, 3, 20, 60, client=fake)
+    assert len(fake.calls) == 3
+
+
+def test_pick_moments_does_not_hide_an_api_failure() -> None:
+    chunks = [TranscriptChunk(index * 30.0, index * 30.0 + 30.0, "talk") for index in range(130)]
+    fake = FakeAnthropicClient(
+        {calls.P3: [{"moments": []}, AnthropicError("Anthropic API returned HTTP 529")]}
+    )
+    with pytest.raises(AnthropicError, match="529"):
+        calls.pick_moments(chunks, 3, 3, 20, 60, client=fake)
 
 
 def test_pick_moments_without_text_makes_no_call() -> None:

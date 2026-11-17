@@ -18,7 +18,7 @@ stop with `BudgetExceededError` once today's spend reaches `ai.daily_budget_usd`
 (`lane="express"`) and takedown classification always run.
 
 Errors a caller should expect: `BudgetExceededError`, `InvalidModelOutput` (the reply was still invalid after
-the repair retry), `AnthropicRefusal` (the model declined) and `AnthropicError` (API failure). All are
+the repair retries), `AnthropicRefusal` (the model declined) and `AnthropicError` (API failure). All are
 `AnthropicError` subclasses, so the job retry rules can treat them alike.
 """
 
@@ -48,7 +48,14 @@ from sixstars.ai.schemas import (
     translated_segments_schema,
 )
 from sixstars.clients import anthropic_client
-from sixstars.clients.anthropic_client import AnthropicClient, AnthropicError, BudgetKind, Effort
+from sixstars.clients.anthropic_client import (
+    AnthropicClient,
+    AnthropicError,
+    AnthropicRefusal,
+    BudgetKind,
+    Effort,
+    InvalidModelOutput,
+)
 from sixstars.logging import get_logger
 
 P1 = "p1_spike_confirm"
@@ -449,7 +456,8 @@ def pick_moments(
     """P3 (VOD lane only): the strongest standalone moments of a video with no chat, strongest first.
 
     Long transcripts are processed in 30-minute slices and merged. Fewer than `n_min` moments come back
-    when the video does not have that many good ones.
+    when the video does not have that many good ones. A slice whose reply is unusable or declined is
+    logged and skipped; the error is raised only when every slice failed.
     """
     chunks = [chunk for chunk in transcript_chunks if chunk.text.strip()]
     if not chunks:
@@ -458,6 +466,7 @@ def pick_moments(
     model = _writer_model()
     slices = slice_chunks(chunks)
     found: list[Moment] = []
+    failed: list[AnthropicError] = []
     for part in slices:
         start_s, end_s = part[0].start_s, max(chunk.end_s for chunk in part)
         values: dict[str, object] = {
@@ -474,7 +483,22 @@ def pick_moments(
             ),
         }
         schema = moment_list_schema(n_max, len_min, len_max, start_s, end_s)
-        found.extend(_ask(P3, schema, model, values, client, ref_id=ref_id).moments)
+        try:
+            found.extend(_ask(P3, schema, model, values, client, ref_id=ref_id).moments)
+        except (InvalidModelOutput, AnthropicRefusal) as exc:
+            # One unusable part must not cost the moments of the other parts.
+            failed.append(exc)
+            _log.warning(
+                "moment_slice_failed",
+                prompt_id=P3,
+                ref_id=ref_id,
+                slice_start_s=round(start_s),
+                slice_end_s=round(end_s),
+                slices=len(slices),
+                error=str(exc)[:300],
+            )
+    if failed and len(failed) == len(slices):
+        raise failed[-1]
     return merge_moments(found, n_max)
 
 
