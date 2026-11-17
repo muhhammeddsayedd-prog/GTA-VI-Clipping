@@ -84,10 +84,10 @@ def test_replay_spikes_are_stored_once_with_their_merged_spikes(source: dict[str
     assert again == ids and len(set(ids)) == 2
 
     rows = db.fetch_all(
-        "select id::text as id, mode, status, tier, spike_offset_s, spike_wall, score_z, parts, msgs_in_bucket, "
-        "unique_chatters, reaction_count, clip_requests, chat_sample, window_start_s, window_end_s, "
-        "window_start_wall, merged_into::text as merged_into, live_session_id from spikes "
-        "where video_id = %s order by spike_offset_s",
+        "select id::text as id, mode, status, tier, spike_offset_s, spike_wall, score_z, parts, "
+        "msgs_in_bucket, unique_chatters, reaction_count, clip_requests, chat_sample, "
+        "window_start_s, window_end_s, window_start_wall, merged_into::text as merged_into, "
+        "live_session_id from spikes where video_id = %s order by spike_offset_s",
         (source["video_id"],),
     )
     assert [(row["status"], float(row["spike_offset_s"])) for row in rows] == [
