@@ -95,3 +95,4 @@ Made at owner intake on 2026-11-16 (details in `development-plan/ORCHESTRATION.m
 | D103 | 2026-11-16 | The YouTube claim pre-check (D68) is deferred and the stricter music rule applies instead. | No YouTube OAuth refresh token was provided (client id and secret only) |
 | D104 | 2026-11-16 | Hosted transcription is OpenAI only. Narrows D67 (Groq with OpenAI fallback). | No Groq API key was provided |
 | D105 | 2026-11-16 | Images are pushed to GHCR by GitHub Actions with `GITHUB_TOKEN` (`packages: write`); the server pulls with a short-lived login during deploy. | The local GitHub token has no `write:packages` scope |
+| D106 | 2026-11-17 | Spike settings retuned from real GTA 5 chats (migration 0004): `min_messages` 8, `warmup_s` 900, reaction weight 0.55, `z_b`/`z_a`/`z_s` 2.0/2.6/3.4, new `spikes.end_guard_s` 300. Reason: seeded values found 2 of 6 genuine moments on YouTube chats; tuned values found 7 of 9 (judged from chat text, tuned on the same streams). |

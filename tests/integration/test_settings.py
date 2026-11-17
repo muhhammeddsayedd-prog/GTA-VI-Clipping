@@ -25,10 +25,10 @@ def test_unknown_key_raises() -> None:
 
 def test_typed_helpers_on_seeded_values() -> None:
     assert settings.get_bool("launch.dry_run") is True
-    assert settings.get_float("spikes.z_s") == 4.0
+    assert settings.get_float("spikes.z_s") == 3.4
     assert settings.get_float("spikes.lead_s") == 20.0
     assert settings.get_str("env.target_game") == "Grand Theft Auto VI"
-    assert settings.get_dict("spikes.weights")["msgs"] == 0.4
+    assert settings.get_dict("spikes.weights")["msgs"] == 0.15
     assert "#GTA6" in settings.get_list("posting.base_hashtags")
     assert settings.get_dt("launch.launch_at") == datetime(2026, 11, 18, 11, 0, tzinfo=UTC)
     assert settings.get_dt("vod.paused_until") is None

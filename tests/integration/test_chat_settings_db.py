@@ -19,7 +19,7 @@ def _msg(username: str, t: float = 1000.0) -> ChatMessage:
 
 def test_filter_context_reads_the_seeded_settings() -> None:
     ctx = FilterContext.from_settings()
-    assert ctx.warmup_s == 300.0
+    assert ctx.warmup_s == 900.0
     assert {"nightbot", "streamelements", "streamlabs", "moobot", "fossabot"} <= ctx.ignore_users
     assert (ctx.stream_start, ctx.bot_names) == (0.0, frozenset())
 
@@ -29,8 +29,8 @@ def test_filter_context_from_settings_filters_messages() -> None:
     assert ctx.bot_names == {"spamaccount"}
     assert not is_counted(_msg("Nightbot", 1_700_001_000.0), ctx)
     assert not is_counted(_msg("spamaccount", 1_700_001_000.0), ctx)
-    assert not is_counted(_msg("viewer", 1_700_000_299.0), ctx)
-    assert is_counted(_msg("viewer", 1_700_000_300.0), ctx)
+    assert not is_counted(_msg("viewer", 1_700_000_899.0), ctx)
+    assert is_counted(_msg("viewer", 1_700_000_900.0), ctx)
 
 
 def test_seeded_ignore_list_drops_the_bot_in_the_real_twitch_sample() -> None:
