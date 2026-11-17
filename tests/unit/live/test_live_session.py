@@ -236,3 +236,32 @@ def test_live_confirmation_sees_the_chat_sample_and_no_transcript() -> None:
 def test_top_tokens_count_each_word_once_per_message() -> None:
     sample = [{"text": "W W W"}, {"text": "W clip"}, {"text": "clip"}, {"text": "nice"}]
     assert top_tokens(sample, 2) == ["W", "CLIP"]
+
+
+# ── the start of the stream ──────────────────────────────────
+
+
+def test_the_stream_origin_is_the_stream_start_discovery_saw_not_the_start_of_our_recording() -> None:
+    from datetime import UTC, datetime
+
+    from sixstars.live.store import stream_origin
+
+    def at(offset: float) -> datetime:
+        return datetime.fromtimestamp(T + offset, UTC)
+
+    assert stream_origin(row(), T) == T  # nothing known: now
+    assert stream_origin(row(stream_started_at=at(-7200)), T) == T - 7200  # two hours into the stream
+    assert stream_origin(row(started_at=at(-60), stream_started_at=at(-7200)), T) == T - 60  # stored wins
+    assert stream_origin(row(stream_started_at=at(300)), T) == T  # a start in the future is not believed
+    assert stream_origin(row(stream_started_at=at(-400_000)), T) == T  # nor one of days ago (a 24/7 stream)
+
+
+def test_the_stream_title_reaches_the_prompts() -> None:
+    titled = row(title="NoPixel bank job")
+    item = render_input(
+        spike(), "s", cut_at(T + 55, 71.0), titled, EXPRESS, None, stream_start=T, chat_offset_s=0
+    )
+    assert item.stream_title == "NoPixel bank job"
+    assert (
+        spike_context("s", spike(), "kiwo", "twitch", "NoPixel bank job").stream_title == "NoPixel bank job"
+    )

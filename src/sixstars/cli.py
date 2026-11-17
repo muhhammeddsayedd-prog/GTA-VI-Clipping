@@ -693,10 +693,8 @@ def live_probe(
     """
     from sixstars.live import commands
 
-    try:
+    with _database():
         code = commands.probe(source, seconds, keep=keep, with_chat=not no_chat)
-    finally:
-        db.close_pool()
     raise typer.Exit(code=code)
 
 

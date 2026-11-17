@@ -146,7 +146,9 @@ async def _poll(
 
 
 def _scratch_root() -> str | None:
-    root = env().DATA_DIR / "live"
+    # Not under `<DATA_DIR>/live`: the manager's janitor deletes the segments of every directory there
+    # that does not belong to a running session.
+    root = env().DATA_DIR / "live-probe"
     try:
         root.mkdir(parents=True, exist_ok=True)
     except OSError:

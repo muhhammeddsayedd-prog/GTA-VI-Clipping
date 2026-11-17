@@ -30,13 +30,15 @@ import contextlib
 import re
 import shutil
 import subprocess
+import tempfile
+import threading
 import time
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from statistics import median
-from typing import Final
+from typing import IO, Final
 
 from sixstars.logging import get_logger
 
@@ -472,40 +474,61 @@ def _join_into(plan: CutPlan, out_path: Path, ffmpeg: str) -> None:
         str(out_path),
     ]
     out_path.parent.mkdir(parents=True, exist_ok=True)
-    process = subprocess.Popen(  # noqa: S603 - fixed argument list, no shell
-        command, stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE
-    )
-    assert process.stdin is not None and process.stderr is not None
-    deadline = time.monotonic() + CUT_TIMEOUT_S
-    try:
+    # stderr goes to a file, not a pipe: a pipe nobody reads would block ffmpeg, and with it the feeding.
+    with tempfile.TemporaryFile() as errors:
+        process = subprocess.Popen(  # noqa: S603 - fixed argument list, no shell
+            command, stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=errors
+        )
+        assert process.stdin is not None
+        deadline = time.monotonic() + CUT_TIMEOUT_S
+        # A hung ffmpeg would block the write for ever: the timer kills it, which ends the write.
+        watchdog = threading.Timer(CUT_TIMEOUT_S, process.kill)
+        watchdog.daemon = True
+        watchdog.start()
         try:
-            for segment in plan.segments:
-                with segment.path.open("rb") as source:
-                    while chunk := source.read(COPY_CHUNK):
-                        if time.monotonic() > deadline:
-                            raise BufferCutError("cutting the window timed out")
-                        process.stdin.write(chunk)
-        except (BrokenPipeError, OSError) as exc:
-            # ffmpeg stops reading once it has the duration it was asked for: that is not an error.
-            if not isinstance(exc, BrokenPipeError) and process.poll() is None:
-                raise BufferCutError(f"reading the buffer failed: {type(exc).__name__}") from exc
+            try:
+                _feed(plan, process.stdin, deadline)
+            finally:
+                with contextlib.suppress(OSError):
+                    process.stdin.close()
+            try:
+                process.wait(max(1.0, deadline - time.monotonic()))
+            except subprocess.TimeoutExpired as exc:
+                raise BufferCutError("cutting the window timed out") from exc
         finally:
-            with contextlib.suppress(OSError):
-                process.stdin.close()
-        try:
-            process.wait(max(1.0, deadline - time.monotonic()))
-        except subprocess.TimeoutExpired as exc:
-            raise BufferCutError("cutting the window timed out") from exc
-        stderr = process.stderr.read().decode("utf-8", errors="replace")
-    finally:
-        if process.poll() is None:
-            process.kill()
-            with contextlib.suppress(subprocess.TimeoutExpired):
-                process.wait(5)
-        with contextlib.suppress(OSError):
-            process.stderr.close()
+            watchdog.cancel()
+            if process.poll() is None:
+                process.kill()
+                with contextlib.suppress(subprocess.TimeoutExpired):
+                    process.wait(5)
+        errors.seek(0)
+        stderr = errors.read().decode("utf-8", errors="replace")
     if process.returncode != 0 or not out_path.is_file() or out_path.stat().st_size == 0:
         raise BufferCutError(f"ffmpeg could not cut the window: {stderr[-STDERR_TAIL_CHARS:]}")
+
+
+def _feed(plan: CutPlan, sink: IO[bytes], deadline: float) -> None:
+    """Write the bytes of the plan's segments to ffmpeg's input. ffmpeg stops reading once it has the
+    duration it was asked for; the closed pipe then ends the feeding and is not an error."""
+    for segment in plan.segments:
+        try:
+            source = segment.path.open("rb")
+        except OSError as exc:
+            raise BufferCutError(f"a buffer segment could not be read: {segment.name}") from exc
+        with source:
+            while True:
+                if time.monotonic() > deadline:
+                    raise BufferCutError("cutting the window timed out")
+                try:
+                    chunk = source.read(COPY_CHUNK)
+                except OSError as exc:
+                    raise BufferCutError(f"a buffer segment could not be read: {segment.name}") from exc
+                if not chunk:
+                    break
+                try:
+                    sink.write(chunk)
+                except OSError:  # BrokenPipeError, or EINVAL on Windows: ffmpeg has what it needs
+                    return
 
 
 def probe_duration(path: Path, ffprobe: str = "ffprobe") -> float:

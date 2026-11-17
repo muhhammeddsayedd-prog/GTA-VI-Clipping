@@ -92,6 +92,15 @@ def _decision(clip_id: str) -> dict[str, Any]:
     }
 
 
+def _local_time(stamp: datetime) -> float:
+    """A database timestamp on this process's clock. `jobs.locked_at` is written by Postgres and the
+    other stage times by this host; the two clocks can differ by seconds, which would otherwise be
+    counted as queue wait."""
+    row = db.fetch_one("select extract(epoch from now())::float8 as now")
+    offset = float(row["now"]) - time.time() if row is not None else 0.0
+    return stamp.timestamp() - offset
+
+
 def after_render(clip_id: str, job: jobs.Job) -> None:
     """The step after a successful render: note the clipped range of a live clip, run the gate's hook
     (which posts an approved spike clip), then record the latency. Never raises."""
@@ -110,7 +119,7 @@ def after_render(clip_id: str, job: jobs.Job) -> None:
     if live is None:
         return
     try:
-        claimed_at = job.locked_at.timestamp() if job.locked_at is not None else None
+        claimed_at = _local_time(job.locked_at) if job.locked_at is not None else None
         stages = stage_timings(live, claimed_at=claimed_at, rendered_at=rendered_at, decided_at=time.time())
         decision = _decision(clip_id)
         events.emit(

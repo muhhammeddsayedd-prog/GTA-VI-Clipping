@@ -20,8 +20,14 @@ MANAGED_STATUSES: Final[tuple[str, ...]] = ("assigned", "recording", "released")
 _SESSION_SQL: Final = """
     select s.id::text as id, s.creator_id::text as creator_id, s.platform, s.source_id, s.channel_login,
            s.url, s.status, s.reconnects, s.assigned_at, s.started_at, s.bot_names, s.vod_source_id,
-           s.trend_score, c.handle, c.channel_id, c.tier
-    from live_sessions s join creators c on c.id = s.creator_id
+           s.trend_score, c.handle, c.channel_id, c.tier, k.title, k.started_at as stream_started_at
+    from live_sessions s
+    join creators c on c.id = s.creator_id
+    left join lateral (
+      select d.title, d.started_at from candidates d
+      where d.platform = s.platform and d.source_id = s.source_id and d.source_type = 'live'
+      order by d.checked_at desc limit 1
+    ) k on true
 """
 
 
@@ -45,6 +51,8 @@ class SessionRow:
     channel_id: str
     tier: str
     trend_score: float | None = None
+    title: str = ""  # the stream title discovery saw last (`candidates`)
+    stream_started_at: datetime | None = None  # when the stream itself started, when discovery knows it
 
     @property
     def forbidden(self) -> bool:
@@ -69,6 +77,8 @@ def _session(row: Mapping[str, Any]) -> SessionRow:
         channel_id=str(row["channel_id"]),
         tier=str(row["tier"]),
         trend_score=float(row["trend_score"]) if row["trend_score"] is not None else None,
+        title=str(row["title"] or ""),
+        stream_started_at=row["stream_started_at"],
     )
 
 
@@ -119,10 +129,25 @@ def emit(
     )
 
 
+def stream_origin(row: SessionRow, now: float, max_age_s: float = 172_800.0) -> float:
+    """The unix time the stream started. `live_sessions.started_at` once it is set; else the start
+    discovery recorded for the stream (when it is in the past and not absurdly old); else `now`.
+
+    The replay pass turns wall-clock times into positions in the video with `wall - started_at`, and the
+    detector's warm-up counts from it, so it must be the start of the stream, not of our recording."""
+    if row.started_at is not None:
+        return row.started_at.timestamp()
+    known = row.stream_started_at
+    if known is not None and now - max_age_s <= known.timestamp() <= now:
+        return known.timestamp()
+    return now
+
+
 def mark_recording(session: SessionRow, now: datetime, directory: Path, *, resumed: bool) -> bool:
-    """`assigned` (or a `recording` row being resumed after a restart) → `recording`. `started_at` is set
-    the first time only, so wall time minus `started_at` stays the position in the stream. Returns False
-    when the row changed in the meantime (released by discovery)."""
+    """`assigned` (or a `recording` row being resumed after a restart) → `recording`. `started_at` (the
+    start of the stream, see `stream_origin`) is set the first time only, so wall time minus `started_at`
+    stays the position in the stream. Returns False when the row changed in the meantime (released by
+    discovery)."""
     changed = db.execute(
         """
         update live_sessions
@@ -225,6 +250,11 @@ def close_spike(spike_id: str, status: str, reason: str, *, event: str, level: e
     events.emit(
         event, level=level, entity_type="spike", entity_id=spike_id, message=reason[:500], service=SERVICE
     )
+
+
+def spike_status(spike_id: str) -> str | None:
+    row = db.fetch_one("select status from spikes where id = %s", (spike_id,))
+    return str(row["status"]) if row is not None else None
 
 
 def emergency_stop() -> bool:

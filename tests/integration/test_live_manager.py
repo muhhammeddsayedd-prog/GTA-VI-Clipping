@@ -223,6 +223,23 @@ def test_an_assigned_session_starts_and_becomes_recording_with_the_first_data(wo
     assert len(events_of("live.recording")) == 1 and world.streams.count("youtube") == 1  # nothing twice
 
 
+def test_the_stream_start_and_title_come_from_what_discovery_saw(world: World) -> None:
+    session = world.session("alpha")
+    began = datetime.now(UTC).replace(microsecond=0) - timedelta(hours=2)
+    db.execute(
+        "insert into candidates (creator_id, source_type, platform, source_id, url, title, started_at, "
+        "trend_score) select creator_id, 'live', platform, source_id, url, 'Bank job night', %s, 70 "
+        "from live_sessions where id = %s",
+        (began, session),
+    )
+    world.pass_()
+    # two hours into the stream: `started_at` is the start of the stream, so the replay pass can turn
+    # wall-clock times into positions in the video
+    assert world.row(session)["started_at"] == began
+    live = world.manager.sessions[session]
+    assert live.row.title == "Bank job night" and live.stream_start == began.timestamp()
+
+
 def test_only_max_slots_sessions_run_and_the_best_are_taken_first(world: World) -> None:
     settings.set("live.max_slots", 2)
     low, top, mid = (
@@ -437,6 +454,35 @@ def test_orphaned_buffers_are_cleaned(world: World) -> None:
     assert not directory.exists()
 
 
+def test_a_cut_is_deleted_as_soon_as_the_render_of_its_spike_is_over(world: World) -> None:
+    session = world.session("alpha", status="recording", started_at=datetime.now(UTC))
+    creator = world.row(session)["creator_id"]
+    ids = {}
+    for status in ("rendering", "clipped", "rejected"):
+        row = db.fetch_one(
+            "insert into spikes (mode, live_session_id, creator_id, status) values ('live', %s, %s, %s) "
+            "returning id::text as id",
+            (session, creator, status),
+        )
+        assert row is not None
+        ids[status] = row["id"]
+    ids["unknown"] = "99999999-9999-9999-9999-999999999999"
+    directory = store.buffer_dir(session)
+    for spike_id in ids.values():
+        path = buffer.cut_path(directory, spike_id)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(b"cut")
+    manual = buffer.cut_path(directory, "manual-1")
+    manual.write_bytes(b"cut")
+    world.manager.sessions[session] = None  # type: ignore[assignment]  # a running session: segments stay
+    try:
+        world.manager.sweep_orphans(LiveConfig.load())
+    finally:
+        world.manager.sessions.clear()
+    left = sorted(path.stem for path in (directory / "cuts").iterdir())
+    assert left == sorted([ids["rendering"], "manual-1"])  # still needed, or not a spike cut
+
+
 def test_the_service_stops_all_sessions_within_the_grace_period(world: World) -> None:
     session = world.session("alpha")
     stop = threading.Event()
@@ -623,8 +669,9 @@ def test_a_spike_that_cannot_be_confirmed_or_cut_is_closed_as_failed(
 
 def test_the_same_spike_reported_twice_is_queued_once(world: World, live_session: LiveSession) -> None:
     assert live_session.handle_spike(spike()) is not None
-    assert live_session.handle_spike(spike()) is None  # same stored spike, same dedupe key
+    assert live_session.handle_spike(spike()) is None  # the stored spike is past `detected`
     assert len(queued("express.render")) == 1 and len(db.fetch_all("select 1 from spikes")) == 1
+    assert len(world.ai.calls) == 1 and len(events_of("live.spike_queued")) == 1  # no second spend
 
 
 # ── the worker side ──────────────────────────────────────────

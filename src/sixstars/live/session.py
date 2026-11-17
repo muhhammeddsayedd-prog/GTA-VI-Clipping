@@ -17,7 +17,9 @@ recorded anything ends as `ended` (its replay is scanned), one that never record
 
 **Clocks.** Chat times are unix seconds; segments are indexed by wall clock; the detector already moved
 the window start by `live.chat_offset_s` for the platform. Positions given to the factory are seconds in
-the cut file.
+the cut file. The host clock must be synchronised (NTP): chat times come from the platform, segment times
+from this host. The stream's own start (`store.stream_origin`) anchors the detector's warm-up and
+`live_sessions.started_at`.
 """
 
 import asyncio
@@ -158,7 +160,9 @@ def top_tokens(sample: Iterable[Mapping[str, Any]], count: int = TOP_TOKENS) -> 
     return [word for word, _ in words.most_common(count)]
 
 
-def spike_context(spike_id: str, spike: DetectedSpike, creator: str, platform: str) -> SpikeContext:
+def spike_context(
+    spike_id: str, spike: DetectedSpike, creator: str, platform: str, stream_title: str = ""
+) -> SpikeContext:
     """What P1 sees about a live spike: the chat sample only (no transcript, for speed)."""
     lines = tuple(
         ChatLine(t_s=float(entry["t_rel"]), text=str(entry.get("text", "")))
@@ -169,7 +173,7 @@ def spike_context(spike_id: str, spike: DetectedSpike, creator: str, platform: s
         spike_id=spike_id,
         creator=creator,
         platform=platform,
-        stream_title="",
+        stream_title=stream_title,
         score_z=spike.score_z,
         msgs=spike.msgs,
         uniq=spike.uniq,
@@ -227,6 +231,7 @@ def render_input(
         source_type="live",
         lane=route.lane,
         mode=route.mode,
+        stream_title=session.title,
         spike_id=spike_id,
         pad_start_s=round(cut.offset(spike.pad_start), 3),
         pad_end_s=round(cut.offset(spike.pad_end), 3),
@@ -280,7 +285,7 @@ class LiveSession:
         self._bots_saved = False
         self._spike_threads: list[threading.Thread] = []
         self._chat_thread: threading.Thread | None = None
-        started = row.started_at.timestamp() if row.started_at is not None else self._created
+        started = store.stream_origin(row, self._created)
         self.stream_start = started
         self.recorder = Recorder(
             stream_url(row.platform, row.channel_login, row.source_id, row.url),
@@ -532,6 +537,11 @@ class LiveSession:
             return None
         spike_id = persist_spike(spike, creator_id=self.row.creator_id, live_session_id=self.row.id)
         with structlog.contextvars.bound_contextvars(spike_id=spike_id):
+            status = store.spike_status(spike_id)
+            if status != "detected":
+                # The same spike again (a restarted detector re-reads the chat backlog): it was handled.
+                self._log.info("live_spike_already_handled", status=status)
+                return None
             try:
                 return self._confirm_cut_queue(spike, spike_id, timings, detected_at)
             except Exception as exc:
@@ -548,7 +558,7 @@ class LiveSession:
         self, spike: DetectedSpike, spike_id: str, timings: SpikeTimings, detected_at: float
     ) -> int | None:
         started = time.monotonic()
-        context = spike_context(spike_id, spike, self.row.handle, self.row.platform)
+        context = spike_context(spike_id, spike, self.row.handle, self.row.platform, self.row.title)
         verdict = calls.confirm_spikes([context], lane="express", client=self.deps.ai_client)[0]
         timings.confirm_ms = int((time.monotonic() - started) * 1000)
         decision = spike_confirm.apply(spike_id, spike.tier, verdict)
