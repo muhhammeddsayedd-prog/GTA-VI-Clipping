@@ -1,6 +1,6 @@
 """Process entry point for the scheduler service.
 
-M11 scope (the failover triggers, expiry and cleanup arrive with M13):
+M11 tasks:
 
 - the `scheduler` heartbeat, every 30 s;
 - `notify.retry_unsent()`, every minute, so a Telegram message that the webhook refused is sent later;
@@ -8,16 +8,31 @@ M11 scope (the failover triggers, expiry and cleanup arrive with M13):
   threshold `guardian.heartbeat_stale_s`;
 - the ranking refresh (docs/11 section 5), every 10 minutes: `rank_score` of every approved clip.
 
+M13 tasks (the rules live in `sixstars.guardian`):
+
+- health checks and failover for the n8n triggers, every minute (`guardian.health`, `guardian.failover`);
+- reset of jobs that hang on a live worker, every 5 minutes (`guardian.stuck_job_s`);
+- expiry of approved clips older than `posting.max_clip_age_h`, every 10 minutes;
+- pruning of old events and candidates, every hour;
+- one health summary shortly before `launch.launch_at`.
+
 Each task is independent: one that fails is logged and tried again after its interval. The process stops
 cleanly on SIGINT or SIGTERM.
 """
 
+import html
 import os
+import re
 import threading
-from datetime import datetime
+from collections.abc import Mapping
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from sixstars import db, events, jobs, notify, settings
+from sixstars.guardian import config as guardian_config
+from sixstars.guardian import failover as guardian_failover
+from sixstars.guardian import health as guardian_health
+from sixstars.guardian import service as guardian_service
 from sixstars.logging import configure_logging, get_logger
 from sixstars.posting import ranking
 from sixstars.posting.params import PostingParams
@@ -30,6 +45,12 @@ HEARTBEAT_INTERVAL_S = 30.0
 NOTIFY_RETRY_INTERVAL_S = 60.0
 STALE_JOBS_INTERVAL_S = 60.0
 RANKING_INTERVAL_S = 600.0  # M11 and docs/11 section 5: every 10 minutes (no settings key)
+GUARDIAN_HEALTH_INTERVAL_S = 60.0  # docs/12 section 5: every 60 s
+STUCK_JOBS_INTERVAL_S = 300.0
+CLIP_EXPIRY_INTERVAL_S = 600.0
+PRUNE_INTERVAL_S = 3600.0
+LAUNCH_SUMMARY_INTERVAL_S = 60.0
+LAUNCH_SUMMARY_EVENT = "launch.health_summary"
 STALE_SETTING = "guardian.heartbeat_stale_s"
 RANK_EPSILON = 1e-6
 
@@ -154,13 +175,124 @@ def refresh_ranking(now: datetime | None = None) -> int:
     return changed
 
 
+# ── M13: guardian health, failover, expiry, pruning ──────────
+
+
+def _failover_hourly(now: datetime) -> Mapping[str, Any] | None:
+    from sixstars.posting.hourly import schedule_hourly_slot
+
+    result = schedule_hourly_slot(now)  # one job per slot, however often it is called
+    return {"slot_at": result.slot_at.isoformat(), "status": result.status}
+
+
+def _failover_discovery(now: datetime) -> Mapping[str, Any] | None:
+    from sixstars.discovery.run import run_discovery
+
+    run_discovery()
+    return None
+
+
+def _failover_guardian(now: datetime) -> Mapping[str, Any] | None:
+    guardian_service.run_check(now)
+    return None
+
+
+def _failover_stats(now: datetime) -> Mapping[str, Any] | None:
+    guardian_service.collect_stats(now)
+    return None
+
+
+FAILOVER_RUNNERS: dict[str, guardian_failover.Runner] = {
+    "hourly": _failover_hourly,
+    "discovery": _failover_discovery,
+    "guardian": _failover_guardian,
+    "stats": _failover_stats,
+}
+
+_failover: guardian_failover.Failover | None = None
+
+
+def failover() -> guardian_failover.Failover:
+    """The failover runner of this process. Its start time is the reference for a trigger that has
+    never fired."""
+    global _failover
+    if _failover is None:
+        _failover = guardian_failover.Failover(FAILOVER_RUNNERS, utcnow())
+    return _failover
+
+
+def guardian_health_pass(now: datetime | None = None, wait: bool = False) -> dict[str, Any]:
+    """Health checks, then failover for missing n8n triggers. A failed health check never keeps the
+    failover from running."""
+    now = now or utcnow()
+    summary: dict[str, Any] = {}
+    try:
+        summary = guardian_health.run_checks(now)
+    except Exception as exc:
+        get_logger(SERVICE).error("health_checks_failed", error=type(exc).__name__, exc_info=True)
+    summary["failover_started"] = failover().check(
+        now,
+        guardian_config.seconds_map("guardian.failover_grace_s"),
+        guardian_config.seconds_map("guardian.failover_interval_s"),
+        settings.get_bool("guardian.failover_enabled"),
+        wait=wait,
+    )
+    return summary
+
+
+def reset_stuck_jobs() -> int:
+    return guardian_health.reset_stuck_jobs()
+
+
+def expire_clips(now: datetime | None = None) -> int:
+    expired = guardian_health.expire_clips(now or utcnow())
+    if expired:
+        get_logger(SERVICE).info("clips_expired", clips=expired)
+    return expired
+
+
+def prune(now: datetime | None = None) -> dict[str, int]:
+    deleted = guardian_health.prune(now or utcnow())
+    get_logger(SERVICE).info("pruned", **deleted)
+    return deleted
+
+
+def launch_summary(now: datetime | None = None) -> bool:
+    """Send one health summary in the last `launch.summary_lead_s` seconds before `launch.launch_at`."""
+    now = now or utcnow()
+    launch_at = settings.get_dt("launch.launch_at", None)
+    if launch_at is None:
+        return False
+    lead = timedelta(seconds=settings.get_float("launch.summary_lead_s"))
+    if not launch_at - lead <= now < launch_at:
+        return False
+    if db.fetch_one("select 1 as hit from events where type = %s limit 1", (LAUNCH_SUMMARY_EVENT,)):
+        return False
+    from sixstars.api import status as status_view
+
+    text = html.unescape(re.sub(r"</?b>", "", status_view.render_telegram(status_view.collect(now))))
+    events.emit(
+        LAUNCH_SUMMARY_EVENT,
+        message="health summary before launch",
+        data={"launch_at": launch_at.astimezone(UTC).isoformat()},
+        service=SERVICE,
+    )
+    notify.send("info", f"Health summary before launch ({launch_at.astimezone(UTC):%H:%M} UTC)", text)
+    return True
+
+
 def tasks() -> list[PeriodicTask]:
-    """The periodic tasks of the scheduler. Later milestones (M13) add theirs to this list."""
+    """The periodic tasks of the scheduler."""
     return [
         PeriodicTask("heartbeat", HEARTBEAT_INTERVAL_S, heartbeat),
         PeriodicTask("notify_retry", NOTIFY_RETRY_INTERVAL_S, retry_notifications),
         PeriodicTask("stale_jobs", STALE_JOBS_INTERVAL_S, recover_stale_jobs),
         PeriodicTask("ranking_refresh", RANKING_INTERVAL_S, refresh_ranking),
+        PeriodicTask("guardian_health", GUARDIAN_HEALTH_INTERVAL_S, guardian_health_pass),
+        PeriodicTask("stuck_jobs", STUCK_JOBS_INTERVAL_S, reset_stuck_jobs),
+        PeriodicTask("clip_expiry", CLIP_EXPIRY_INTERVAL_S, expire_clips),
+        PeriodicTask("prune", PRUNE_INTERVAL_S, prune),
+        PeriodicTask("launch_summary", LAUNCH_SUMMARY_INTERVAL_S, launch_summary),
     ]
 
 

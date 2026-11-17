@@ -82,13 +82,15 @@ def test_an_empty_configured_token_also_means_refuse(
 
 
 def test_the_right_token_reaches_the_route(client: TestClient, auth: dict[str, str]) -> None:
-    response = client.post("/v1/guardian/takedown", headers=auth)
-    assert response.status_code == 501  # the placeholder answered, so authentication passed
+    response = client.post("/v1/guardian/takedown", headers=auth, json={"message_id": "m1"})
+    assert response.status_code == 200  # the route answered, so authentication passed
 
 
 def test_the_scheme_is_case_insensitive(client: TestClient, token: str) -> None:
-    response = client.post("/v1/guardian/takedown", headers={"Authorization": f"bearer {token}"})
-    assert response.status_code == 501
+    response = client.post(
+        "/v1/guardian/takedown", headers={"Authorization": f"bearer {token}"}, json={"message_id": "m1"}
+    )
+    assert response.status_code == 200
 
 
 def test_the_comparison_is_constant_time(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -115,19 +117,22 @@ def test_bearer_token_parsing() -> None:
 def test_the_token_never_appears_in_the_logs(
     client: TestClient, auth: dict[str, str], token: str, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    client.post("/v1/guardian/takedown", headers=auth)
+    client.post(
+        "/v1/guardian/takedown", headers=auth, json={"message_id": "m1", "body_text": "email-secret-text-abc"}
+    )
     client.get(f"/v1/status?format=json&token={token}", headers={"Authorization": "Bearer wrong-token-value"})
     client.post("/v1/control/settings", headers=auth, content=b'{"key": "a.b", "value": "body-secret-xyz"')
     out = capsys.readouterr().out
     lines = [json.loads(line) for line in out.splitlines() if line.strip()]
     requests = [line for line in lines if line["event"] == "request"]
-    assert [line["status"] for line in requests] == [501, 401, 422]
+    assert [line["status"] for line in requests] == [200, 401, 422]
     assert all(
         {"env", "service", "ts", "request_id", "method", "path", "duration_ms"} <= set(r) for r in requests
     )
     assert token not in out
     assert "wrong-token-value" not in out
     assert "body-secret-xyz" not in out
+    assert "email-secret-text-abc" not in out  # an email body is never logged
     assert "Bearer" not in out
 
 
