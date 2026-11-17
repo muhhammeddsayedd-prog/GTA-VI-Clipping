@@ -11,6 +11,7 @@ from sixstars.factory.audio import LoudnormMeasurement, SfxPlan, build_audio_fil
 from sixstars.factory.bleep import Span
 from sixstars.factory.layout import Geometry, Layout, LayoutA, layout_filters
 from sixstars.factory.overlays import (
+    SEAM_TRACK_COLOR,
     ass_filter,
     end_card_filters,
     progress_filters,
@@ -61,6 +62,7 @@ class RenderSpec:
     duck_spans: tuple[Span, ...] = ()
     sfx_path: PurePath | None = None
     sfx_times_s: tuple[float, ...] = ()
+    logo_path: PurePath | None = None
     hook_shown: bool = True
     zoom: bool = True
     loudnorm: LoudnormMeasurement | None = None
@@ -93,7 +95,7 @@ def _path_arg(path: PurePath) -> str:
 
 
 def build_video_filters(spec: RenderSpec) -> list[str]:
-    """Video chains: layout, seam, subtitles and overlays, progress bar, then the end card."""
+    """Video chains: layout, seam, progress bar, subtitles and overlays, then the end card."""
     params = spec.params
     geometry = Geometry.for_canvas(params.width, params.height)
     duration = spec.clip_duration_s
@@ -107,10 +109,23 @@ def build_video_filters(spec: RenderSpec) -> list[str]:
         zoom=spec.zoom,
         out="v_layout",
     )
-    text_chain: list[str] = []
+    # The progress bar goes under the text. In layout A it runs along the seam (the seam is its track), so
+    # it never crosses the streamer's face; in layout B it sits at the bottom of the safe zone.
+    bar_source, bar_y = "v_layout", None
     if isinstance(spec.layout, LayoutA):
-        text_chain.append(seam_filter(geometry, params.accent_color))
-    text_chain.append(ass_filter(spec.ass_path, spec.fonts.fonts_dir))
+        chains.append(f"[v_layout]{seam_filter(geometry, SEAM_TRACK_COLOR)}[v_seam]")
+        bar_source = "v_seam"
+        bar_y = geometry.a_seam_y - max(0, (geometry.progress_h - geometry.a_seam_h) // 2)
+    chains += progress_filters(
+        geometry=geometry,
+        accent_color=params.accent_color,
+        fps=params.fps,
+        duration_s=duration,
+        source=bar_source,
+        out="v_progress",
+        y=bar_y,
+    )
+    text_chain = [ass_filter(spec.ass_path, spec.fonts.fonts_dir)]
     watermark = watermark_filter(
         params.watermark,
         geometry=geometry,
@@ -120,20 +135,12 @@ def build_video_filters(spec: RenderSpec) -> list[str]:
     )
     if watermark is not None:
         text_chain.append(watermark)
-    chains.append(f"[v_layout]{','.join(text_chain)}[v_text]")
-    chains += progress_filters(
-        geometry=geometry,
-        accent_color=params.accent_color,
-        fps=params.fps,
-        duration_s=duration,
-        source="v_text",
-        out="v_progress",
-    )
     finish = f"trim=duration={_seconds(duration)},setpts=PTS-STARTPTS,setsar=1,format=yuv420p"
+    text_chain.append(finish)
     if spec.end_card_s <= 0:
-        chains.append(f"[v_progress]{finish}[{VIDEO_OUT}]")
+        chains.append(f"[v_progress]{','.join(text_chain)}[{VIDEO_OUT}]")
         return chains
-    chains.append(f"[v_progress]{finish}[v_main]")
+    chains.append(f"[v_progress]{','.join(text_chain)}[v_main]")
     chains += end_card_filters(
         geometry=geometry,
         fps=params.fps,
@@ -144,6 +151,7 @@ def build_video_filters(spec: RenderSpec) -> list[str]:
         font_name=params.font,
         fonts=spec.fonts,
         out="v_end",
+        logo_path=spec.logo_path,
     )
     chains.append(f"[v_main][v_end]concat=n=2:v=1:a=0[{VIDEO_OUT}]")
     return chains

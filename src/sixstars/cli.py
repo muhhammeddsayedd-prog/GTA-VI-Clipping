@@ -144,9 +144,90 @@ def spikes_scan(
 
 
 @clip_app.command("render")
-def clip_render(spike_id: str = typer.Argument(..., help="Spike to render a clip for.")) -> None:
-    """Render one clip."""
-    _not_implemented()
+def clip_render(
+    spike_id: str = typer.Argument(..., help="Spike to render a clip for."),
+    source: str = typer.Option("", "--source", help="Local video file that holds the spike window."),
+    source_offset: float = typer.Option(
+        0.0, "--source-offset", help="Where the file starts in the original video, in seconds."
+    ),
+    lane: str = typer.Option("", "--lane", help="spike or hourly (default: from the spike)."),
+    mode: str = typer.Option("", "--mode", help="normal or express (default: from the lane)."),
+    upload: bool = typer.Option(False, "--upload", help="Also upload the clip to Storage."),
+    force: bool = typer.Option(False, "--force", help="Render again even if the clip is finished."),
+) -> None:
+    """Render one clip from a stored spike (transcribe, write, render; the clip row ends in `gating`)."""
+    from pathlib import Path
+
+    from sixstars.factory import commands
+
+    with _database():
+        code = commands.render_spike(
+            spike_id,
+            source=Path(source) if source else None,
+            source_offset_s=source_offset,
+            lane=lane,
+            mode=mode,
+            upload=upload,
+            force=force,
+        )
+    raise typer.Exit(code=code)
+
+
+@clip_app.command("render-file")
+def clip_render_file(
+    video: str = typer.Argument(..., help="Local video file."),
+    start: float = typer.Option(..., "--start", help="Clip start in the file, in seconds."),
+    end: float = typer.Option(..., "--end", help="Clip end in the file, in seconds."),
+    creator: str = typer.Option(..., "--creator", help="Creator handle for the credit."),
+    lane: str = typer.Option("hourly", "--lane", help="hourly or spike (spike adds the LIVE badge)."),
+    mode: str = typer.Option("normal", "--mode", help="normal or express."),
+    output: str = typer.Option("", "-o", "--output", help="MP4 to write (default: next to the video)."),
+    hook: str = typer.Option("", "--hook", help="Hook title (without --ai)."),
+    keyword: list[str] = typer.Option([], "--keyword", help="Word to highlight (repeatable, without --ai)."),
+    facecam: str = typer.Option("", "--facecam", help="Facecam box x,y,w,h in source pixels (layout A)."),
+    layout: str = typer.Option("auto", "--layout", help="auto or b (b forces the no-facecam layout)."),
+    series_no: int = typer.Option(1, "--series-no", help="Series number shown on the end card."),
+    ai: bool = typer.Option(False, "--ai", help="Use the clip writer and layout detection (needs the DB)."),
+    title: str = typer.Option("", "--title", help="Stream title given to the clip writer (with --ai)."),
+    whisper_model: str = typer.Option("", "--whisper-model", help="Local Whisper model for this run."),
+    set_pairs: list[str] = typer.Option(
+        [], "--set", help="Override one setting, as key=json (repeatable, without --ai)."
+    ),
+    stills: str = typer.Option("", "--stills", help="Directory for stills at 1 s, 5 s, middle, end card."),
+    no_music: bool = typer.Option(False, "--no-music", help="Skip music detection."),
+) -> None:
+    """Render a clip from a local video without writing a clip row (for design iteration)."""
+    from pathlib import Path
+
+    from sixstars.factory import commands
+
+    def run() -> int:
+        return commands.render_file(
+            Path(video),
+            start=start,
+            end=end,
+            creator=creator,
+            lane=lane,
+            mode=mode,
+            output=Path(output) if output else None,
+            hook=hook,
+            keywords=keyword,
+            facecam_box=facecam,
+            layout=layout,
+            series_no=series_no,
+            use_ai=ai,
+            title=title,
+            whisper_model=whisper_model,
+            set_pairs=set_pairs,
+            stills_dir=Path(stills) if stills else None,
+            no_music=no_music,
+        )
+
+    if not ai:
+        raise typer.Exit(code=run())
+    with _database():
+        code = run()
+    raise typer.Exit(code=code)
 
 
 @post_app.command("hourly")
