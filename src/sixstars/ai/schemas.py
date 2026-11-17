@@ -163,6 +163,13 @@ class ScoreParts(Reply):
     rewatch: int = Field(ge=1, le=10)
 
 
+class ClipScore(Reply):
+    """P9: the score of one finished clip, on the same scales as the clip writer's."""
+
+    score_parts: ScoreParts
+    score: int = Field(ge=1, le=10)
+
+
 class ClipWriting(Reply):
     """Everything needed to trim, subtitle, title and post one clip."""
 
@@ -434,6 +441,34 @@ class VisualVerdict(Reply):
         if not self.readable_subtitles:
             failed.append("unreadable_subtitles")
         return failed
+
+
+# ── P10 sentence_ends ────────────────────────────────────────
+
+
+class SentenceEnds(Reply):
+    """The numbers of the transcript words that end a sentence."""
+
+    ends: list[int]
+
+
+def sentence_ends_schema(word_count: int) -> type[SentenceEnds]:
+    """`SentenceEnds` whose numbers must be word numbers of a transcript of `word_count` words."""
+
+    class Bound(SentenceEnds):
+        model_config = ConfigDict(title="SentenceEnds")
+
+        @model_validator(mode="after")
+        def _in_range(self) -> Self:
+            outside = [number for number in self.ends if not 0 <= number < word_count]
+            if outside:
+                raise ValueError(
+                    f"word numbers go from 0 to {word_count - 1}; these are outside: {outside[:10]}"
+                )
+            self.ends = sorted(set(self.ends))
+            return self
+
+    return Bound
 
 
 # ── P6 permission_read ───────────────────────────────────────

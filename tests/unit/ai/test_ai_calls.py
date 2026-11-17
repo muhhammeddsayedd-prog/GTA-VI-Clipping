@@ -14,7 +14,7 @@ from structlog.testing import capture_logs
 
 from sixstars.ai import calls
 from sixstars.ai.calls import BudgetExceededError, Segment, TranscriptChunk
-from sixstars.ai.schemas import Moment
+from sixstars.ai.schemas import ClipScore, ClipWriting, Moment
 from sixstars.clients.anthropic_client import (
     AnthropicClient,
     AnthropicError,
@@ -494,3 +494,88 @@ def test_spoiler_status_compares_the_dates_in_code() -> None:
     assert calls.spoiler_status(NOW, block).startswith("BLOCKED until 2026-12-03 00:00 UTC")
     assert calls.spoiler_status(block, block).startswith("allowed")
     assert calls.spoiler_status(NOW, None).startswith("allowed")
+
+
+# ── P9 ───────────────────────────────────────────────────────
+
+
+def scored(score: int, **parts: int) -> dict[str, Any]:
+    return {"score": score, "score_parts": {"hook": 6, "clarity": 6, "payoff": 6, "rewatch": 6, **parts}}
+
+
+def test_score_clip_asks_the_fast_model_and_takes_the_median() -> None:
+    replies = [scored(7, payoff=7), scored(5, payoff=5), scored(6, payoff=8)]
+    fake = FakeAnthropicClient({calls.P9: replies})
+    writing = ClipWriting.model_validate(writing_reply(start_s=3.4, end_s=32.0))
+    result = calls.score_clip(clip_context(), writing, 3, lane="express", client=fake)
+    assert result.score == 6 and result.score_parts.payoff == 7  # each part and the score separately
+    assert len(fake.calls) == 3
+    call = fake.calls[0][1]
+    assert call["model"] == FAST and call["ref_id"] == "clip-1"
+    user = call["user_content"]
+    assert "Hook on screen: He did NOT stick this landing" in user and "Clip length: 29 s" in user
+    # Only the lines of the cut, in clip time: the line before the cut is not shown.
+    assert "0.00-1.60 | I'm gonna jump it" in user and "okay watch this" not in user
+    assert "First `score_parts`" in call["system"]
+
+
+def test_median_score_of_an_even_number_is_the_lower_middle() -> None:
+    items = [ClipScore.model_validate(scored(value)) for value in (7, 6, 8, 5)]
+    assert calls.median_score(items).score == 6
+    with pytest.raises(ValueError):
+        calls.median_score([])
+
+
+def test_write_clip_keeps_its_own_score_unless_score_samples_is_set(ai_settings: dict[str, Any]) -> None:
+    fake = FakeAnthropicClient({calls.P2: writing_reply(), calls.P9: scored(6)})
+    assert calls.write_clip(clip_context(now=NOW), client=fake).score == 8
+    assert [call[1]["prompt_id"] for call in fake.calls] == [calls.P2]
+
+    ai_settings["ai.score_samples"] = 3
+    fake = FakeAnthropicClient(
+        {calls.P2: writing_reply(), calls.P9: [scored(6), scored(7), scored(6, hook=4)]}
+    )
+    writing = calls.write_clip(clip_context(now=NOW), client=fake)
+    assert writing.score == 6 and writing.score_parts.hook == 6
+    assert writing.hook == "He did NOT stick this landing 😭"  # only the score changes
+    assert [call[1]["prompt_id"] for call in fake.calls] == [calls.P2, calls.P9, calls.P9, calls.P9]
+
+
+def test_write_clip_does_not_rescore_a_rejected_clip(ai_settings: dict[str, Any]) -> None:
+    ai_settings["ai.score_samples"] = 3
+    fake = FakeAnthropicClient({calls.P2: writing_reply(reject=True, reject_reason="no moment", score=3)})
+    assert calls.write_clip(clip_context(now=NOW), client=fake).score == 3
+    assert len(fake.calls) == 1
+
+
+def test_write_clip_keeps_the_writers_score_when_the_scorer_fails(ai_settings: dict[str, Any]) -> None:
+    ai_settings["ai.score_samples"] = 3
+    failing = [scored(6), InvalidModelOutput("p9_clip_score: reply is not valid for ClipScore: bad")]
+    fake = FakeAnthropicClient({calls.P2: writing_reply(), calls.P9: failing})
+    with capture_logs() as logs:
+        assert calls.write_clip(clip_context(now=NOW), client=fake).score == 8
+    assert any(item["event"] == "clip_score_failed" for item in logs)
+    # A cut with no subtitle line inside it cannot be scored either: the writer's score stays.
+    fake = FakeAnthropicClient({calls.P2: writing_reply(start_s=8.9, end_s=29.0), calls.P9: scored(6)})
+    lines = [line for line in clip_context().lines if line.index in (0, 4)]
+    assert calls.write_clip(clip_context(now=NOW, lines=lines), client=fake).score == 8
+
+
+# ── P10 ──────────────────────────────────────────────────────
+
+
+def test_sentence_ends_numbers_the_words_and_returns_sorted_indexes() -> None:
+    fake = FakeAnthropicClient({calls.P10: {"ends": [5, 1, 5]}})
+    words = ["no", "way", "he", "did", "that\n now", "look"]
+    assert calls.sentence_ends(words, lane="express", ref_id="clip-1", client=fake) == [1, 5]
+    call = only_call(fake)
+    assert call["model"] == FAST and call["ref_id"] == "clip-1"
+    assert "6 words, numbered 0 to 5" in call["user_content"]
+    assert "0:no 1:way 2:he 3:did 4:that now 5:look" in call["user_content"]
+    assert calls.sentence_ends([], client=fake) == [] and len(fake.calls) == 1
+
+
+def test_sentence_ends_outside_the_transcript_are_sent_back(scripted: Scripted) -> None:
+    client, sdk = scripted(json.dumps({"ends": [1, 9]}), json.dumps({"ends": [1, 2]}))
+    assert calls.sentence_ends(["a", "b", "c"], lane="express", client=client) == [1, 2]
+    assert "word numbers go from 0 to 2" in sdk.requests[1]["messages"][0]["content"][-1]["text"]

@@ -11,6 +11,8 @@ One function per prompt of docs/15:
     read_permission     P6  fast model    does the creator allow or forbid clipping?
     classify_takedown   P7  fast model    is this email a removal request?
     translate_segments  P8  writer model  transcript segments into English
+    score_clip          P9  fast model    the score of a finished cut, median of several asks
+    sentence_ends       P10 fast model    where sentences end in a transcript without punctuation
 
 Models come from `ai.model_writer` and `ai.model_fast`. Tokens and cost are recorded by the client in
 `api_usage` with `operation` = the prompt id. Calls made for the VOD lane (`lane="vod"`, the default)
@@ -22,6 +24,7 @@ the repair retries), `AnthropicRefusal` (the model declined) and `AnthropicError
 `AnthropicError` subclasses, so the job retry rules can treat them alike.
 """
 
+import statistics
 from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -33,10 +36,12 @@ from sixstars import settings
 from sixstars.ai import prompt_files
 from sixstars.ai.images import prepare_jpeg
 from sixstars.ai.schemas import (
+    ClipScore,
     ClipWriting,
     Layout,
     Moment,
     PermissionVerdict,
+    ScoreParts,
     SpikeVerdict,
     TakedownVerdict,
     TranslatedSegment,
@@ -44,6 +49,7 @@ from sixstars.ai.schemas import (
     clip_writing_schema,
     layout_schema,
     moment_list_schema,
+    sentence_ends_schema,
     spike_batch_schema,
     translated_segments_schema,
 )
@@ -66,6 +72,8 @@ P5 = "p5_visual_check"
 P6 = "p6_permission_read"
 P7 = "p7_takedown_classify"
 P8 = "p8_translate_lines"
+P9 = "p9_clip_score"
+P10 = "p10_sentence_ends"
 
 # Shapes fixed by docs/15 (prompt contract, not runtime settings).
 SPIKE_BATCH_SIZE = 10
@@ -78,7 +86,18 @@ VISUAL_FRAMES_MAX = 8
 
 # Output caps. Both models think before answering and thinking counts toward the cap, so these leave
 # room for it; the client doubles the cap once if a reply is cut off.
-MAX_TOKENS: dict[str, int] = {P1: 2000, P2: 5000, P3: 5000, P4: 2500, P5: 2000, P6: 1500, P7: 2500, P8: 8000}
+MAX_TOKENS: dict[str, int] = {
+    P1: 2000,
+    P2: 5000,
+    P3: 5000,
+    P4: 2500,
+    P5: 2000,
+    P6: 1500,
+    P7: 2500,
+    P8: 8000,
+    P9: 2000,
+    P10: 3000,
+}
 # Reasoning depth per prompt. The clip writer and the layout box are judgement calls worth more thought;
 # the classifiers are not.
 EFFORT: dict[str, Effort] = {
@@ -90,6 +109,8 @@ EFFORT: dict[str, Effort] = {
     P6: "low",
     P7: "low",
     P8: "low",
+    P9: "low",
+    P10: "low",
 }
 
 _log = get_logger("ai")
@@ -402,6 +423,9 @@ def write_clip(
     )
     reply = _ask(P2, schema, _writer_model(), values, client, ref_id=ctx.clip_id)
     writing = enforce_policy(reply, now, block_until)
+    samples = settings.get_int("ai.score_samples", 1)
+    if samples > 1 and not writing.reject:
+        writing = _rescored(ctx, writing, samples, lane, client)
     _log.info(
         "clip_written",
         clip_id=ctx.clip_id,
@@ -412,6 +436,99 @@ def write_clip(
         topic=writing.topic,
     )
     return writing
+
+
+# ── P9 clip_score ────────────────────────────────────────────
+
+
+def median_score(scores: Sequence[ClipScore]) -> ClipScore:
+    """The middle score of several: each part and the overall score separately (the lower middle one
+    for an even number)."""
+    if not scores:
+        raise ValueError("median_score needs at least one score")
+    parts = {
+        name: statistics.median_low([getattr(item.score_parts, name) for item in scores])
+        for name in ScoreParts.model_fields
+    }
+    overall = statistics.median_low([item.score for item in scores])
+    return ClipScore(score_parts=ScoreParts(**parts), score=overall)
+
+
+def score_clip(
+    ctx: ClipContext,
+    writing: ClipWriting,
+    samples: int,
+    *,
+    lane: BudgetKind = "vod",
+    client: AnthropicClient | None = None,
+) -> ClipScore:
+    """P9: score the cut `writing` made of `ctx`, `samples` times with the fast model, and return the
+    median. The model sees the hook and the subtitle lines of the cut in clip time, and the same scales
+    the clip writer scores with."""
+    if samples < 1:
+        raise ValueError("samples must be at least 1")
+    kept = [line for line in ctx.lines if writing.start_s <= line.start_s < writing.end_s]
+    if not kept:
+        raise ValueError("the cut holds no subtitle line")
+    _guard(P9, lane)
+    cut_s = writing.start_s
+    values: dict[str, object] = {
+        "creator": ctx.creator,
+        "platform": ctx.platform,
+        "stream_title": _one_line(ctx.stream_title),
+        "length_s": f"{writing.length_s:.0f}",
+        "hook": writing.hook,
+        "lines": "\n".join(
+            f"{_seconds(line.start_s - cut_s)}-{_seconds(line.end_s - cut_s)} | {line.text}" for line in kept
+        ),
+    }
+    model = _fast_model()
+    scores = [_ask(P9, ClipScore, model, values, client, ref_id=ctx.clip_id) for _ in range(samples)]
+    return median_score(scores)
+
+
+def _rescored(
+    ctx: ClipContext, writing: ClipWriting, samples: int, lane: BudgetKind, client: AnthropicClient | None
+) -> ClipWriting:
+    """`writing` with its score replaced by the median of `samples` P9 scores. The stabiliser never
+    costs a clip: if it cannot run, the clip writer's own score stays."""
+    try:
+        scored = score_clip(ctx, writing, samples, lane=lane, client=client)
+    except (AnthropicError, ValueError) as exc:
+        _log.warning("clip_score_failed", clip_id=ctx.clip_id, error=f"{type(exc).__name__}: {exc}"[:300])
+        return writing
+    _log.info(
+        "clip_scored",
+        clip_id=ctx.clip_id,
+        samples=samples,
+        writer_score=writing.score,
+        score=scored.score,
+    )
+    return writing.model_copy(update={"score": scored.score, "score_parts": scored.score_parts})
+
+
+# ── P10 sentence_ends ────────────────────────────────────────
+
+
+def sentence_ends(
+    words: Sequence[str],
+    *,
+    lane: BudgetKind = "vod",
+    ref_id: str | None = None,
+    client: AnthropicClient | None = None,
+) -> list[int]:
+    """P10: the indexes of the words that end a sentence, in order, for a transcript that came back
+    without punctuation. The words themselves are never changed by the model: it answers with numbers."""
+    if not words:
+        return []
+    _guard(P10, lane)
+    values: dict[str, object] = {
+        "count": len(words),
+        "last": len(words) - 1,
+        "words": " ".join(f"{index}:{_one_line(word)}" for index, word in enumerate(words)),
+    }
+    reply = _ask(P10, sentence_ends_schema(len(words)), _fast_model(), values, client, ref_id=ref_id)
+    return list(reply.ends)
 
 
 # ── P3 vod_moment_picker ─────────────────────────────────────

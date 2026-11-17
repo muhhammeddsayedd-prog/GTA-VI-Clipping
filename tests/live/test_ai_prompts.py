@@ -454,6 +454,52 @@ def test_p8_translates_spanish_segments(out_dir: Path) -> None:
     assert all(item.en for item in translated)
 
 
+# ── P9 ───────────────────────────────────────────────────────
+
+
+def test_p9_scores_a_cut_with_the_median_of_three(out_dir: Path) -> None:
+    lines = window_lines()
+    ctx = clip_context(lines, float(WINDOW["window_s"]), chat(CASES["good_spike_chat"], PEAK_S))
+    writing = ClipWriting.model_validate(
+        {
+            "start_s": lines[0].start_s,
+            "end_s": float(WINDOW["window_s"]),
+            "hook": "He robbed the WRONG guy",
+            "title": "t",
+            "caption": "c",
+            "hashtags": ["a", "b", "c"],
+            "topic": "robbery-goes-wrong",
+            "spoiler": False,
+            "safety": {},
+            "score_parts": {"hook": 5, "clarity": 5, "payoff": 5, "rewatch": 5},
+            "score": 5,
+            "reject": False,
+        }
+    )
+    score = calls.score_clip(ctx, writing, 3)
+    keep("p9_score", score)
+    assert 3 <= score.score <= 9
+    assert score.score <= score.score_parts.payoff + 2  # the rubric ties the score to the parts
+
+
+# ── P10 ──────────────────────────────────────────────────────
+
+
+def test_p10_finds_sentence_ends_in_an_unpunctuated_transcript(out_dir: Path) -> None:
+    text = (
+        "it can either be assault vandalism or attempted murder by the way it is still a crime "
+        "so clearly my suspect here did not commit the crime to get in a car accident yeah exactly "
+        "he got in a regular car accident because if you could not tell he has ketchup on his shirt"
+    )
+    spoken = text.split()
+    ends = calls.sentence_ends(spoken)
+    keep("p10_sentence_ends", ends)
+    assert ends == sorted(set(ends)) and all(0 <= index < len(spoken) for index in ends)
+    assert 3 <= len(ends) <= 12
+    assert spoken.index("murder") in ends  # "...or attempted murder. by the way it is still a crime."
+    assert spoken.index("exactly") in ends
+
+
 # ── Spend ────────────────────────────────────────────────────
 
 
