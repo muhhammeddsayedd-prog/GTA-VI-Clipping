@@ -380,7 +380,11 @@ def write_clip(
         ),
     }
     schema = clip_writing_schema(
-        ctx.window_s, ctx.spike_floor_s, ctx.min_len_s, ctx.max_len_s, [line.index for line in ctx.lines]
+        ctx.window_s,
+        ctx.spike_floor_s,
+        ctx.min_len_s,
+        ctx.max_len_s,
+        {line.index: line.text for line in ctx.lines},
     )
     reply = _ask(P2, schema, _writer_model(), values, client, ref_id=ctx.clip_id)
     writing = enforce_policy(reply, now, block_until)

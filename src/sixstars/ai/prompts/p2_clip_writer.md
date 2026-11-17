@@ -23,9 +23,9 @@ Times are seconds from the start of the window file, the same clock as the subti
 - `title` (YouTube Shorts): at most 70 characters, no hashtags. Same voice; it can name the creator.
 - `caption`: one punchy line, at most 120 characters, no hashtags and no @handles (code adds the credit and the tags).
 - `hashtags`: 3 to 5 tags specific to this moment: lowercase, no spaces, no "#". Do not include the base tags the channel always adds (gta6, gta5, gta, gaming, fyp, shorts, clips).
-- `commentary`: usually null. Only when a viewer could not follow the clip without it, one on-screen line of at most 12 words giving the missing context.
-- `topic`: a short lowercase slug of what happens, words joined by hyphens (for example `police-chase-boat-crash`). Two clips of the same event must get the same slug, so describe the event, not the wording.
-- `keywords`: for the subtitle lines you want to emphasise, the line number and 1 or 2 words from that exact line to highlight (money amounts, names, "no way", key verbs). Skip lines that need no emphasis. Copy the words exactly as they appear in the line.
+- `commentary`: null for most clips. Use it only when a viewer could not follow the clip without one missing fact, and only if that fact is stated in the input (stream title, chat or transcript): one on-screen line of at most 12 words. Never guess who is who or what happened off screen.
+- `topic`: a lowercase slug of the event, 3 to 5 plain words joined by hyphens, in the order who or what, action, object or place (for example `police-chase-boat-crash`, `streamer-falls-off-rooftop`). It is used to spot two clips of the same event, so name the event itself with the most ordinary words: no creator name, no game name, no "rp", no opinion words like funny or epic.
+- `keywords`: for the subtitle lines you want to emphasise, the line number and 1 or 2 words or short phrases from that exact line to highlight (money amounts, names, "no way", key verbs). Skip lines that need no emphasis, and only use lines inside your cut. Copy the words exactly as they appear in the line.
 
 Everything is in English. No slurs, anywhere. Mild profanity is fine in subtitles (it is bleeped) but keep it out of the hook, title and caption.
 

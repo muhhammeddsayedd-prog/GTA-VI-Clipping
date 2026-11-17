@@ -12,7 +12,7 @@ so the cached system prompt stays byte-identical between calls.
 """
 
 import re
-from collections.abc import Collection, Sequence
+from collections.abc import Mapping, Sequence
 from typing import Any, Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -39,11 +39,24 @@ TIME_TOLERANCE_S = 0.05
 _HASHTAG_RE = re.compile(r"^[a-z0-9_]+$")
 _SLUG_JUNK_RE = re.compile(r"[^a-z0-9]+")
 _WORD_RE = re.compile(r"\w", re.UNICODE)
+_TOKEN_EDGE_RE = re.compile(r"^\W+|\W+$", re.UNICODE)
 
 
 def count_words(text: str) -> int:
     """Number of words in `text`. A token with no letter or digit (an emoji, a dash) is not a word."""
     return sum(1 for token in text.split() if _WORD_RE.search(token))
+
+
+def _tokens(text: str) -> list[str]:
+    """Lowercase words of `text` with the punctuation around them removed."""
+    cleaned = (_TOKEN_EDGE_RE.sub("", token).lower() for token in text.split())
+    return [token for token in cleaned if token]
+
+
+def _contains(line: Sequence[str], phrase: Sequence[str]) -> bool:
+    """True when the words of `phrase` appear next to each other, in order, in `line`."""
+    size = len(phrase)
+    return size > 0 and any(list(line[i : i + size]) == list(phrase) for i in range(len(line) - size + 1))
 
 
 def _max_words(value: str, limit: int, name: str) -> str:
@@ -243,11 +256,15 @@ def clip_writing_schema(
     spike_floor_s: float,
     min_len_s: float,
     max_len_s: float,
-    line_numbers: Collection[int],
+    lines: Mapping[int, str],
 ) -> type[ClipWriting]:
     """`ClipWriting` with the trim rules of one call: inside the window file, not starting after
-    `spike_floor_s`, length between the limits. Keywords for unknown line numbers are dropped."""
-    known = frozenset(line_numbers)
+    `spike_floor_s`, length between the limits.
+
+    `lines` maps each subtitle line number to its text. A highlight is only a decoration, so a keyword
+    for an unknown line, or one that is not in the text of its line, is dropped instead of failing the
+    reply."""
+    tokens_by_line = {number: _tokens(text) for number, text in lines.items()}
 
     class Bound(ClipWriting):
         model_config = ConfigDict(title="ClipWriting")
@@ -263,7 +280,15 @@ def clip_writing_schema(
                 raise ValueError(
                     f"clip length {length:.2f} s must be between {min_len_s} and {max_len_s} seconds"
                 )
-            self.keywords = [item for item in self.keywords if item.line in known]
+            kept: list[KeywordHighlight] = []
+            for item in self.keywords:
+                line_tokens = tokens_by_line.get(item.line)
+                if line_tokens is None:
+                    continue
+                words = [word for word in item.words if _contains(line_tokens, _tokens(word))]
+                if words:
+                    kept.append(KeywordHighlight(line=item.line, words=words))
+            self.keywords = kept
             return self
 
     return Bound

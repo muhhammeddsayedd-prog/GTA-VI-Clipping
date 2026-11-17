@@ -11,7 +11,7 @@ Your job here: translate a streamer's speech into English for burned-in subtitle
 - Translate profanity faithfully at the same strength. It is bleeped later, so do not soften or remove it.
 - Keep names unchanged: people, streamers, characters, places, game terms, brands.
 - Keep each line about as short as the original, because it has to be read in the time it was spoken.
-- A segment that is already English, or is only a name, a sound or laughter, is returned as it is. An empty or unintelligible segment gets an empty string.
+- A segment that is already English, or is only a name or a sound, is returned as it is. Laughter is written the English way ("jajaja" becomes "hahaha"). An empty or unintelligible segment gets an empty string.
 
 ## User template
 

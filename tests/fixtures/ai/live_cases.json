@@ -1,41 +1,143 @@
 {
   "good_spike_chat": [
-    [-6.0, "pink eye for a month LMAO"],
-    [-4.5, "that is going to burn"],
-    [-1.0, "WAIT"],
-    [0.0, "HE ROBBED HIM LMAOOOO"],
-    [0.4, "NO WAY 💀💀💀"],
-    [0.8, "BRO IS ROBBING THE GUY ON THE GROUND"],
-    [1.1, "LMFAOOOO"],
-    [1.5, "\"I was patting him down\" 😭😭"],
-    [1.9, "CLIP IT"],
-    [2.2, "KEKW"],
-    [2.6, "he said my bad 💀"],
-    [3.0, "clip that someone clip that"],
-    [3.4, "OMEGALUL"],
-    [4.1, "\"seeing if he was still alive\" I'm crying"],
-    [4.8, "LMAOOO he is NOT new"],
-    [5.5, "caught in 4k"],
-    [6.2, "W excuse"],
-    [7.0, "I'm new I'm sorry 😭"],
-    [8.4, "the cop watching the whole time lol"],
-    [9.0, "best rp server"]
+    [
+      -6.0,
+      "pink eye for a month LMAO"
+    ],
+    [
+      -4.5,
+      "that is going to burn"
+    ],
+    [
+      -1.0,
+      "WAIT"
+    ],
+    [
+      0.0,
+      "HE ROBBED HIM LMAOOOO"
+    ],
+    [
+      0.4,
+      "NO WAY 💀💀💀"
+    ],
+    [
+      0.8,
+      "BRO IS ROBBING THE GUY ON THE GROUND"
+    ],
+    [
+      1.1,
+      "LMFAOOOO"
+    ],
+    [
+      1.5,
+      "\"I was patting him down\" 😭😭"
+    ],
+    [
+      1.9,
+      "CLIP IT"
+    ],
+    [
+      2.2,
+      "KEKW"
+    ],
+    [
+      2.6,
+      "he said my bad 💀"
+    ],
+    [
+      3.0,
+      "clip that someone clip that"
+    ],
+    [
+      3.4,
+      "OMEGALUL"
+    ],
+    [
+      4.1,
+      "\"seeing if he was still alive\" I'm crying"
+    ],
+    [
+      4.8,
+      "LMAOOO he is NOT new"
+    ],
+    [
+      5.5,
+      "caught in 4k"
+    ],
+    [
+      6.2,
+      "W excuse"
+    ],
+    [
+      7.0,
+      "I'm new I'm sorry 😭"
+    ],
+    [
+      8.4,
+      "the cop watching the whole time lol"
+    ],
+    [
+      9.0,
+      "best rp server"
+    ]
   ],
   "raid_chat": [
-    [-3.0, "raid incoming"],
-    [0.0, "LETS GOOO RAID"],
-    [0.2, "bigmike RAID bigmike RAID bigmike RAID"],
-    [0.5, "bigmike RAID bigmike RAID bigmike RAID"],
-    [0.9, "hi from mike's stream!"],
-    [1.2, "bigmike RAID bigmike RAID bigmike RAID"],
-    [1.6, "welcome raiders <3"],
-    [2.0, "bigmike RAID bigmike RAID"],
-    [2.5, "W raid"],
-    [3.1, "welcome in raiders"],
-    [3.8, "bigmike RAID bigmike RAID bigmike RAID"],
-    [4.4, "thanks for the raid mike!!"],
-    [5.0, "raid hype"],
-    [6.0, "how was the stream raiders?"]
+    [
+      -3.0,
+      "raid incoming"
+    ],
+    [
+      0.0,
+      "LETS GOOO RAID"
+    ],
+    [
+      0.2,
+      "bigmike RAID bigmike RAID bigmike RAID"
+    ],
+    [
+      0.5,
+      "bigmike RAID bigmike RAID bigmike RAID"
+    ],
+    [
+      0.9,
+      "hi from mike's stream!"
+    ],
+    [
+      1.2,
+      "bigmike RAID bigmike RAID bigmike RAID"
+    ],
+    [
+      1.6,
+      "welcome raiders <3"
+    ],
+    [
+      2.0,
+      "bigmike RAID bigmike RAID"
+    ],
+    [
+      2.5,
+      "W raid"
+    ],
+    [
+      3.1,
+      "welcome in raiders"
+    ],
+    [
+      3.8,
+      "bigmike RAID bigmike RAID bigmike RAID"
+    ],
+    [
+      4.4,
+      "thanks for the raid mike!!"
+    ],
+    [
+      5.0,
+      "raid hype"
+    ],
+    [
+      6.0,
+      "how was the stream raiders?"
+    ]
   ],
   "raid_transcript": "so I think we take the highway back to the city, hold on, oh, big Mike with the raid, three hundred viewers, what's up everybody, welcome in, thank you Mike, how was the stream",
   "gambling_lines": [
@@ -52,13 +154,34 @@
     "let's run it back another hundred dollar spin"
   ],
   "gambling_chat": [
-    [20.0, "MAX WIN"],
-    [20.5, "NO WAY 20K"],
-    [21.0, "!stake"],
-    [21.4, "rigged lol"],
-    [22.0, "LETS GOOO"],
-    [23.0, "what's the code"],
-    [24.0, "code SPEEDY"]
+    [
+      20.0,
+      "MAX WIN"
+    ],
+    [
+      20.5,
+      "NO WAY 20K"
+    ],
+    [
+      21.0,
+      "!stake"
+    ],
+    [
+      21.4,
+      "rigged lol"
+    ],
+    [
+      22.0,
+      "LETS GOOO"
+    ],
+    [
+      23.0,
+      "what's the code"
+    ],
+    [
+      24.0,
+      "code SPEEDY"
+    ]
   ],
   "sponsored_lines": [
     "before we get back into the heist",
@@ -73,27 +196,51 @@
     "alright let's get back to it"
   ],
   "sponsored_chat": [
-    [10.0, "ad read lol"],
-    [12.0, "!gfuel"],
-    [14.0, "blue ice is mid"],
-    [16.0, "get that bag"],
-    [18.0, "code SPEEDY"]
+    [
+      10.0,
+      "ad read lol"
+    ],
+    [
+      12.0,
+      "!gfuel"
+    ],
+    [
+      14.0,
+      "blue ice is mid"
+    ],
+    [
+      16.0,
+      "get that bag"
+    ],
+    [
+      18.0,
+      "code SPEEDY"
+    ]
   ],
   "permission": {
     "preferred": {
       "name": "SpeedyRP",
       "description": "Daily GTA RP streams at 6pm EST.\n\nCLIPPERS WELCOME: clip my streams and post them anywhere, just tag me. Join the clipping program in my Discord and get paid per view.\nBusiness: speedy@mgmt.example",
-      "titles": ["NoPixel day 41 | bank job with the boys", "GTA RP | cop arc begins"]
+      "titles": [
+        "NoPixel day 41 | bank job with the boys",
+        "GTA RP | cop arc begins"
+      ]
     },
     "restricted": {
       "name": "QuietFox Gaming",
       "description": "Variety streamer, mostly GTA Online and RP.\n\nDo NOT reupload, clip or repost my content on TikTok, Shorts or anywhere else without written permission. Clip channels will get a copyright strike.\nSchedule: Mon-Fri.",
-      "titles": ["chill GTA Online heists", "RP with viewers"]
+      "titles": [
+        "chill GTA Online heists",
+        "RP with viewers"
+      ]
     },
     "auto": {
       "name": "Marco Plays",
       "description": "Welcome to the channel! I stream GTA 5 RP and FiveM every evening. Follow my socials: instagram.com/marcoplays. Business enquiries: marco@mail.example. Subscribe and turn on notifications!",
-      "titles": ["GTA 5 RP LIVE | new server", "FiveM funny moments stream"]
+      "titles": [
+        "GTA 5 RP LIVE | new server",
+        "FiveM funny moments stream"
+      ]
     }
   },
   "takedown": {
@@ -111,12 +258,69 @@
   "translate": {
     "source_lang": "es",
     "segments": [
-      [0.0, 1.8, "¡No, no, no, tío, que viene la poli!"],
-      [1.9, 3.4, "¡Acelera, joder, acelera!"],
-      [3.6, 5.2, "Madre mía, Trevor se ha cargado el coche"],
-      [5.4, 6.9, "jajajaja"],
-      [7.0, 9.1, "Esto es una puta locura, chavales"],
-      [9.3, 11.0, "Vale, vamos a Sandy Shores a por otro"]
+      [
+        0.0,
+        1.8,
+        "¡No, no, no, tío, que viene la poli!"
+      ],
+      [
+        1.9,
+        3.4,
+        "¡Acelera, joder, acelera!"
+      ],
+      [
+        3.6,
+        5.2,
+        "Madre mía, Trevor se ha cargado el coche"
+      ],
+      [
+        5.4,
+        6.9,
+        "jajajaja"
+      ],
+      [
+        7.0,
+        9.1,
+        "Esto es una puta locura, chavales"
+      ],
+      [
+        9.3,
+        11.0,
+        "Vale, vamos a Sandy Shores a por otro"
+      ]
     ]
-  }
+  },
+  "spoiler_lines": [
+    "okay chat this is it the final mission",
+    "Devin wants me to kill Michael and the FIB wants Trevor dead",
+    "I have to pick one of them right now",
+    "no no no I am not killing Michael",
+    "I'm picking option C the deathwish",
+    "oh my god that's how the story ends",
+    "all three of them survive and they take out Devin",
+    "I can't believe that's the ending of the whole game",
+    "chat that was the best ending no question"
+  ],
+  "spoiler_chat": [
+    [
+      14.0,
+      "DEATHWISH"
+    ],
+    [
+      15.0,
+      "option C is the only choice"
+    ],
+    [
+      18.0,
+      "best ending"
+    ],
+    [
+      20.0,
+      "spoilers lol"
+    ],
+    [
+      22.0,
+      "W ending"
+    ]
+  ]
 }

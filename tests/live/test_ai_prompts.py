@@ -254,6 +254,21 @@ def test_p2_rejects_a_sponsored_read(out_dir: Path) -> None:
     assert writing.reject and writing.reject_reason
 
 
+def test_p2_blocks_a_story_spoiler_and_keeps_it_out_of_the_hook(out_dir: Path) -> None:
+    lines = invented_lines(CASES["spoiler_lines"])
+    ctx = clip_context(
+        lines, 28.0, chat(CASES["spoiler_chat"]), stream_title="GTA 5 story finale", min_len_s=15.0
+    )
+    writing = calls.write_clip(ctx)
+    keep("p2_spoiler", writing)
+    assert_post_copy(writing)
+    assert writing.spoiler
+    assert writing.reject and writing.reject_reason
+    shown = f"{writing.hook} {writing.title}".lower()
+    for word in ("michael", "trevor", "devin", "deathwish", "survive", "option c"):
+        assert word not in shown
+
+
 # ── P3 ───────────────────────────────────────────────────────
 
 

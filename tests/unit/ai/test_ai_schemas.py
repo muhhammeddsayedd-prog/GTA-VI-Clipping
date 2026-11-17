@@ -24,6 +24,7 @@ from sixstars.ai.schemas import (
     translated_segments_schema,
 )
 
+LINE_TEXTS = {0: "okay watch this", 1: "I'm gonna jump it", 2: "No way, no way!", 3: "he landed on the cop"}
 FULL_FRAME = {"x": 0, "y": 0, "w": 1280, "h": 720}
 
 
@@ -133,7 +134,7 @@ def test_safety_flagged_lists_set_flags() -> None:
 
 
 def test_bound_clip_writing_checks_the_trim() -> None:
-    schema = clip_writing_schema(60.0, 9.0, 20.0, 45.0, [0, 1, 2, 3])
+    schema = clip_writing_schema(60.0, 9.0, 20.0, 45.0, LINE_TEXTS)
     ok = schema.model_validate(writing_reply())
     assert [item.line for item in ok.keywords] == [2]  # line 4 is not a known line
     with pytest.raises(ValidationError, match="spike_floor_s"):
@@ -148,8 +149,8 @@ def test_bound_clip_writing_checks_the_trim() -> None:
 
 def test_bound_schemas_keep_the_json_schema_of_the_base() -> None:
     """The schema text is part of the cached system prompt, so it must not change per call."""
-    one = clip_writing_schema(60.0, 9.0, 20.0, 45.0, [0]).model_json_schema()
-    two = clip_writing_schema(90.0, 30.0, 15.0, 60.0, [0, 1]).model_json_schema()
+    one = clip_writing_schema(60.0, 9.0, 20.0, 45.0, {0: "a"}).model_json_schema()
+    two = clip_writing_schema(90.0, 30.0, 15.0, 60.0, {0: "a", 1: "b"}).model_json_schema()
     assert one == two
     assert one["title"] == "ClipWriting"
     assert layout_schema(1280, 720).model_json_schema() == layout_schema(640, 360).model_json_schema()
@@ -248,3 +249,15 @@ def test_translated_segments_count() -> None:
     assert len(schema.model_validate({"segments": [segment, segment]}).segments) == 2
     with pytest.raises(ValidationError, match="exactly 2"):
         schema.model_validate({"segments": [segment]})
+
+
+def test_bound_clip_writing_drops_keywords_that_are_not_in_their_line() -> None:
+    schema = clip_writing_schema(60.0, 9.0, 20.0, 45.0, LINE_TEXTS)
+    keywords = [
+        {"line": 2, "words": ["NO WAY", "landed"]},
+        {"line": 3, "words": ["the cop!", "he landed"]},
+        {"line": 1, "words": ["jump it now"]},
+        {"line": 9, "words": ["cop"]},
+    ]
+    writing = schema.model_validate(writing_reply(keywords=keywords))
+    assert writing.keyword_map() == {2: ["NO WAY"], 3: ["the cop!", "he landed"]}
