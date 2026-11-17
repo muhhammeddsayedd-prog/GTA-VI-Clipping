@@ -164,5 +164,34 @@ def db_ping() -> None:
         typer.echo(f"ok (env={env().APP_ENV})")
 
 
+# Chat ingestion (M03). Kept as one block so other milestones' edits to this file do not collide with it.
+chat_app = typer.Typer(help="Chat ingestion.", no_args_is_help=True)
+app.add_typer(chat_app, name="chat")
+
+
+@chat_app.command("dump")
+def chat_dump(
+    source: str = typer.Argument(..., help="Twitch login, or the URL of a live YouTube stream."),
+    seconds: float = typer.Option(60.0, "--seconds", help="How long to read the chat."),
+) -> None:
+    """Print a live chat for a number of seconds."""
+    from sixstars.chat import commands
+
+    raise typer.Exit(code=commands.dump(source, seconds))
+
+
+@chat_app.command("replay")
+def chat_replay(
+    source: str = typer.Argument(..., help="Twitch VOD id or URL, or YouTube video URL."),
+    output: str = typer.Option(..., "-o", "--output", help="JSON Lines file to write."),
+) -> None:
+    """Download a whole chat replay to a JSON Lines file."""
+    from pathlib import Path
+
+    from sixstars.chat import commands
+
+    raise typer.Exit(code=commands.replay(source, Path(output)))
+
+
 if __name__ == "__main__":
     app()
