@@ -147,6 +147,73 @@ def cancel(dedupe_key: str) -> int:
     )
 
 
+@dataclass(frozen=True, slots=True)
+class RecoveredJob:
+    """One job taken back from a worker that stopped without finishing it."""
+
+    id: int
+    queue: str
+    type: str
+    status: str  # the new status: `queued` (will run again) or `failed` (no attempts left)
+    attempts: int
+    locked_by: str | None  # the worker that had it
+
+
+def release(job_id: int, worker: str, reason: str = "released at worker shutdown") -> bool:
+    """Give a running job back to the queue because `worker` is shutting down before it finished.
+
+    The job becomes runnable at once and the interrupted attempt is not counted. Only the worker that
+    holds the job can release it. Returns False when the job is not running under `worker` any more.
+    """
+    changed = db.execute(
+        """
+        update jobs
+        set status = 'queued', run_after = now(), attempts = greatest(attempts - 1, 0),
+            last_error = %s, locked_by = null, locked_at = null
+        where id = %s and status = 'running' and locked_by = %s
+        """,
+        (reason[:MAX_ERROR_CHARS], job_id, worker),
+    )
+    return changed == 1
+
+
+def requeue_stale(stale_after_s: float) -> list[RecoveredJob]:
+    """Recover jobs left `running` by a worker that died: its heartbeat is older than `stale_after_s`.
+
+    A job is taken back only when it was claimed more than `stale_after_s` ago and the worker named in
+    `locked_by` has no heartbeat newer than that (a live worker writes one every 30 s, also during a long
+    job). The lost attempt stays counted, so a job that kills its worker every time ends as `failed`
+    after `max_attempts` instead of looping: with attempts left it is queued to run now, otherwise it is
+    marked `failed`.
+    """
+    rows = db.fetch_all(
+        """
+        with stale as (
+          select j.id, j.locked_by
+          from jobs j
+          where j.status = 'running'
+            and j.locked_at < now() - make_interval(secs => %(stale)s)
+            and not exists (
+              select 1 from heartbeats h
+              where h.name = j.locked_by and h.last_seen >= now() - make_interval(secs => %(stale)s)
+            )
+          for update of j skip locked
+        )
+        update jobs j
+        set status = case when j.attempts < j.max_attempts then 'queued' else 'failed' end,
+            run_after = case when j.attempts < j.max_attempts then now() else j.run_after end,
+            last_error = %(error)s,
+            locked_by = null,
+            locked_at = null
+        from stale
+        where j.id = stale.id
+        returning j.id, j.queue, j.type, j.status, j.attempts, stale.locked_by
+        """,
+        {"stale": stale_after_s, "error": "worker stopped without finishing the job (heartbeat stale)"},
+    )
+    return [RecoveredJob(**row) for row in sorted(rows, key=lambda row: int(row["id"]))]
+
+
 def worker_name(queue: str) -> str:
     """Name of this worker process: `worker-<queue>-<hostname>-<pid>`."""
     return f"worker-{queue}-{socket.gethostname()}-{os.getpid()}"
