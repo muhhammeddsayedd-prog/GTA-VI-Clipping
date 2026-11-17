@@ -298,5 +298,57 @@ def chat_replay(
     raise typer.Exit(code=commands.replay(source, Path(output)))
 
 
+# Posting engine (M10). Kept as one block so other milestones' edits to this file do not collide with it.
+posting_app = typer.Typer(help="Posting engine (M10): plan, run and test posts.", no_args_is_help=True)
+app.add_typer(posting_app, name="posting")
+
+
+@posting_app.command("plan")
+def posting_plan(
+    slot: str = typer.Option("", "--slot", help="Slot to plan as an ISO hour (default: the current hour)."),
+) -> None:
+    """Print what the hourly slot would do. Writes and sends nothing."""
+    from sixstars.posting import commands
+
+    with _database():
+        code = commands.plan(slot)
+    raise typer.Exit(code=code)
+
+
+@posting_app.command("hourly")
+def posting_hourly(
+    dry_run: bool = typer.Option(False, "--dry-run", help="Only print the plan: write and send nothing."),
+) -> None:
+    """Run the current hourly slot now, without jitter. Respects dry run and the emergency stop."""
+    from sixstars.posting import commands
+
+    with _database():
+        code = commands.plan() if dry_run else commands.hourly()
+    raise typer.Exit(code=code)
+
+
+@posting_app.command("trigger")
+def posting_trigger() -> None:
+    """Do what the hourly trigger does: heartbeat and one post.hourly job at the jittered time."""
+    from sixstars.posting import commands
+
+    with _database():
+        code = commands.trigger()
+    raise typer.Exit(code=code)
+
+
+@posting_app.command("clip")
+def posting_clip(
+    clip_id: str = typer.Argument(..., help="Approved clip to post."),
+    account: str = typer.Option(..., "--account", help="Account id, for example youtube_main."),
+) -> None:
+    """Staging only: post one approved clip to one account (privately, through every posting rule)."""
+    from sixstars.posting import commands
+
+    with _database():
+        code = commands.clip(clip_id, account)
+    raise typer.Exit(code=code)
+
+
 if __name__ == "__main__":
     app()
