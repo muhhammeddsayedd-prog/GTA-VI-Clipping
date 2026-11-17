@@ -118,7 +118,13 @@ def test_config_defaults_match_the_migration() -> None:
     later = (Path(__file__).resolve().parents[3] / "supabase/migrations/0010_sources.sql").read_text("utf-8")
     assert "where key = 'vod.fallback_below_spikes' and value = '1'::jsonb" in later
     assert seeded.pop("vod.fallback_below_spikes") == 1
-    assert {**seeded, "vod.fallback_below_spikes": 3} == DEFAULTS
+    # Migration 0014 switched local whole-video fallback transcription off (5400 seeded here, now 0).
+    off = (
+        Path(__file__).resolve().parents[3] / "supabase/migrations/0014_fallback_transcription.sql"
+    ).read_text("utf-8")
+    assert "where key = 'vod.fallback_transcribe_max_s' and value = '5400'::jsonb" in off
+    assert seeded.pop("vod.fallback_transcribe_max_s") == 5400
+    assert {**seeded, "vod.fallback_below_spikes": 3, "vod.fallback_transcribe_max_s": 0} == DEFAULTS
 
 
 def test_config_reads_every_value() -> None:

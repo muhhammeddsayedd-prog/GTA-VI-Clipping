@@ -960,6 +960,7 @@ def test_no_chat_no_captions_and_no_transcription_allowed_ends_without_clips(lan
 
 def test_the_daily_transcription_allowance_defers_the_video(lane: Lane) -> None:
     lane.chat = None
+    settings.set("vod.fallback_transcribe_max_s", 5400)
     usage.record("vod", store.USAGE_FALLBACK_TRANSCRIBE, units=21600)
     video_id = lane.video(has_chat=False)
     lane.enqueue(video_id)

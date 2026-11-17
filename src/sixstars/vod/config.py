@@ -36,7 +36,7 @@ DEFAULTS: Final[dict[str, Any]] = {
     "vod.fallback_chunk_s": 30,
     "vod.fallback_max_transcript_s": 21600,
     "vod.fallback_transcribe_mode": "local",
-    "vod.fallback_transcribe_max_s": 5400,
+    "vod.fallback_transcribe_max_s": 0,
     "vod.fallback_transcribe_daily_s": 21600,
     "vod.fallback_transcribe_block_s": 600,
     "vod.fallback_whisper_model": None,
