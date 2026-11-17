@@ -119,6 +119,15 @@ def disk_used_pct(total: int, used: int) -> float:
 # ── checks ───────────────────────────────────────────────────
 
 
+def db_now() -> datetime:
+    """The database clock. Heartbeats are stamped by the database, so their age is measured with the
+    same clock: a server whose clock is off by a few seconds must not shift the limits."""
+    row = db.fetch_one("select now() as now")
+    assert row is not None
+    stamp: datetime = row["now"]
+    return stamp
+
+
 def load_beats() -> list[Beat]:
     rows = db.fetch_all(
         "select name, last_seen from heartbeats where name not like %s", (TRIGGER_PREFIX + "%",)

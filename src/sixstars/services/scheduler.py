@@ -217,14 +217,14 @@ def failover() -> guardian_failover.Failover:
     never fired."""
     global _failover
     if _failover is None:
-        _failover = guardian_failover.Failover(FAILOVER_RUNNERS, utcnow())
+        _failover = guardian_failover.Failover(FAILOVER_RUNNERS, guardian_health.db_now())
     return _failover
 
 
 def guardian_health_pass(now: datetime | None = None, wait: bool = False) -> dict[str, Any]:
     """Health checks, then failover for missing n8n triggers. A failed health check never keeps the
-    failover from running."""
-    now = now or utcnow()
+    failover from running. Ages are measured with the database clock, which stamps the heartbeats."""
+    now = now or guardian_health.db_now()
     summary: dict[str, Any] = {}
     try:
         summary = guardian_health.run_checks(now)
