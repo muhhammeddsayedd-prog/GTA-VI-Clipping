@@ -383,5 +383,21 @@ def posting_clip(
     raise typer.Exit(code=code)
 
 
+# Notifications (M12). Kept as one block so other milestones' edits to this file do not collide with it.
+notify_app = typer.Typer(help="Telegram notifications through the n8n notify webhook.", no_args_is_help=True)
+app.add_typer(notify_app, name="notify")
+
+
+@notify_app.command("test")
+def notify_test() -> None:
+    """Send the info notification "Test" through the notify webhook, to check the path to Telegram."""
+    from sixstars import notify
+
+    with _database():
+        delivered = notify.send("info", "Test")
+    typer.echo("Test notification delivered." if delivered else "Test notification was NOT delivered.")
+    raise typer.Exit(code=0 if delivered else 1)
+
+
 if __name__ == "__main__":
     app()
