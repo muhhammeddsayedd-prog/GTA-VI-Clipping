@@ -64,6 +64,10 @@ _NOTHING_SEEN = VisualFindings(
 )
 
 
+class _VisualNeededError(Exception):
+    """The clip was to be rejected without P5, but under the lock nothing rejects it any more."""
+
+
 def utcnow() -> datetime:
     return datetime.now(UTC)
 
@@ -171,7 +175,12 @@ def _finish(
     p5_skipped: bool = False,
 ) -> GateOutcome:
     """Decide under the lock, store, then do what follows the verdict. `state` None means "ask now".
-    `frames` are the per-second music flags of the clip (they do not change after the render)."""
+    `frames` are the per-second music flags of the clip (they do not change after the render).
+
+    With `p5_skipped` the `visual` argument is only a stand-in, so nothing but a rejection may be stored:
+    if the clip is no longer rejected (another clip or a setting changed in between), `_VisualNeededError` is
+    raised before anything is written.
+    """
     log = get_logger("gate")
     precheck_job: int | None = None
     with store.decision_lock():
@@ -181,6 +190,8 @@ def _finish(
         now = deps.clock()
         decided_state = state or precheck_state.current_state(_youtube(deps), now)
         decision = _decide(row, file, visual, decided_state, settings, now, frames)
+        if p5_skipped and decision.verdict is not Verdict.REJECT:
+            raise _VisualNeededError
         document = store.result_document(decision, file, visual, now, p5_skipped=p5_skipped)
         # A clip that was moved to the hourly lane before its pre-check keeps that mark and its boost.
         earlier = row.gate_result or {}
@@ -290,7 +301,10 @@ def run_gate(clip_id: str, *, deps: GateDeps | None = None) -> GateOutcome:
         frames = store.music_frames(row.id)
         optimistic = _decide(row, file, _NOTHING_SEEN, state, settings, now, frames)
         if optimistic.verdict is Verdict.REJECT:
-            return _finish(row, file, _NOTHING_SEEN, None, settings, deps, frames=frames, p5_skipped=True)
+            try:
+                return _finish(row, file, _NOTHING_SEEN, None, settings, deps, frames=frames, p5_skipped=True)
+            except _VisualNeededError:
+                get_logger("gate").info("gate_p5_needed_after_all")
         return _finish(row, file, _look(row, deps), None, settings, deps, frames=frames)
 
 

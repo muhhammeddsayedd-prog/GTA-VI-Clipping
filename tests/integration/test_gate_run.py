@@ -300,6 +300,35 @@ def test_of_two_clips_of_one_moment_in_the_gate_only_the_older_is_approved(good_
     assert clip(older)["status"] == "approved"
 
 
+def test_a_clip_is_never_approved_without_p5_when_its_reason_to_reject_disappears(
+    good_video: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The gate skips P5 for a clip it will reject anyway. If that reason is gone by the time the verdict
+    is stored (here: the clip it duplicated was thrown away in between), P5 must still be asked."""
+    creator_id = add_creator()
+    now = datetime.now(UTC)
+    first = add_clip(creator_id, None, status="approved", approved_at=now)
+    second = add_clip(creator_id, good_video, start_s=1005.0, end_s=1026.0)
+    kit = Kit(p5={**P5_CLEAN, "other_watermark": True})
+    real_decide = gate._decide
+    calls: list[str] = []
+
+    def decide_then_remove_the_duplicate(*args: Any) -> Any:
+        decision = real_decide(*args)
+        if not calls:
+            db.execute("update clips set status = 'rejected' where id = %s", (first,))
+        calls.append(decision.verdict.value)
+        return decision
+
+    monkeypatch.setattr(gate, "_decide", decide_then_remove_the_duplicate)
+    outcome = gate.run_gate(second, deps=kit.deps)
+
+    assert calls[0] == "reject"  # the first look: a duplicate, so P5 was not asked yet
+    assert kit.p5_calls == 1  # asked after all
+    assert outcome.status == "rejected" and clip(second)["reject_reason"] == "watermark"
+    assert clip(second)["gate_result"]["inputs"]["p5"] == "run"
+
+
 # ── Music frames from the render event ───────────────────────
 
 
