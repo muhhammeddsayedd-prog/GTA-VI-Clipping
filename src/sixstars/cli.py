@@ -593,3 +593,73 @@ def gate_check_file(
 
 if __name__ == "__main__":
     app()
+
+
+# Guardian and report (M13). Kept as one block so other milestones' edits to this file do not collide.
+guardian_app = typer.Typer(help="Guardian (M13): claims check, health, strikes.", no_args_is_help=True)
+report_app = typer.Typer(help="Stats and the daily report (M13).", no_args_is_help=True)
+app.add_typer(guardian_app, name="guardian")
+app.add_typer(report_app, name="report")
+
+
+@guardian_app.command("check")
+def guardian_check() -> None:
+    """Run one claims and removals check now (what POST /v1/guardian/check does)."""
+    from sixstars.guardian import commands
+
+    with _database():
+        code = commands.check()
+    raise typer.Exit(code=code)
+
+
+@guardian_app.command("health")
+def guardian_health() -> None:
+    """Run the health checks once and print what they found."""
+    from sixstars.guardian import commands
+
+    with _database():
+        code = commands.health_once()
+    raise typer.Exit(code=code)
+
+
+@guardian_app.command("strikes")
+def guardian_strikes() -> None:
+    """Show the strikes that count now, the limit and the emergency stop."""
+    from sixstars.guardian import commands
+
+    with _database():
+        code = commands.strikes()
+    raise typer.Exit(code=code)
+
+
+@guardian_app.command("pending")
+def guardian_pending() -> None:
+    """List the posts that wait for a manual removal."""
+    from sixstars.guardian import commands
+
+    with _database():
+        code = commands.pending()
+    raise typer.Exit(code=code)
+
+
+@report_app.command("daily")
+def report_daily(
+    format_: str = typer.Option("telegram", "--format", help="telegram or json."),
+    day: str = typer.Option("", "--day", help="Day as YYYY-MM-DD (default: the day that just ended)."),
+) -> None:
+    """Print the daily report."""
+    from sixstars.guardian import commands
+
+    with _database():
+        code = commands.daily(format_, day)
+    raise typer.Exit(code=code)
+
+
+@report_app.command("collect")
+def report_collect() -> None:
+    """Collect account and post numbers now (what POST /v1/stats/collect does)."""
+    from sixstars.guardian import commands
+
+    with _database():
+        code = commands.collect()
+    raise typer.Exit(code=code)

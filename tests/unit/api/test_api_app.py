@@ -178,33 +178,142 @@ def test_the_size_limit_applies_before_authentication(client: TestClient) -> Non
     assert response.status_code == 413
 
 
-# ── placeholders (M13) ────────────────────────────────────────────────────────────────────────────────────
+# ── guardian, stats and report routes (M13) ───────────────────────────────────────────────────────────────
 
 
 @pytest.mark.parametrize(
-    ("method", "path", "heartbeat"),
+    ("method", "path", "heartbeat", "call"),
     [
-        ("POST", "/v1/guardian/check", "trigger:guardian"),
-        ("POST", "/v1/guardian/takedown", None),
-        ("POST", "/v1/stats/collect", "trigger:stats"),
-        ("GET", "/v1/reports/daily?format=telegram", None),
+        ("POST", "/v1/guardian/check", "trigger:guardian", "run_check"),
+        ("POST", "/v1/stats/collect", "trigger:stats", "collect_stats"),
     ],
 )
-def test_the_m13_routes_answer_501_with_a_clear_body(
+def test_the_scheduled_m13_routes_write_their_heartbeat_and_answer_with_the_result(
     client: TestClient,
     auth: dict[str, str],
     heartbeats: list[str],
+    guardian_calls: list[tuple[str, tuple[Any, ...]]],
     method: str,
     path: str,
-    heartbeat: str | None,
+    heartbeat: str,
+    call: str,
 ) -> None:
     response = client.request(method, path, headers=auth)
-    assert response.status_code == 501
-    body = response.json()
-    assert body["code"] == "not_implemented"
-    assert body["milestone"] == "M13"
-    assert "not implemented yet" in body["error"]
-    assert heartbeats == ([heartbeat] if heartbeat else [])
+    assert response.status_code == 200
+    assert response.json()["status"] == "ok"
+    assert heartbeats == [heartbeat]
+    assert [name for name, _ in guardian_calls] == [call]
+
+
+def test_the_takedown_route_passes_the_five_fields_and_writes_no_heartbeat(
+    client: TestClient,
+    auth: dict[str, str],
+    heartbeats: list[str],
+    guardian_calls: list[tuple[str, tuple[Any, ...]]],
+) -> None:
+    payload = {
+        "from": "Some One <someone@example.test>",
+        "subject": "Please remove",
+        "body_text": "hello",
+        "received_at": "2026-11-19T10:00:00Z",
+        "message_id": "<abc@mail.example.test>",
+        "labels": ["INBOX"],  # n8n may send more than we ask for
+    }
+    response = client.post("/v1/guardian/takedown", headers=auth, json=payload)
+    assert response.status_code == 200
+    assert response.json() == {"is_takedown": False, "status": "ignored", "actions": []}
+    assert guardian_calls == [
+        (
+            "handle_takedown",
+            (
+                "Some One <someone@example.test>",
+                "Please remove",
+                "hello",
+                "<abc@mail.example.test>",
+                "2026-11-19T10:00:00Z",
+            ),
+        )
+    ]
+    assert heartbeats == []
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {},  # an empty object: every field is optional, the guardian derives an id
+        {"message_id": None, "from": None, "subject": None, "body_text": None, "received_at": None},
+        {
+            "message_id": 12345,
+            "subject": ["a", "list"],
+            "body_text": {"html": "<p>x</p>"},
+            "received_at": 1763546400,
+        },
+        {"body_text": "x" * 200_000},  # large but under the request limit: cut by the guardian, not refused
+    ],
+)
+def test_the_takedown_route_does_not_refuse_odd_emails(
+    client: TestClient,
+    auth: dict[str, str],
+    guardian_calls: list[tuple[str, tuple[Any, ...]]],
+    payload: dict[str, Any],
+) -> None:
+    response = client.post("/v1/guardian/takedown", headers=auth, json=payload)
+    assert response.status_code == 200
+    (call,) = guardian_calls
+    assert all(value is None or isinstance(value, str) for value in call[1])
+
+
+def test_the_takedown_route_refuses_what_is_not_a_json_object_or_is_too_large(
+    client: TestClient, auth: dict[str, str], guardian_calls: list[tuple[str, tuple[Any, ...]]]
+) -> None:
+    assert client.post("/v1/guardian/takedown", headers=auth).status_code == 422
+    assert client.post("/v1/guardian/takedown", headers=auth, json=["a"]).status_code == 422
+    assert client.post("/v1/guardian/takedown", headers=auth, content=b"{not json").status_code == 422
+    too_large = client.post(
+        "/v1/guardian/takedown", headers=auth, json={"body_text": "x" * (middleware.MAX_BODY_BYTES + 1)}
+    )
+    assert too_large.status_code == 413
+    assert guardian_calls == []
+
+
+def test_the_daily_report_in_both_formats(
+    client: TestClient,
+    auth: dict[str, str],
+    monkeypatch: pytest.MonkeyPatch,
+    guardian_calls: list[tuple[str, tuple[Any, ...]]],
+) -> None:
+    monkeypatch.setattr(
+        routes_triggers.report_view, "render_telegram", lambda data: f"report of {data['day']}"
+    )
+    as_json = client.get("/v1/reports/daily", headers=auth)
+    assert as_json.status_code == 200 and as_json.json() == {"day": "2026-11-19"}
+    as_text = client.get("/v1/reports/daily?format=telegram", headers=auth)
+    assert as_text.status_code == 200 and as_text.json() == {"text": "report of 2026-11-19"}
+    chosen = client.get("/v1/reports/daily?format=json&day=2026-11-18", headers=auth)
+    assert chosen.status_code == 200
+    assert [str(args[0]) for _, args in guardian_calls] == ["None", "None", "2026-11-18"]
+
+
+@pytest.mark.parametrize("query", ["format=xml", "day=yesterday", "day=2026-13-40", "format=telegram&day="])
+def test_the_daily_report_refuses_unknown_formats_and_days(
+    client: TestClient, auth: dict[str, str], query: str
+) -> None:
+    response = client.get(f"/v1/reports/daily?{query}", headers=auth)
+    assert response.status_code == 422 and response.json()["code"] == "validation_error"
+
+
+def test_a_failing_guardian_check_answers_a_generic_500(
+    client: TestClient, auth: dict[str, str], heartbeats: list[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def boom() -> dict[str, Any]:
+        raise RuntimeError("secret detail about the database")
+
+    monkeypatch.setattr(routes_triggers.guardian_service, "run_check", boom)
+    monkeypatch.setattr(notify, "send", lambda *args, **kwargs: True)
+    response = client.post("/v1/guardian/check", headers=auth)
+    assert response.status_code == 500
+    assert "secret detail" not in response.text
+    assert heartbeats == ["trigger:guardian"]  # n8n did call
 
 
 # ── discovery ─────────────────────────────────────────────────────────────────────────────────────────────
