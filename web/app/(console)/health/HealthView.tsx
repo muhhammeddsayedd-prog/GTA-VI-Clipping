@@ -49,7 +49,7 @@ export function HealthView() {
   });
   const histCols: Col<{ e: Event; rec?: Event }>[] = [
     { key: "o", head: "Opened", render: (r) => <When iso={r.e.created_at} /> },
-    { key: "i", head: "Incident", render: (r) => <span className="semi">{r.e.message}</span> },
+    { key: "i", head: "Incident", mobile: "primary", render: (r) => <span className="semi">{r.e.message}</span> },
     { key: "d", head: "Duration", render: (r) => fmtDuration(((r.rec ? Date.parse(r.rec.created_at) : now) - Date.parse(r.e.created_at)) / 1000) },
     { key: "s", head: "State", render: (r) => <Badge status={r.rec ? "recovered" : "open"} /> },
   ];

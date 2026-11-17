@@ -120,7 +120,7 @@ function QueueGauge({ total, low }: { total: number; low: number }) {
 
 function SpendCard({ total, budget, providers }: { total: number; budget: number; providers: { provider: string; usd: number; budget_usd: number | null }[] }) {
   return (
-    <Card as="div">
+    <Card as="div" className="kpi-wide">
       <div className="kpi">
         <div className="lbl">Spend today
           <Link href="/spend" className="cic" aria-label="Open spend" style={{ background: "var(--dark)", color: "#fff", borderColor: "var(--dark)" }}><ArrowUpRight size={15} /></Link>
@@ -186,8 +186,8 @@ function PostingPanel({ items }: { items: QueueItem[] }) {
                   <div className="row"><Avatar name={c.creator.handle} size={38} /><div><div className="semi">{c.lane === "spike" ? "Spike lane" : "Hourly lane"}</div><div className="lbl">{c.expires_at ? `expires ${fmtTime(c.expires_at)}` : ""}</div></div></div>
                 </div>
               </div>
-              <div className="row" style={{ gap: 18, marginTop: 20, alignItems: "stretch" }}>
-                <div style={{ width: 118, flex: "none" }}><Thumb seed={c.clip_id} hook={c.hook} dur={fmtClock(c.duration_s)} /></div>
+              <div className="row pc-media" style={{ gap: 18, marginTop: 20, alignItems: "stretch" }}>
+                <div className="pc-thumb" style={{ width: 118, flex: "none" }}><Thumb seed={c.clip_id} hook={c.hook} dur={fmtClock(c.duration_s)} /></div>
                 <div className="g g3 grow" style={{ alignContent: "start" }}>
                   <div className="glass"><span className="ar"><ArrowUpRight size={14} /></span><div className="v">{c.score ?? "—"}</div><div className="k">Writer score</div></div>
                   <div className="glass"><span className="ar"><ArrowUpRight size={14} /></span><div className="v">{c.rank_score?.toFixed(2) ?? "—"}</div><div className="k">Rank score</div></div>
