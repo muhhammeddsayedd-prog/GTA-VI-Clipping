@@ -1,0 +1,19 @@
+# Reverse proxy for the control API. Caddy obtains and renews the HTTPS certificate for PUBLIC_API_HOST
+# automatically (ports 80 and 443 must be reachable from the internet) and redirects HTTP to HTTPS.
+# PUBLIC_API_HOST comes from /opt/6stars/.env through docker-compose.yml.
+
+{$PUBLIC_API_HOST} {
+	encode gzip
+
+	reverse_proxy api:8080 {
+		# Discovery runs can take up to 60 s before the API answers.
+		transport http {
+			response_header_timeout 120s
+		}
+	}
+
+	log {
+		output stdout
+		format json
+	}
+}

@@ -1,0 +1,12 @@
+# Staging overrides (Hetzner 4 vCPU / 8 GB): fewer worker replicas than production.
+# The deploy workflow copies this file to /opt/6stars/docker-compose.override.yml on the staging server.
+# Local check:  docker compose -f docker-compose.yml -f docker-compose.staging.yml config
+
+services:
+  worker-express:
+    deploy:
+      replicas: 1
+
+  worker-normal:
+    deploy:
+      replicas: 2
