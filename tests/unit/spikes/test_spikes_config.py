@@ -12,8 +12,9 @@ from sixstars.spikes import config as spike_config
 from sixstars.spikes.config import SETTING_KEYS, SpikeConfig, SpikeConfigError
 
 REPO = Path(__file__).resolve().parents[3]
-# Settings that belong to the Claude confirmation step (M05), not to the numeric engine.
-CONFIRMATION_KEYS = {"spikes.s_min_confidence", "spikes.ab_min_confidence"}
+# Settings read outside `SpikeConfig`: the Claude confirmation step (M05) and the replay end guard, which
+# the VOD lane (M08) reads and passes to `scan_replay(end_guard_s=...)`.
+CONFIRMATION_KEYS = {"spikes.s_min_confidence", "spikes.ab_min_confidence", "spikes.end_guard_s"}
 
 
 def test_seeded_values_are_read_as_documented(cfg: SpikeConfig) -> None:
