@@ -6,6 +6,11 @@ Sources (checked 2026-11-17):
   videos.delete)
 - quota: https://developers.google.com/youtube/v3/determine_quota_cost (list 1 unit, delete 50 units,
   videos.insert 1 unit in its own bucket of 100 calls per day)
+- search.list: https://developers.google.com/youtube/v3/docs/search/list . Since the revision of
+  2026-06-01 (https://developers.google.com/youtube/v3/revision_history) it has its own quota bucket:
+  "Projects that enable the YouTube Data API have a default quota allocation of 100 `search.list` calls,
+  100 `videos.insert` calls, and 10,000 units per day combined for all other endpoints", one unit per
+  call (it used to cost 100 units of the shared 10,000). Checked 2026-11-17.
 - resumable upload: https://developers.google.com/youtube/v3/guides/using_resumable_upload_protocol
 - OAuth for desktop apps: https://developers.google.com/youtube/v3/guides/auth/installed-apps
 
@@ -49,6 +54,11 @@ TOKEN_REFRESH_MARGIN_S = 300.0
 QUOTA_LIST = 1
 QUOTA_DELETE = 50
 QUOTA_INSERT = 1  # counted in the separate videos.insert bucket (100 calls per day by default)
+QUOTA_SEARCH = 1  # counted in the separate search.list bucket (100 calls per day by default)
+SEARCH_RESULTS_MAX = 50
+SEARCH_EVENT_TYPES = ("live", "completed", "upcoming")
+SEARCH_ORDERS = ("date", "rating", "relevance", "title", "videoCount", "viewCount")
+SEARCH_DURATIONS = ("any", "long", "medium", "short")
 CATEGORY_GAMING = "20"
 
 DEFAULT_VIDEO_PARTS = ("snippet", "status", "contentDetails", "statistics", "liveStreamingDetails")
@@ -279,6 +289,70 @@ class YouTubeClient:
     ) -> list[dict[str, Any]]:
         """`channels.list` by channel id (50 per request). Returns the raw API items."""
         return self._list("channels", ids, parts)
+
+    def search_list(
+        self,
+        q: str,
+        *,
+        event_type: str | None = None,
+        order: str = "relevance",
+        published_after: datetime | None = None,
+        video_category_id: str | None = CATEGORY_GAMING,
+        relevance_language: str | None = None,
+        video_duration: str | None = None,
+        max_results: int = SEARCH_RESULTS_MAX,
+    ) -> list[dict[str, Any]]:
+        """One `search.list` call for videos (`type=video`, `part=snippet`): one page, at most 50 results.
+
+        `q` may use the documented operators: `a|b` matches either term, `-word` excludes. `event_type`
+        is `live`, `completed` or `upcoming` (None: any video); `order` one of `SEARCH_ORDERS`;
+        `published_after` limits to videos created at or after that time; `video_duration` is `any`,
+        `long` (over 20 minutes), `medium` (4 to 20 minutes) or `short`. Returns the raw result items
+        (`id.videoId`, `snippet.publishedAt|channelId|title|description|channelTitle|liveBroadcastContent`);
+        statistics and durations are not part of a search result and come from `videos_list`.
+
+        Each call is one unit of the separate `search.list` bucket (100 calls per day by default), recorded
+        as operation `search.list`. The caller owns the budget: this method never pages.
+        """
+        if not self._api_key:
+            raise NotConfiguredError("YOUTUBE_API_KEY is not set")
+        if event_type is not None and event_type not in SEARCH_EVENT_TYPES:
+            raise ValueError(f"event_type must be one of {SEARCH_EVENT_TYPES}, not {event_type!r}")
+        if order not in SEARCH_ORDERS:
+            raise ValueError(f"order must be one of {SEARCH_ORDERS}, not {order!r}")
+        if video_duration is not None and video_duration not in SEARCH_DURATIONS:
+            raise ValueError(f"video_duration must be one of {SEARCH_DURATIONS}, not {video_duration!r}")
+        params: dict[str, str | int] = {
+            "part": "snippet",
+            "type": "video",  # required by eventType, videoCategoryId and videoDuration
+            "q": q,
+            "order": order,
+            "maxResults": max(1, min(int(max_results), SEARCH_RESULTS_MAX)),
+        }
+        if event_type is not None:
+            params["eventType"] = event_type
+        if published_after is not None:
+            # RFC 3339, as the docs ask: 1970-01-01T00:00:00Z
+            params["publishedAfter"] = published_after.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+        if video_category_id:
+            params["videoCategoryId"] = video_category_id
+        if relevance_language:
+            params["relevanceLanguage"] = relevance_language
+        if video_duration is not None and video_duration != "any":
+            params["videoDuration"] = video_duration
+        endpoint = "GET /youtube/v3/search"
+        call = partial(
+            self._http.get,
+            f"{API_BASE}/search",
+            params=params,  # httpx URL-escapes the pipe of an OR query (%7C), as the docs require
+            headers={"X-goog-api-key": self._api_key},
+        )
+        response = _http.send(SERVICE, endpoint, call)
+        # A refused call (quota, bad filter) is recorded too: Google counts refused calls against quota.
+        usage.record(SERVICE, "search.list", units=QUOTA_SEARCH)
+        _http.raise_for_status(SERVICE, endpoint, response)
+        items = response.json().get("items") or []
+        return [item for item in items if isinstance(item, dict)]
 
     # ── RSS ──────────────────────────────────────────────────
 

@@ -56,6 +56,11 @@ def test_fake_youtube(tmp_path: Path) -> None:
     assert client.videos_list(["a", "b"])[1]["id"] == "b"
     assert client.channels_list(["UC1"])[0]["statistics"]["subscriberCount"] == "250000"
     assert len(client.channel_feed("UCabcd")) == 2
+    client.search_live = [fakes.fake_search_item("live1", live=True)]
+    client.search_recent = [fakes.fake_search_item("vod1"), fakes.fake_search_item("vod2")]
+    assert [i["id"]["videoId"] for i in client.search_list("GTA 5", event_type="live")] == ["live1"]
+    assert [i["id"]["videoId"] for i in client.search_list("GTA 5", max_results=1)] == ["vod1"]
+    assert client.calls[-1][1]["q"] == "GTA 5" and client.calls[-1][1]["event_type"] is None
     video_id = client.upload_private(tmp_path / "c.mp4", "t", "d")
     status = client.get_status(video_id)
     assert video_id == "fakevid1" and status is not None and status.is_restricted is False

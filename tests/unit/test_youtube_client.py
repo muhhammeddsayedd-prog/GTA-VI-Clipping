@@ -1,5 +1,6 @@
 """YouTube client: API key lists, RSS parsing, OAuth token handling, resumable private upload and the CLI."""
 
+from datetime import UTC, datetime
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
@@ -68,6 +69,82 @@ def test_videos_list_chunks_ids_and_keeps_key_out_of_url() -> None:
     assert "secret-key" not in str(request.url)
     assert request.url.params["part"] == "status,statistics"
     assert len(request.url.params["id"].split(",")) == 50
+
+
+@respx.mock
+def test_search_list_sends_the_documented_parameters_and_records_one_call(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    recorded: list[tuple[str, str, float | None]] = []
+    monkeypatch.setattr(
+        youtube.usage,
+        "record",
+        lambda provider, operation, **kw: recorded.append((provider, operation, kw.get("units"))),
+    )
+    item = {"id": {"kind": "youtube#video", "videoId": "abc"}, "snippet": {"title": "GTA 5 live"}}
+    route = respx.get(f"{youtube.API_BASE}/search").mock(
+        return_value=httpx.Response(200, json={"items": [item], "nextPageToken": "more"})
+    )
+    after = datetime(2026, 11, 15, 12, 30, tzinfo=UTC)
+    found = YouTubeClient(api_key="secret-key").search_list(
+        "GTA 5|GTA V",
+        event_type="live",
+        order="viewCount",
+        published_after=after,
+        relevance_language="en",
+        video_duration="long",
+        max_results=500,
+    )
+    assert found == [item]
+    assert route.call_count == 1  # one page only, whatever nextPageToken says
+    request = route.calls[0].request
+    assert dict(request.url.params) == {
+        "part": "snippet",
+        "type": "video",
+        "q": "GTA 5|GTA V",
+        "order": "viewCount",
+        "maxResults": "50",
+        "eventType": "live",
+        "publishedAfter": "2026-11-15T12:30:00Z",
+        "videoCategoryId": "20",
+        "relevanceLanguage": "en",
+        "videoDuration": "long",
+    }
+    assert "%7C" in str(request.url) and "|" not in str(request.url)  # the pipe must be URL-escaped
+    assert request.headers["X-goog-api-key"] == "secret-key" and "secret-key" not in str(request.url)
+    assert recorded == [("youtube", "search.list", 1)]
+
+
+@respx.mock
+def test_search_list_minimal_call_quota_error_and_bad_arguments(monkeypatch: pytest.MonkeyPatch) -> None:
+    recorded: list[str] = []
+    monkeypatch.setattr(youtube.usage, "record", lambda provider, operation, **kw: recorded.append(operation))
+    route = respx.get(f"{youtube.API_BASE}/search").mock(return_value=httpx.Response(200, json={}))
+    client = YouTubeClient(api_key="k")
+    assert client.search_list("GTA 6", video_category_id=None, max_results=10) == []
+    assert dict(route.calls[0].request.url.params) == {
+        "part": "snippet",
+        "type": "video",
+        "q": "GTA 6",
+        "order": "relevance",
+        "maxResults": "10",
+    }
+    quota = {
+        "error": {
+            "code": 403,
+            "message": "The request cannot be completed because you have exceeded your quota.",
+        }
+    }
+    route.mock(return_value=httpx.Response(403, json=quota))
+    with pytest.raises(ApiError) as caught:
+        client.search_list("GTA 6")
+    assert caught.value.status == 403 and "exceeded your quota" in str(caught.value)
+    assert recorded == ["search.list", "search.list"]  # a refused call still counts
+    for bad in ({"event_type": "soon"}, {"order": "newest"}, {"video_duration": "tiny"}):
+        with pytest.raises(ValueError):
+            client.search_list("GTA 6", **bad)  # type: ignore[arg-type]
+    with pytest.raises(NotConfiguredError):
+        YouTubeClient().search_list("GTA 6")
 
 
 @respx.mock
