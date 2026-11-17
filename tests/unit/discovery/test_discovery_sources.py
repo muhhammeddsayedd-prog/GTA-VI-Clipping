@@ -501,3 +501,27 @@ def test_filter_candidates() -> None:
     )
     assert [item.source_id for item in kept] == ["ok", "edge", "unknown-age", "live"]
     assert skipped == {"title_blocklist": 2, "too_short": 1, "too_old": 1}
+
+
+def test_lost_apify_run_stops_blocking_after_the_give_up_time(monkeypatch: pytest.MonkeyPatch) -> None:
+    from sixstars.clients._http import ApiError
+    from sixstars.clients.fakes import FakeApifyClient
+
+    saved: dict[str, Any] = {
+        sources.APIFY_STATE_KEY: {"run_id": "gone", "started_at": NOW.isoformat(), "collected": False}
+    }
+    monkeypatch.setattr(sources.settings, "get", lambda key, default=None: saved.get(key, default))
+    monkeypatch.setattr(sources.settings, "set", lambda key, value: saved.__setitem__(key, value))
+    client = FakeApifyClient()
+
+    def missing(run_id: str) -> Any:
+        raise ApiError("apify", "GET /v2/actor-runs/{run}", 404, "not found")
+
+    monkeypatch.setattr(client, "get_run", missing)
+    with pytest.raises(ApiError):
+        sources.apify_step(client, config(), NOW + timedelta(minutes=10))
+    assert saved[sources.APIFY_STATE_KEY]["collected"] is False  # still young: try again next pass
+    with pytest.raises(ApiError):
+        sources.apify_step(client, config(), NOW + timedelta(hours=2))
+    assert saved[sources.APIFY_STATE_KEY]["collected"] is True
+    assert saved[sources.APIFY_STATE_KEY]["status"] == "LOST"

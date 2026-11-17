@@ -389,9 +389,14 @@ def apify_step(
     cost = 0.0
     notes: list[str] = []
     if state is not None and state.get("run_id") and not state.get("collected"):
-        run = client.get_run(str(state["run_id"]))
         started = parse_time(state.get("started_at"))
         stale = started is not None and (now - started).total_seconds() > APIFY_GIVE_UP_S
+        try:
+            run = client.get_run(str(state["run_id"]))
+        except ClientError:
+            if stale:  # a run we can no longer read must not block the next ones for ever
+                settings.set(APIFY_STATE_KEY, {**state, "collected": True, "status": "LOST"})
+            raise
         if run.finished or stale:
             cost = run.cost_usd
             usage.record("apify", "discovery_search", units=1, cost_usd=cost, ref_id=run.id)
