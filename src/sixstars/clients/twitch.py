@@ -1,10 +1,22 @@
-"""Client for the Twitch Helix API using an app access token: streams, users, videos and game lookups. Twitch
-IRC chat is handled separately in `sixstars.chat`. Implemented in M02.
+"""Client for the Twitch Helix API using an app access token: streams, users, videos, clips and game
+lookups. Twitch IRC chat is handled separately in `sixstars.chat`. Implemented in M02; Get Clips added for
+the viewer-clips source (decision D110).
 
 Sources (checked 2026-11-17):
 - token: https://dev.twitch.tv/docs/authentication/getting-tokens-oauth/#client-credentials-grant-flow
 - endpoints: https://dev.twitch.tv/docs/api/reference (Get Games, Get Streams, Get Videos, Get Users,
   Get Channel Followers)
+- Get Clips: https://dev.twitch.tv/docs/api/reference/#get-clips . App or user token. Exactly one of
+  `broadcaster_id`, `game_id`, `id`. `started_at` / `ended_at` are RFC 3339 and are cut to the minute;
+  without `ended_at` the window is one week from `started_at`; `ended_at` alone is ignored. `first` is 1
+  to 100 (default 20), `after` takes `pagination.cursor`. By game or broadcaster "the list is in
+  descending order by view count"; paging stops at roughly 1,000 clips. `is_featured` true / false
+  filters, omitted returns all. `video_id` is "" and `vod_offset` null when the broadcast's video is not
+  available (or, for `vod_offset`, not written yet: "typically minutes"). `duration` is seconds with 0.1
+  precision; `language` is ISO 639-1 or "other".
+- rate limit: https://dev.twitch.tv/docs/api/guide/#twitch-rate-limits . One point per request from a
+  per-minute bucket (header `Ratelimit-Limit`, 800 in the docs' example); 429 when it is empty, which
+  the shared retry code backs off on.
 
 Twitch keys are optional (decision D100). Nothing here touches the network or the environment at import
 time; call `is_configured()` before using the client and skip Twitch sources when it returns False.
@@ -88,6 +100,30 @@ class TwitchUser:
     created_at: datetime | None
 
 
+@dataclass(frozen=True)
+class TwitchClip:
+    """One viewer-made clip from Get Clips. `creator_name` is the viewer who made the clip, never the
+    streamer: the streamer is `broadcaster_id` / `broadcaster_name`. `video_id` and `vod_offset_s` place
+    the clip in the broadcast's video and are None when Twitch does not have them."""
+
+    id: str
+    url: str
+    broadcaster_id: str
+    broadcaster_name: str
+    creator_id: str
+    creator_name: str
+    video_id: str | None
+    game_id: str
+    language: str
+    title: str
+    view_count: int
+    created_at: datetime
+    thumbnail_url: str
+    duration_s: float
+    vod_offset_s: float | None
+    is_featured: bool
+
+
 def is_configured() -> bool:
     """True when both Twitch credentials are present in the environment."""
     settings = env()
@@ -157,6 +193,36 @@ def _user(item: dict[str, Any]) -> TwitchUser:
         broadcaster_type=str(item.get("broadcaster_type", "")),
         created_at=_parse_time(item.get("created_at")),
     )
+
+
+def _clip(item: dict[str, Any]) -> TwitchClip:
+    video_id = item.get("video_id")
+    offset = item.get("vod_offset")
+    duration = item.get("duration")
+    numbers = (int, float)
+    return TwitchClip(
+        id=str(item["id"]),
+        url=str(item.get("url", "")),
+        broadcaster_id=str(item["broadcaster_id"]),
+        broadcaster_name=str(item.get("broadcaster_name", "")),
+        creator_id=str(item.get("creator_id", "")),
+        creator_name=str(item.get("creator_name", "")),
+        video_id=str(video_id) if video_id else None,
+        game_id=str(item.get("game_id", "")),
+        language=str(item.get("language", "")),
+        title=str(item.get("title", "")),
+        view_count=int(item.get("view_count", 0)),
+        created_at=_parse_time(item.get("created_at")) or datetime.now(UTC),
+        thumbnail_url=str(item.get("thumbnail_url", "")),
+        duration_s=float(duration) if isinstance(duration, numbers) else 0.0,
+        vod_offset_s=float(offset) if video_id and isinstance(offset, numbers) else None,
+        is_featured=bool(item.get("is_featured", False)),
+    )
+
+
+def rfc3339(value: datetime) -> str:
+    """A time as Twitch wants it in a query, in UTC: `2026-11-17T10:00:00Z`."""
+    return value.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 class TwitchClient:
@@ -293,6 +359,24 @@ class TwitchClient:
         """The newest videos of one broadcaster."""
         params = [("user_id", user_id), ("type", type)]
         return [_video(item) for item in self._paginate("get_videos_by_user", "/videos", params, first)]
+
+    def get_clips(
+        self,
+        game_id: str,
+        started_at: datetime,
+        ended_at: datetime | None = None,
+        max_items: int = 100,
+        is_featured: bool | None = None,
+    ) -> list[TwitchClip]:
+        """Viewer-made clips of a category created in a time window, most viewed first, following
+        `after` up to `max_items` (Twitch stops at roughly 1,000). Without `ended_at` Twitch takes one
+        week from `started_at`. `is_featured` None returns featured and other clips alike."""
+        params: list[tuple[str, str | int]] = [("game_id", game_id), ("started_at", rfc3339(started_at))]
+        if ended_at is not None:
+            params.append(("ended_at", rfc3339(ended_at)))
+        if is_featured is not None:
+            params.append(("is_featured", "true" if is_featured else "false"))
+        return [_clip(item) for item in self._paginate("get_clips", "/clips", params, max_items)]
 
     def get_users(self, ids: Sequence[str]) -> list[TwitchUser]:
         """Users by id (description and profile image), 100 ids per request."""

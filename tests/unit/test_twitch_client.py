@@ -1,5 +1,7 @@
 """Twitch Helix client: token caching, refresh on 401, pagination and the missing-keys case."""
 
+from datetime import UTC, datetime, timedelta, timezone
+
 import httpx
 import pytest
 import respx
@@ -208,3 +210,87 @@ def test_api_error_is_raised_for_bad_request() -> None:
 )
 def test_parse_duration(text: str, seconds: int) -> None:
     assert twitch.parse_duration(text) == seconds
+
+
+def _clip(index: int, **changes: object) -> dict[str, object]:
+    # the shape of a real Get Clips row (2026-11-17), viewer and broadcaster names changed
+    return {
+        "id": f"Slug{index}",
+        "url": f"https://www.twitch.tv/streamer/clip/Slug{index}",
+        "embed_url": f"https://clips.twitch.tv/embed?clip=Slug{index}",
+        "broadcaster_id": "b1",
+        "broadcaster_name": "Streamer",
+        "creator_id": "v1",
+        "creator_name": "SomeViewer",
+        "video_id": "2372168353",
+        "game_id": "32982",
+        "language": "en",
+        "title": "he did not have a parachute",
+        "view_count": 1800 - index,
+        "created_at": "2026-11-17T10:00:00Z",
+        "thumbnail_url": "https://example.test/t.jpg",
+        "duration": 45.1,
+        "vod_offset": 8506,
+        "is_featured": False,
+        **changes,
+    }
+
+
+@respx.mock
+def test_get_clips_sends_the_window_and_paginates() -> None:
+    respx.post(twitch.TOKEN_URL).mock(return_value=httpx.Response(200, json=TOKEN))
+    pages = [
+        {"data": [_clip(i) for i in range(100)], "pagination": {"cursor": "c1"}},
+        {"data": [_clip(99), *[_clip(i) for i in range(100, 130)]], "pagination": {}},
+    ]
+    route = respx.get(f"{twitch.API_BASE}/clips").mock(
+        side_effect=[httpx.Response(200, json=page) for page in pages]
+    )
+    start = datetime(2026, 11, 16, 12, 0, 30, tzinfo=UTC)
+    end = datetime(2026, 11, 17, 14, 0, tzinfo=timezone(timedelta(hours=2)))
+    clips = _client().get_clips("32982", start, end, max_items=150)
+
+    assert len(clips) == 130 and len({clip.id for clip in clips}) == 130
+    first, second = (call.request.url.params for call in route.calls)
+    assert first["game_id"] == "32982" and first["first"] == "100" and "after" not in first
+    assert first["started_at"] == "2026-11-16T12:00:30Z"
+    assert first["ended_at"] == "2026-11-17T12:00:00Z"  # sent in UTC
+    assert "is_featured" not in first  # omitted: featured and other clips alike
+    assert second["after"] == "c1" and second["first"] == "50"
+    top = clips[0]
+    assert (top.id, top.view_count, top.duration_s) == ("Slug0", 1800, 45.1)
+    assert (top.broadcaster_id, top.broadcaster_name, top.creator_name) == ("b1", "Streamer", "SomeViewer")
+    assert (top.video_id, top.vod_offset_s) == ("2372168353", 8506.0)
+    assert top.created_at == datetime(2026, 11, 17, 10, 0, tzinfo=UTC) and top.language == "en"
+    assert top.url.endswith("/clip/Slug0") and top.is_featured is False
+
+
+@respx.mock
+def test_get_clips_without_end_and_with_the_featured_filter() -> None:
+    respx.post(twitch.TOKEN_URL).mock(return_value=httpx.Response(200, json=TOKEN))
+    rows = [_clip(1, video_id="", vod_offset=None, is_featured=True), _clip(2, vod_offset=None)]
+    route = respx.get(f"{twitch.API_BASE}/clips").mock(
+        return_value=httpx.Response(200, json={"data": rows, "pagination": {}})
+    )
+    clips = _client().get_clips("32982", datetime(2026, 11, 16, tzinfo=UTC), is_featured=True, max_items=20)
+    params = route.calls[0].request.url.params
+    assert "ended_at" not in params and params["is_featured"] == "true" and params["first"] == "20"
+    # the broadcast's video is gone, or its offset is not written yet: no position in the broadcast
+    assert (clips[0].video_id, clips[0].vod_offset_s, clips[0].is_featured) == (None, None, True)
+    assert (clips[1].video_id, clips[1].vod_offset_s) == ("2372168353", None)
+
+
+@respx.mock
+def test_get_clips_empty_and_unknown_game() -> None:
+    respx.post(twitch.TOKEN_URL).mock(return_value=httpx.Response(200, json=TOKEN))
+    route = respx.get(f"{twitch.API_BASE}/clips").mock(
+        side_effect=[
+            httpx.Response(200, json={"data": [], "pagination": {}}),
+            httpx.Response(404, json={"error": "Not Found", "status": 404, "message": "game not found"}),
+        ]
+    )
+    start = datetime(2026, 11, 16, tzinfo=UTC)
+    assert _client().get_clips("32982", start) == []
+    with pytest.raises(ApiError):
+        _client().get_clips("0", start)
+    assert route.call_count == 2
