@@ -34,6 +34,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import IO, Final, Literal
 
+from sixstars.chat.net import proxy_refusal, redact_proxy
 from sixstars.live import buffer
 from sixstars.logging import get_logger
 from sixstars.vod.ytdlp import BLOCKED_MARKERS, normalise
@@ -125,6 +126,11 @@ def classify_failure(output: str, *, had_data: bool) -> Failure:
     """
     text = normalise(output)
     detail = last_error_line(output)
+    refusal = proxy_refusal(output)
+    if refusal is not None and (refusal.status is not None or not had_data):
+        # The proxy itself refused (or was unreachable before any data came): the platform's blocked
+        # state, not a crash. A proxy connection lost in the middle of a recording stays `network`.
+        return Failure("blocked", refusal.described)
     if any(marker in text for marker in LIVE_BLOCKED_MARKERS):
         # Name the refusal itself, not the "no playable streams" line streamlink prints after it.
         refusals = [
@@ -259,8 +265,8 @@ def ad_state(line: str) -> bool | None:
 
 
 def scrub(text: str, proxy: str | None) -> str:
-    """Remove the proxy URL (it embeds credentials) from text that will be logged or stored."""
-    return text.replace(proxy, "<proxy>") if proxy else text
+    """Remove the proxy URL and any credentials inside a URL from text that will be logged or stored."""
+    return redact_proxy(text, proxy)
 
 
 class _Tail:

@@ -16,7 +16,7 @@ from sixstars import config, db, jobs, settings, usage
 from sixstars.ai import calls
 from sixstars.ai.calls import BudgetExceededError
 from sixstars.chat import synthetic, twitch_replay
-from sixstars.chat.models import ReplayChat
+from sixstars.chat.models import ChatSourceError, ReplayChat
 from sixstars.clients.anthropic_client import InvalidModelOutput
 from sixstars.clients.fakes import FakeAnthropicClient
 from sixstars.factory import tools
@@ -672,6 +672,144 @@ def test_windows_refused_with_403_and_none_through_count_as_a_block(lane: Lane) 
     outcome = lane.run_next()
     assert outcome.status == "deferred" and outcome.kind == "download_blocked"
     assert video_row(video_id)["status"] == "new"
+
+
+# ── the proxy itself refuses ─────────────────────────────────
+
+PROXY = "http://brd-customer-hl_1-zone-res:s3cr3tpass@brd.superproxy.io:33335"
+PROXY_407 = (
+    "ERROR: [youtube] vodtest0001: Unable to download API page: ('Unable to connect to proxy', "
+    "OSError('Tunnel connection failed: 407 Proxy Authentication Required'))"
+)
+
+
+def use_proxy(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("PROXY_URL", PROXY)
+    config.env.cache_clear()
+
+
+def test_a_proxy_that_refuses_parks_the_video_and_never_fails_it(
+    lane: Lane, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A paid proxy without balance (or suspended, or with wrong credentials) answers 407 on the tunnel.
+    The video waits like under the bot check; it is not retried three times and failed for good."""
+    use_proxy(monkeypatch)
+    video_id = lane.video()
+    lane.ytdlp.section_results = [(1, "", f"{PROXY_407} (proxy {PROXY})")] * 20
+    settings.set("vod.confirm_with_captions", False)
+    jobs.enqueue(
+        "normal", "vod.process", {"video_id": video_id}, dedupe_key=f"vod:{video_id}", max_attempts=1
+    )
+
+    outcome = lane.run_next()  # the last attempt of this job: without the fix the video would be closed
+
+    assert outcome.status == "deferred" and outcome.kind == "download_blocked"
+    assert outcome.run_after == NOW + timedelta(seconds=1800)  # the existing blocked back-off
+    video = video_row(video_id)
+    assert video["status"] == "new"  # waiting, not failed
+    assert video["skip_reason"] == "download_blocked: proxy refused: 407 Proxy Authentication Required"
+    assert video_events(video_id) == ["video.processing", "video.blocked"]
+    assert any("--proxy" in command for command in lane.ytdlp.commands)
+    # The same work is queued again as a fresh job: no attempt is used up.
+    again = queued("vod.process")
+    assert len(again) == 1 and again[0]["attempts"] == 0 and again[0]["dedupe_key"] == f"vod:{video_id}:again"
+    assert again[0]["run_after"] == NOW + timedelta(seconds=1800) and again[0]["max_attempts"] == 1
+    assert render_jobs() == [] and {row["status"] for row in spikes(video_id)} == {"confirmed"}
+    # Discovery sees the platform as blocked.
+    record = settings.get(health.STATE_KEY)["youtube"]
+    assert record["blocks"] == 1 and record["error"] == "proxy refused: 407 Proxy Authentication Required"
+    assert health.blocked(health.load(), NOW, 7200) == {"youtube": NOW}
+    # One warn that says what is wrong and where the fix is.
+    outbox = db.fetch_all("select severity, title, body from notify_outbox")
+    assert len(outbox) == 1
+    assert (outbox[0]["severity"], outbox[0]["title"]) == ("warn", process.PROXY_TITLE)
+    body = outbox[0]["body"]
+    assert "407 Proxy Authentication Required" in body and "1 video(s) are waiting" in body
+    assert "proxy account (balance, credentials" in body and "not cookies" in body
+    assert "YOUTUBE_COOKIES_FILE" not in body
+
+    # It stays refused for longer than a job has attempts: still waiting, still one message per hour.
+    for _ in range(4):
+        age_block_markers("31 minutes")
+        lane.ytdlp.section_results = [(1, "", PROXY_407)] * 20
+        make_due()
+        assert lane.run_next().status == "deferred"
+    assert video_row(video_id)["status"] == "new"
+    assert "video.failed" not in video_events(video_id) and "video.retry" not in video_events(video_id)
+    assert [job["attempts"] for job in queued("vod.process")] == [0]
+    assert settings.get(health.STATE_KEY)["youtube"]["blocks"] == 5
+    assert all(row["title"] == process.PROXY_TITLE for row in db.fetch_all("select title from notify_outbox"))
+
+    # The credentials of the proxy URL are nowhere: not in the video, the events, the state, the messages.
+    stored = json.dumps(
+        [
+            db.fetch_all("select skip_reason from videos"),
+            db.fetch_all("select type, message, data from events"),
+            db.fetch_all("select title, body from notify_outbox"),
+            db.fetch_all("select payload, last_error from jobs"),
+            settings.get(health.STATE_KEY),
+        ],
+        default=str,
+    )
+    assert "s3cr3tpass" not in stored and "brd-customer" not in stored
+
+    # The balance is topped up: the backlog drains by itself and the record of the block goes.
+    age_block_markers("2 hours")
+    lane.ytdlp.section_results = []
+    make_due()
+    outcome = lane.run_next()
+    assert outcome.status == "done" and outcome.queued == 2
+    assert video_row(video_id)["status"] == "done" and settings.get(health.STATE_KEY) == {}
+
+
+def test_a_proxy_that_refuses_the_chat_replay_parks_the_video_too(
+    lane: Lane, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    use_proxy(monkeypatch)
+    video_id = lane.video()
+    deps = lane.deps()
+
+    def refused(platform: str, source_id: str, raw: Path | None) -> ReplayChat | None:
+        raise ChatSourceError(
+            f"yt-dlp failed for YouTube video {source_id} (exit code 1): "
+            f"{PROXY_407.replace('407 Proxy Authentication Required', '402 Payment Required')}"
+        )
+
+    deps.chat_downloader = refused
+    monkeypatch.setattr(lane, "deps", lambda: deps)
+    jobs.enqueue(
+        "normal", "vod.process", {"video_id": video_id}, dedupe_key=f"vod:{video_id}", max_attempts=1
+    )
+
+    outcome = lane.run_next()
+
+    assert outcome.status == "deferred" and outcome.kind == "download_blocked"
+    video = video_row(video_id)
+    assert video["status"] == "new"
+    assert video["skip_reason"] == "download_blocked: proxy refused: 402 Payment Required"
+    assert lane.claude.calls == [] and lane.ytdlp.commands == []  # nothing was spent
+    assert [job["attempts"] for job in queued("vod.process")] == [0]
+    outbox = db.fetch_all("select title, body from notify_outbox")
+    assert [row["title"] for row in outbox] == [process.PROXY_TITLE]
+    assert "402 Payment Required" in outbox[0]["body"]
+
+
+def test_a_chat_error_that_is_not_the_proxy_is_still_an_error(
+    lane: Lane, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    video_id = lane.video()
+    deps = lane.deps()
+
+    def broken(platform: str, source_id: str, raw: Path | None) -> ReplayChat | None:
+        raise ChatSourceError("YouTube chat endpoint get_live_chat_replay returned HTTP 500")
+
+    deps.chat_downloader = broken
+    monkeypatch.setattr(lane, "deps", lambda: deps)
+    lane.enqueue(video_id)
+    with pytest.raises(ChatSourceError):
+        lane.run_next()
+    assert video_events(video_id) == ["video.processing", "video.retry"]
+    assert settings.get(health.STATE_KEY, None) in (None, {})
 
 
 # ── budgets, caps and the emergency stop ─────────────────────
