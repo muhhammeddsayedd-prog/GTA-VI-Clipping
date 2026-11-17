@@ -25,6 +25,7 @@ STORAGE_STUB = """
 create schema if not exists storage;
 create table if not exists storage.buckets (id text primary key, name text, public bool);
 """
+LAST_BOOTSTRAP_MIGRATION = "0002"
 FORBIDDEN_HOST_PARTS = ("supabase.co", "supabase.com", "supabase.net")
 MUTABLE_TABLES = "jobs, events, notify_outbox, heartbeats, api_usage"
 
@@ -44,9 +45,13 @@ def settings_snapshot(test_database_url: str) -> list[tuple[Any, ...]]:
     """Apply the migrations if needed and return the seeded `settings` rows."""
     with psycopg.connect(test_database_url, autocommit=True) as conn:
         exists = conn.execute("select to_regclass('public.settings')").fetchone()
-        if exists is None or exists[0] is None:
+        fresh = exists is None or exists[0] is None
+        if fresh:
             conn.execute(STORAGE_STUB)
-            for path in sorted(MIGRATIONS_DIR.glob("*.sql")):
+        for path in sorted(MIGRATIONS_DIR.glob("*.sql")):
+            # 0001 and 0002 create and seed the schema once. Every later migration must be idempotent
+            # and is applied on each run, so a database migrated by an older checkout catches up.
+            if fresh or path.name[:4] > LAST_BOOTSTRAP_MIGRATION:
                 conn.execute(path.read_bytes())
         return conn.execute("select key, value, description from settings").fetchall()
 
