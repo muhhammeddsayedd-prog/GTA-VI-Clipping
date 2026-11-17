@@ -8,6 +8,7 @@ import pytest
 from sixstars.ai.schemas import ClipWriting
 from sixstars.factory import pipeline
 from sixstars.factory.pipeline import RenderInput
+from sixstars.factory.window import ClipWindow
 from sixstars.viewer_clips import process
 from sixstars.viewer_clips.store import ViewerClip
 from sixstars.vod import ytdlp
@@ -78,10 +79,21 @@ def test_the_render_input_credits_the_broadcaster_and_sits_in_the_broadcast() ->
     assert item.to_payload()["creator"] == "streamer0"
 
 
-def test_a_clip_longer_than_the_gate_allows_is_cut_to_the_maximum() -> None:
+def test_a_clip_longer_than_the_gate_allows_keeps_its_last_seconds() -> None:
     item = process.render_input(row(), Path("/d/source.mp4"), 75.0, max_len_s=60.0)
-    assert (item.window_start_s, item.window_end_s) == (0.0, 60.0)
-    assert item.pad_end_s == 75.0  # the clip writer still reads the whole clip
+    assert (item.window_start_s, item.window_end_s) == (15.0, 75.0)  # the moment is at the end
+    assert (item.pad_start_s, item.pad_end_s) == (0.0, 75.0)  # the clip writer still reads all of it
+
+
+def test_the_writer_does_not_trim_a_viewer_clip() -> None:
+    item = process.render_input(row(), Path("/d/source.mp4"), 60.0, max_len_s=60.0)
+    assert item.whole_window and RenderInput.from_payload(item.to_payload()).whole_window
+    assert RenderInput.from_payload({**item.to_payload(), "whole_window": None}).whole_window is False
+    # the writer wanted the first 20 seconds of a 60-second clip: its in and out points are dropped
+    cut = writing(reject=False, reject_reason=None, start_s=0.0, end_s=20.0)
+    kept = pipeline.keep_window(cut, ClipWindow(0.0, 60.0))
+    assert (kept.start_s, kept.end_s) == (0.0, 60.0)
+    assert (kept.hook, kept.title, kept.score) == (cut.hook, cut.title, cut.score)
 
 
 @pytest.mark.parametrize("changes", [{"vod_id": None, "vod_offset_s": None}, {"vod_offset_s": None}])

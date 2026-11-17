@@ -376,6 +376,7 @@ def test_the_job_downloads_renders_gates_and_cleans_up(monkeypatch: pytest.Monke
     # credited to the broadcaster, stored under the broadcast video on its clock, on the hourly lane
     assert (item.creator, item.lane, item.clip_id) == ("user0", "hourly", row_id)
     assert (item.source_id, item.source_offset_s, item.window_end_s) == ("video0", 600.0, 30.0)
+    assert item.whole_window and item.moment_chosen is False  # the switch is off by default
     clip = rows("select * from clips where id = %s", row_id)[0]
     assert (clip["source_platform"], clip["source_id"], clip["lane"]) == ("twitch", "video0", "hourly")
     assert (float(clip["start_s"]), float(clip["end_s"])) == (600.0, 630.0)

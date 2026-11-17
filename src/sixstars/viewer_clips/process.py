@@ -7,10 +7,11 @@ Steps:
    `vod.stop_retry_s` later, which is not a failure), the broadcaster's tier still allows clipping.
 2. Download the clip's MP4 with yt-dlp through the VOD lane's wrapper (`vod.ytdlp.run`: timeout,
    retries, failure kinds). A Twitch clip is a short public file: no proxy and no cookies are used.
-3. Render with `factory.pipeline.render_clip`. The window is the whole clip, or its first
-   `gate.hourly.max_len` seconds when it is longer; the clip writer applies the usual trim rules. The
-   clip row's id is the `viewer_clips` row's id, so a retried job finds the same row and a finished clip
-   is never rendered twice.
+3. Render with `factory.pipeline.render_clip`. The window is the whole clip, or its last
+   `gate.hourly.max_len` seconds when it is longer; the clip writer's own in and out points are not
+   applied, only the usual snap to the words and the length limits. The clip row's id is the
+   `viewer_clips` row's id, so a retried job finds the same row and a finished clip is never rendered
+   twice.
 4. The gate judges the clip (`gate.after_render`), exactly as after a `clip.render` job.
 5. The downloaded file is deleted, whatever happened.
 
@@ -132,16 +133,20 @@ def render_input(
 ) -> RenderInput:
     """The factory input of a downloaded clip. Pure.
 
-    The credit (`creator`) is the broadcaster's handle. The proposed window is the whole file, cut to
-    `max_len_s` when it is longer; the whole file is offered to the clip writer. No chat and no spike
+    The credit (`creator`) is the broadcaster's handle. The window is the whole file and the clip
+    writer's own in and out points are not applied (`whole_window`): measured on real clips, the writer
+    cut a 60-second clip down to its first 20 seconds, and the moment of a Twitch clip is at its end
+    (a viewer presses "clip" just after it happened). For the same reason a file longer than
+    `max_len_s` keeps its last `max_len_s` seconds. The whole file is still read by the writer for the
+    hook, the title and the caption. No chat and no spike
     verdict: viewers chose the moment. `moment_chosen` (the setting `twitch_clips.render_without_moment`)
     passes that on to the factory: see `RenderInput.moment_chosen`.
     """
     in_broadcast = row.vod_id is not None and row.vod_offset_s is not None
     return RenderInput(
         source_path=source_path,
-        window_start_s=0.0,
-        window_end_s=min(file_duration_s, max_len_s),
+        window_start_s=max(0.0, file_duration_s - max_len_s),
+        window_end_s=file_duration_s,
         creator=row.creator_handle,
         creator_id=row.creator_id,
         platform=store.PLATFORM,
@@ -156,6 +161,7 @@ def render_input(
         pad_end_s=file_duration_s,
         source_offset_s=float(row.vod_offset_s or 0.0) if in_broadcast else 0.0,
         moment_chosen=moment_chosen,
+        whole_window=True,
     )
 
 

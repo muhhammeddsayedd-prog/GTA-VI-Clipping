@@ -89,6 +89,10 @@ class RenderInput:
     clip, decision D110): the clip writer saying "there is no moment here" from the transcript alone then
     does not stop the render, and the gate judges the rendered clip. A reject for a safety flag or a
     spoiler always stands (`reject_stands`).
+
+    `whole_window` is for the same kind of clip: the proposed window is the clip as its maker cut it, so
+    the clip writer's in and out points are not applied (`keep_window`). The cut is still moved off the
+    words and held to the length limits by the usual trim and snap rules.
     """
 
     source_path: Path
@@ -113,6 +117,7 @@ class RenderInput:
     chat: tuple[ChatLine, ...] = ()
     upload: bool = False
     moment_chosen: bool = False
+    whole_window: bool = False
 
     def __post_init__(self) -> None:
         if self.lane not in LANES:
@@ -151,6 +156,7 @@ class RenderInput:
             "chat": [{"t_s": line.t_s, "text": line.text, "user": line.user} for line in self.chat],
             "upload": self.upload,
             "moment_chosen": self.moment_chosen,
+            "whole_window": self.whole_window,
         }
 
     @classmethod
@@ -201,6 +207,7 @@ class RenderInput:
             ),
             upload=bool(payload.get("upload", False)),
             moment_chosen=payload.get("moment_chosen") is True,
+            whole_window=payload.get("whole_window") is True,
         )
 
 
@@ -409,6 +416,12 @@ def reject_stands(writing: ClipWriting, *, moment_chosen: bool) -> bool:
     return bool(writing.safety.flagged()) or writing.spoiler
 
 
+def keep_window(writing: ClipWriting, proposed: ClipWindow) -> ClipWriting:
+    """The writing with the proposed window in place of the writer's own in and out points
+    (`RenderInput.whole_window`). Everything else the writer wrote is kept. Pure."""
+    return writing.model_copy(update={"start_s": proposed.start_s, "end_s": proposed.end_s})
+
+
 def transcription_modes(mode: str) -> tuple[Mode, ...]:
     """Local first for a normal render, hosted first for an express one; the other is the fallback."""
     return ("hosted", "local") if mode == "express" else ("local", "hosted")
@@ -513,6 +526,8 @@ def produce(
     if writing.reject:
         get_logger("factory").info("clip_writer_reject_overruled", reason=writing.reject_reason)
 
+    if item.whole_window:
+        writing = keep_window(writing, writer_input.proposed)
     window_w = writer.final_window(writing, writer_input)
     window = ClipWindow(window_w.start_s + offset, window_w.end_s + offset)
     clip_text = clip_lines(lines, window_w)
