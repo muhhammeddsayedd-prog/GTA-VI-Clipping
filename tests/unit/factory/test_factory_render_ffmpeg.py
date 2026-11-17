@@ -219,17 +219,20 @@ def test_render_layout_a(render_clip: RenderClip, ffmpeg_tools: tuple[str, str],
     assert tone_power(ffmpeg, output, 10.4, 0.8, 440) < outside_440 / 1e6
 
     early = frame_at(ffmpeg, output, 1.0, tmp_path / "a_1s.png")
-    assert close_to(early.getpixel((20, 1149)), ACCENT_RGB), "seam line missing"
-    assert close_to(early.getpixel((540, 325)), (255, 255, 255)), (
-        "hook box missing (moved below the LIVE badge)"
-    )
+    # Layout A: the seam is the white track of the progress bar, and the accent bar grows along it. The
+    # probes sit at the frame edges, clear of the caption drawn over the middle of the seam.
+    white = (255, 255, 255)
+    assert close_to(early.getpixel((20, 1149)), ACCENT_RGB), "progress bar missing at 10%"
+    assert close_to(early.getpixel((1050, 1149)), white), "seam track missing"
+    assert close_to(early.getpixel((540, 325)), white), "hook box missing (moved below the LIVE badge)"
     assert close_to(early.getpixel((60, 250)), (232, 33, 43), 50), "LIVE badge missing"
-    assert close_to(early.getpixel((50, 1503)), ACCENT_RGB), "progress bar missing at 10%"
-    assert not close_to(early.getpixel((400, 1503)), ACCENT_RGB), "progress bar too long at 10%"
+    assert not close_to(early.getpixel((50, 1503)), ACCENT_RGB), "progress bar drawn across the facecam"
     middle = frame_at(ffmpeg, output, 5.0, tmp_path / "a_5s.png")
-    assert close_to(middle.getpixel((500, 1503)), ACCENT_RGB) and not close_to(
-        middle.getpixel((700, 1503)), ACCENT_RGB
+    assert close_to(middle.getpixel((60, 1149)), ACCENT_RGB) and close_to(
+        middle.getpixel((1050, 1149)), white
     )
+    late = frame_at(ffmpeg, output, 9.8, tmp_path / "a_late.png")
+    assert close_to(late.getpixel((1040, 1149)), ACCENT_RGB), "progress bar did not reach the end"
     assert not close_to(middle.getpixel((540, 325)), (255, 255, 255)), (
         "hook box still shown after hook_seconds"
     )

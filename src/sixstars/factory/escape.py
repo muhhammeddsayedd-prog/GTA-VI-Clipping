@@ -19,6 +19,11 @@ _NEWLINES = re.compile("\r\n|[\r\n\v\f\u0085  ]")
 _HEX_COLOR = re.compile(r"#?([0-9a-fA-F]{6})")
 _WINDOWS_PATH = re.compile(r"[A-Za-z]:[\\/]|\\\\")
 _GRAPH_SPECIALS = frozenset("\\',;[]")
+# The text font has no emoji. libass would pick a fallback from the system fonts, which a server image does
+# not have, so emoji runs are switched to the bundled emoji font by name (`assets/fonts/NotoEmoji.ttf`).
+EMOJI_FONT = "Noto Emoji"
+_EMOJI = "\U0001f000-\U0001faff⌀-⏿☀-➿⬀-⯿"
+_EMOJI_RUN = re.compile(f"[{_EMOJI}][{_EMOJI}‍️]*")
 
 
 def _strip_controls(text: str) -> str:
@@ -41,6 +46,16 @@ def ass_text(text: str, *, keep_newlines: bool = False) -> str:
     parts = [_escape_ass_line(part) for part in _NEWLINES.split(text)]
     parts = [part for part in parts if part]
     return ("\\N" if keep_newlines else " ").join(parts)
+
+
+def ass_text_emoji(text: str, *, keep_newlines: bool = False, emoji_font: str = EMOJI_FONT) -> str:
+    """`ass_text`, with every run of emoji drawn in `emoji_font`.
+
+    The font is switched with an `fn` override tag; the tag with no name returns to the style's font.
+    """
+    escaped = ass_text(text, keep_newlines=keep_newlines)
+    font = ass_field(emoji_font)
+    return _EMOJI_RUN.sub(lambda match: "{\\fn" + font + "}" + match.group(0) + "{\\fn}", escaped)
 
 
 def _escape_ass_line(line: str) -> str:

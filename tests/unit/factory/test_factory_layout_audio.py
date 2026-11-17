@@ -117,8 +117,8 @@ def test_layout_b_chains() -> None:
     assert chains == [
         "[0:v]fps=fps=30,split=2[v_bg_in][v_game_in]",
         "[v_bg_in]scale=w=270:h=480:force_original_aspect_ratio=increase,crop=w=270:h=480,"
-        "boxblur=luma_radius=8:luma_power=3,scale=w=1080:h=1920:flags=bilinear,"
-        "drawbox=color=black@0.3:thickness=fill,setsar=1[v_bg]",
+        "boxblur=luma_radius=8:luma_power=3,drawbox=color=black@0.3:thickness=fill,"
+        "scale=w=1080:h=1920:flags=bilinear,setsar=1[v_bg]",
         "[v_game_in]crop=w=864:h=1080:x=528:y=0,scale=w=1080:h=1350,setsar=1[v_game]",
         "[v_bg][v_game]overlay=x=0:y=285[v_layout]",
     ]
@@ -220,6 +220,8 @@ PREPARE = (
     "aresample=out_sample_rate=48000,aformat=sample_fmts=fltp:channel_layouts=stereo,apad=whole_dur=10,"
     "atrim=duration=10,asetpts=PTS-STARTPTS"
 )
+# After loudnorm the same steps run again, with a limiter at the true-peak target (-1.5 dB) before the pad.
+FINISH = PREPARE.replace(",apad", ",alimiter=limit=0.841:attack=5:release=50:level=false,apad")
 
 
 def test_audio_chain_plain() -> None:
@@ -227,7 +229,7 @@ def test_audio_chain_plain() -> None:
     assert chains == [
         f"[0:a]{PREPARE}[a_src]",
         "[a_src]anull[a_bleep]",
-        f"[a_bleep]loudnorm=I=-14:TP=-1.5:LRA=11,{PREPARE}[a_main]",
+        f"[a_bleep]loudnorm=I=-14:TP=-1.5:LRA=11,{FINISH}[a_main]",
         "anullsrc=sample_rate=48000:channel_layout=stereo:duration=1.5,aformat=sample_fmts=fltp:channel_layouts=stereo[a_end]",
         "[a_main][a_end]concat=n=2:v=0:a=1[aout]",
     ]
@@ -253,7 +255,7 @@ def test_audio_chain_with_everything() -> None:
         "[a_sfx_p1_in]adelay=delays=2400:all=1[a_sfx_p1]",
         "[a_bleep][a_sfx_p0][a_sfx_p1]amix=inputs=3:duration=first:normalize=0[a_sfx]",
     ]
-    assert chains[-1] == f"[a_sfx]loudnorm=I=-14:TP=-1.5:LRA=11,{PREPARE}[aout]"
+    assert chains[-1] == f"[a_sfx]loudnorm=I=-14:TP=-1.5:LRA=11,{FINISH}[aout]"
 
 
 def test_audio_chain_for_a_source_without_audio() -> None:

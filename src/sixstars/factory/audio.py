@@ -104,6 +104,16 @@ def loudnorm_filter(
     return render_filter("loudnorm", options)
 
 
+def peak_limiter_filter() -> str:
+    """A limiter at the loudnorm true-peak target. In its linear mode (second pass) loudnorm lets short
+    peaks through, and the keyword pops are such peaks; this keeps the finished audio under the target."""
+    limit = 10 ** (LOUDNORM_TRUE_PEAK_DB / 20)
+    return render_filter(
+        "alimiter",
+        [("limit", f"{limit:.3f}"), ("attack", "5"), ("release", "50"), ("level", "false")],
+    )
+
+
 def parse_loudnorm_report(stderr: str) -> LoudnormMeasurement | None:
     """Reads the JSON block `loudnorm=print_format=json` prints. None when absent or not finite (silence)."""
     end = stderr.rfind("}")
@@ -175,6 +185,7 @@ def build_audio_filters(
         loudnorm_filter(target_lufs, measured, report=report),
         render_filter("aresample", [("out_sample_rate", str(SAMPLE_RATE))]),
         fmt,
+        *([] if report else [peak_limiter_filter()]),
         render_filter("apad", [("whole_dur", length)]),
         render_filter("atrim", [("duration", length)]),
         "asetpts=PTS-STARTPTS",

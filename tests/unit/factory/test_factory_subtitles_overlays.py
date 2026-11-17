@@ -37,6 +37,9 @@ from sixstars.factory.subtitles import (
     keyword_flags,
     safe_zone,
 )
+from sixstars.factory.subtitles import (
+    WORD_GAP as GAP,
+)
 from sixstars.factory.textfit import estimate_em_text_width, estimate_text_width
 
 FIXTURES = Path(__file__).resolve().parents[2] / "fixtures" / "factory"
@@ -115,8 +118,9 @@ def test_current_word_is_highlighted_in_the_accent_colour(
 ) -> None:
     events = captions(build_ass(clip_lines_10s, layout="A", params=params, duration_s=10.0))
     prefix = "{\\an2\\pos(540,1189)}"
-    assert events[3][4] == f"{prefix}{{\\1c{ACCENT}}}expect{{\\1c{WHITE}}} that!"
-    assert events[4][4] == f"{prefix}expect {{\\1c{ACCENT}}}that!{{\\1c{WHITE}}}"
+    assert GAP == "{\\fsp10} {\\fsp0}"
+    assert events[3][4] == f"{prefix}{{\\1c{ACCENT}}}expect{{\\1c{WHITE}}}{GAP}that!"
+    assert events[4][4] == f"{prefix}expect{GAP}{{\\1c{ACCENT}}}that!{{\\1c{WHITE}}}"
 
 
 def test_keyword_pops_when_spoken_then_stays_accent(
@@ -129,11 +133,11 @@ def test_keyword_pops_when_spoken_then_stays_accent(
     pop = f"{{\\1c{ACCENT}{KEYWORD_POP}}}"
     reset = f"{{\\1c{WHITE}\\fscx100\\fscy100}}"
     # line 0 "He did NOT": the keyword is white until spoken
-    assert events[0][4].endswith(f"{{\\1c{ACCENT}}}He{{\\1c{WHITE}}} did NOT")
-    assert events[2][4].endswith(f"He did {pop}NOT{reset}")
+    assert events[0][4].endswith(f"{{\\1c{ACCENT}}}He{{\\1c{WHITE}}}{GAP}did{GAP}NOT")
+    assert events[2][4].endswith(f"He{GAP}did{GAP}{pop}NOT{reset}")
     # line 2 "No way," is a two-word keyword: "No" pops, then stays accent while "way," pops
-    assert events[5][4].endswith(f"{pop}No{reset} way,")
-    assert events[6][4].endswith(f"{{\\1c{ACCENT}}}No{{\\1c{WHITE}}} {pop}way,{reset}")
+    assert events[5][4].endswith(f"{pop}No{reset}{GAP}way,")
+    assert events[6][4].endswith(f"{{\\1c{ACCENT}}}No{{\\1c{WHITE}}}{GAP}{pop}way,{reset}")
     # lines without keywords never pop
     assert KEYWORD_POP not in events[3][4]
 
@@ -261,7 +265,9 @@ def test_hostile_text_cannot_inject_tags_or_lines(params: FactoryParams) -> None
         blocks = re.findall(r"(?<!\\)\{([^}]*)\}", text)
         for block in blocks:  # only tags written by the builder
             assert re.fullmatch(
-                r"(\\(an\d|pos\(\d+,\d+\)|1c&H[0-9A-F]{6}&|4c&H[0-9A-F]{6}&|4a&H[0-9A-F]{2}&|fs\d+|fscx\d+|fscy\d+|t\(\d+,\d+,\\fscx\d+\\fscy\d+\)|fad\(\d+,\d+\)|p[01]|bord\d|shad\d|q2))+",
+                r"(\\(an\d|pos\(\d+,\d+\)|1c&H[0-9A-F]{6}&|4c&H[0-9A-F]{6}&|4a&H[0-9A-F]{2}&|fs\d+|fsp\d+"
+                r"|fscx\d+|fscy\d+|t\(\d+,\d+,\\fscx\d+\\fscy\d+\)|fad\(\d+,\d+\)|p[01]|bord\d|shad\d|q2"
+                r"|fn(Noto Emoji)?))+",
                 block,
             ), block
     assert f"\\{{\\{WORD_JOINER}an8\\}}top" in ass
@@ -355,12 +361,16 @@ def test_rounded_rect_path() -> None:
 
 
 def test_badge_and_credit_events() -> None:
-    shape, label = badge_events(end_s=10.0, top=240)
+    shape, dot, label = badge_events(end_s=10.0, top=240)
     assert shape.startswith("Dialogue: 3,0:00:00.00,0:00:10.00,Badge,,0,0,0,,{\\an7\\pos(40,240)\\p1")
     assert "\\1c&H2B21E8&" in shape
-    assert label.endswith("{\\an4\\pos(66,268)\\q2}● LIVE · JUST HAPPENED")
+    # the dot is a drawn circle (no font has to hold a glyph for it), vertically centred in the pill
+    assert "{\\an7\\pos(66,259)\\p1\\bord0\\shad0\\1c&HFFFFFF&}m 9 0" in dot and dot.endswith("{\\p0}")
+    assert label.endswith("{\\an4\\pos(96,268)\\q2}LIVE · JUST HAPPENED")
+    # the emoji is drawn in the bundled emoji font, then the style's font returns
     assert credit_events("@some_streamer", end_s=10.0, bottom=1091) == [
-        "Dialogue: 1,0:00:00.00,0:00:10.00,Credit,,0,0,0,,{\\an1\\pos(40,1091)\\q2}🎥 @some_streamer"
+        "Dialogue: 1,0:00:00.00,0:00:10.00,Credit,,0,0,0,,{\\an1\\pos(40,1091)\\q2}"
+        "{\\fnNoto Emoji}🎥{\\fn} @some_streamer"
     ]
     assert credit_events("  ", end_s=10.0, bottom=1091) == []
 

@@ -83,7 +83,8 @@ def test_video_encoder_args(
 ) -> None:
     params = params_factory(use_nvenc=use_nvenc)
     args = video_encoder_args(params, mode, nvenc_available=nvenc_available)  # type: ignore[arg-type]
-    assert args == [*expected, "-profile:v", "high", "-pix_fmt", "yuv420p", "-r", "30"]
+    rate_cap = ["-maxrate", "6M", "-bufsize", "12M"]
+    assert args == [*expected, *rate_cap, "-profile:v", "high", "-pix_fmt", "yuv420p", "-r", "30"]
     assert uses_nvenc(params, mode, nvenc_available=nvenc_available) is (expected[1] == "h264_nvenc")  # type: ignore[arg-type]
 
 
@@ -128,6 +129,10 @@ def test_render_command_normal(spec_factory: SpecFactory) -> None:
         "veryfast",
         "-crf",
         "21",
+        "-maxrate",
+        "6M",
+        "-bufsize",
+        "12M",
         "-profile:v",
         "high",
         "-pix_fmt",
@@ -202,13 +207,15 @@ def test_filter_graph_snapshot(spec_factory: SpecFactory, layout: Layout, name: 
 
 def test_filter_graph_structure_layout_a(spec_factory: SpecFactory) -> None:
     chains = build_video_filters(spec_factory())
-    text_chain = next(chain for chain in chains if chain.startswith("[v_layout]"))
-    order = [text_chain.index(part) for part in ("drawbox=", "ass=filename=", "drawtext=text=@6starsclips")]
+    # the seam is the white track of the progress bar; the bar runs along it, under the text
+    assert "[v_layout]drawbox=x=0:y=1147:w=1080:h=6:color=0xFFFFFF:thickness=fill[v_seam]" in chains
+    assert any("[v_seam][v_progress_bar]overlay=x=-w+w*t/36:y=1146" in chain for chain in chains)
+    text_chain = next(chain for chain in chains if chain.startswith("[v_progress]"))
+    order = [text_chain.index(part) for part in ("ass=filename=", "drawtext=text=@6starsclips", "trim=")]
     assert order == sorted(order)
     assert "enable=gte(t\\,3)" in text_chain
     assert ":fontsdir=/app/assets/fonts," in text_chain
-    assert any("overlay=x=-w+w*t/36:y=1500" in chain for chain in chains)
-    assert "[v_progress]trim=duration=36,setpts=PTS-STARTPTS,setsar=1,format=yuv420p[v_main]" in chains
+    assert text_chain.endswith("trim=duration=36,setpts=PTS-STARTPTS,setsar=1,format=yuv420p[v_main]")
     assert chains[-1] == "[v_main][v_end]concat=n=2:v=1:a=0[vout]"
     assert any("6 Stars Moments #128" in chain for chain in chains)
 
