@@ -361,7 +361,8 @@ def transcribe_window(
         words = spread_words(english)
         translated = True
     punctuated = False
-    if punctuate_below > 0 and words and not translated and sentence_end_share(words) < punctuate_below:
+    needs_ends = not translated and is_english(original) and sentence_end_share(words) < punctuate_below
+    if punctuate_below > 0 and words and needs_ends:
         try:
             ends = calls.sentence_ends(
                 [word.text for word in words], lane=ai_lane, ref_id=ref_id, client=ai_client
