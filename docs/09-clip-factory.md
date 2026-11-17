@@ -1,0 +1,96 @@
+# 09 — Clip Factory
+
+Turns a source window into a finished 1080×1920 MP4. Jobs `clip.render` (normal) and `express.render` (express). Same code, different presets.
+
+## 1. Pipeline
+
+```
+source window (+context pad)
+  → transcribe (local faster-whisper for normal, hosted API for express) → words with timings
+  → translate to English if needed (P8)
+  → Claude clip writer (P2): trim, hook, title, caption, hashtags, keywords, topic, spoiler/safety, score
+  → music detection (PANNs) on the final window
+  → profanity detection on words
+  → facecam/gameplay boxes (cached per creator; P4 vision if missing)
+  → build subtitles (.ass) + overlays
+  → ffmpeg render
+  → loudness normalise
+  → quality gate (docs/10)
+  → upload to Storage, update clip row
+```
+
+## 2. Transcript
+
+- Normal: faster-whisper `medium` int8 on CPU, `word_timestamps=True`, `vad_filter=True`, language auto-detect.
+- Express: hosted Whisper (Groq first, OpenAI fallback) with word timestamps; send 16 kHz mono audio extracted with ffmpeg.
+- Output format (stored in `clips.transcript`):
+```json
+{"language":"en","words":[{"w":"no","s":12.34,"e":12.51},{"w":"way","s":12.51,"e":12.80}]}
+```
+Times are relative to the **window start** (context pad included; the writer's trim decides the final in/out points).
+
+- Non-English: P8 translates segment by segment; English words are spread evenly over each segment's time span.
+
+## 3. Layouts (1080×1920)
+
+**A — facecam found** (`creator_layouts.facecam_box` not null):
+| Region | Placement |
+|---|---|
+| Gameplay | Crop `gameplay_box` (default full frame minus facecam area if it's an overlay) to aspect 1080:1150, centre-weighted; scale to 1080×1150 at y = 0 |
+| Facecam | Crop `facecam_box`, crop-to-fill 1080×770, at y = 1150 |
+| Seam | 6 px accent-colour line at y = 1147 |
+
+**B — no facecam**:
+| Region | Placement |
+|---|---|
+| Background | Full source scaled to cover 1080×1920, `boxblur=30:3`, darkened 30% |
+| Gameplay | Crop source centre to 4:5, scale to 1080×1350 at y = 285 |
+
+### Facecam detection (P4)
+Grab one frame at the window middle; send to the writer model with vision; it returns facecam box (or null) and gameplay box in source pixels. Cache in `creator_layouts` for 7 days; re-detect if confidence < 0.6 or when the source resolution changes.
+
+## 4. Subtitles (.ass via libass)
+
+- Style file `assets/subtitles/style.ass.tmpl` generated from settings: font `factory.font` (Montserrat Black), size 78, white primary, black outline 6, shadow 3 (soft, 50% alpha), bold.
+- Lines of 2–4 words, max ~22 characters, broken at pauses > 0.35 s or punctuation.
+- Current word highlighted in `factory.accent_color` using per-word `\c` overrides with `\k`-style timing (one Dialogue event per word-state is simplest and most robust).
+- Keywords (from P2, 1–2 per line): accent colour + pop: `\t(0,80,\fscx118\fscy118)\t(80,160,\fscx100\fscy100)`.
+- Position: Layout A centre-x, y = 1150 (the seam); Layout B y = 1450. Never above `safe_top_px` (220) or below `1920 − safe_bottom_px` (1500).
+- Profanity masked: first letter + asterisks (`f***`).
+
+## 5. Overlays
+
+| Overlay | Spec |
+|---|---|
+| Hook | First `factory.hook_seconds` (3 s): white rounded box, black text, max 2 lines, y = 260–420, pop-in 150 ms |
+| LIVE badge | Spike-lane clips only: red pill "● LIVE · JUST HAPPENED", top-left at (40, 240), whole clip |
+| Credit | "🎥 @creator" small (34 px), white 85%, bottom of gameplay area, whole clip |
+| Watermark | `@6starsclips` 30 px, 60% opacity, top-right (1040 right-aligned, 240) after the hook ends |
+| Progress bar | 8 px accent bar at y = 1500 growing left→right over the clip |
+| Punchline zoom | Last 40% of the clip: slow zoom 100→108% on the gameplay region (`zoompan` or `scale`+`crop` with `t`) |
+| Keyword SFX | Short CC0 "pop" at each keyword time, −12 dB |
+| End card | `factory.end_card_s` (1.5 s): dark card, "6 STARS CLIPS", "Moments #<series_no>", "Follow for more" |
+
+## 6. Audio
+
+1. Bleep: for each profanity word, `volume=0` over `[s−0.05, e+0.05]` and mix a 1 kHz sine at −20 dB for the same span.
+2. Music: segments flagged as music (hourly clips under the limit) get `factory.music_duck_db` (−18 dB).
+3. Keyword SFX mixed in.
+4. `loudnorm=I=-14:TP=-1.5:LRA=11` two-pass for normal, single-pass for express.
+
+## 7. Encode
+
+- `libx264 -preset <preset> -crf <crf> -profile:v high -pix_fmt yuv420p -r 30 -movflags +faststart`, AAC 128 kb/s 48 kHz.
+- Express: `factory.preset_express`; if `factory.use_nvenc` and GPU present: `h264_nvenc -preset p4 -cq 23`.
+- Output ≤ 60 s, typically 8–25 MB.
+- Record `render_ms`.
+
+## 8. Music detection
+
+`panns-inference` AudioTagging on 1-second frames of the final window; a frame is music if the "Music" class probability > 0.5 or any of "Song", "Singing", "Rapping", "Pop music", "Hip hop music" > 0.4. `music_ratio = music frames / total`. Store per-frame flags to drive ducking.
+
+## 9. Files
+
+- Scratch: `$DATA_DIR/render/<clip_id>/` (deleted after upload).
+- Storage key: `clips/<env>/<yyyy>/<mm>/<dd>/<clip_id>.mp4`.
+- Keep a local copy in `$DATA_DIR/ready/<clip_id>.mp4` until posted (posting uploads the local file to Upload-Post).

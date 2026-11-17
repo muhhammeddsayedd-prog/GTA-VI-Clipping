@@ -1,0 +1,32 @@
+# One word or phrase per line, lowercase. Matched as whole words (and simple plurals/-ing/-ed forms).
+# Matches are bleeped in audio and masked in subtitles (first letter + asterisks).
+fuck
+fucking
+fucked
+fucker
+motherfucker
+shit
+shitty
+bullshit
+bitch
+bitches
+ass
+asshole
+dick
+dickhead
+pussy
+cunt
+bastard
+damn
+goddamn
+crap
+piss
+pissed
+slut
+whore
+twat
+wanker
+prick
+cock
+# Slurs: always bleeped, and a clip where a slur is the focus is rejected by the gate.
+# Add the standard slur list here before launch (kept out of this kit on purpose).
