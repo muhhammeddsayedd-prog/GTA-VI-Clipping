@@ -362,8 +362,7 @@ def handle_gate(job: jobs.Job) -> None:
 def run_pending(older_than_s: float = 0.0, *, deps: GateDeps | None = None) -> list[GateOutcome]:
     """Run the gate for every clip still in `gating` (recovery after a crash or a lost job)."""
     deps = deps or _deps
-    cutoff = deps.clock() - timedelta(seconds=older_than_s)
-    return [run_gate(clip_id, deps=deps) for clip_id in store.gating_clip_ids(cutoff)]
+    return [run_gate(clip_id, deps=deps) for clip_id in store.gating_clip_ids(older_than_s)]
 
 
 def install(job_types: tuple[str, ...] = (pipeline.JOB_CLIP_RENDER, pipeline.JOB_EXPRESS_RENDER)) -> None:

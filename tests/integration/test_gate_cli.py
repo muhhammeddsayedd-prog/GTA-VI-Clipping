@@ -95,7 +95,8 @@ def test_gate_check_file_measures_without_touching_clips(
 ) -> None:
     result = runner.invoke(app, ["gate", "check-file", str(good_video), "--duration", "21"])
     assert result.exit_code == 0, result.output
-    facts = json.loads(result.output.splitlines()[0])["file"]
+    measured = next(line for line in result.output.splitlines() if line.startswith('{"file"'))
+    facts = json.loads(measured)["file"]
     assert (facts["width"], facts["height"], facts["has_audio"]) == (1080, 1920, True)
     assert facts["longest_black_s"] == 0.0 and count("clips") == 0
     assert runner.invoke(app, ["gate", "check-file", "no-such-file.mp4"]).exit_code == 2

@@ -9,6 +9,7 @@ from gate_helpers import clean_visual, make_settings
 
 from sixstars import settings, usage
 from sixstars.ai.schemas import VisualVerdict
+from sixstars.clients.anthropic_client import InvalidModelOutput
 from sixstars.clients.fakes import FakeAnthropicClient
 from sixstars.gate import visual
 
@@ -86,6 +87,30 @@ def test_check_frames_asks_p5_with_the_clip_id(monkeypatch: pytest.MonkeyPatch) 
     assert findings == clean_visual(platform_logos=True, notes="TikTok logo")
     arguments = client.calls_to("complete_json")[0]
     assert arguments["images"] == 4 and arguments["ref_id"] == "clip-9"
+
+
+def test_an_unreadable_p5_reply_is_asked_again_then_raised(monkeypatch: pytest.MonkeyPatch) -> None:
+    values = {"ai.model_fast": "claude-haiku-5-5", "ai.daily_budget_usd": 25, "factory.watermark": "@x"}
+    values["env.target_game"] = "Grand Theft Auto V"
+    monkeypatch.setattr(settings, "_all", lambda: values)
+    monkeypatch.setattr(usage, "spent_today", lambda provider: 0.0)
+    clean = VisualVerdict(
+        other_watermark=False,
+        platform_logos=False,
+        menu_or_loading=False,
+        pause_or_brb_screen=False,
+        empty_facecam=False,
+        readable_subtitles=True,
+    )
+    invalid = InvalidModelOutput("p5_visual_check: reply is not valid")
+    recovering = FakeAnthropicClient({"p5_visual_check": [invalid, clean]})
+    assert visual.check_frames([_jpeg()], client=recovering) == clean_visual()
+    assert len(recovering.calls_to("complete_json")) == 2
+
+    broken = FakeAnthropicClient({"p5_visual_check": invalid})
+    with pytest.raises(InvalidModelOutput):
+        visual.check_frames([_jpeg()], client=broken)
+    assert len(broken.calls_to("complete_json")) == visual.P5_ATTEMPTS
 
 
 def _jpeg() -> bytes:

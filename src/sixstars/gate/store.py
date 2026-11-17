@@ -402,10 +402,12 @@ def reject_for_error(clip_id: str, error: str) -> bool:
     return bool(changed)
 
 
-def gating_clip_ids(older_than: datetime) -> list[str]:
-    """Clips still waiting for the gate that reached `gating` before `older_than`."""
+def gating_clip_ids(older_than_s: float = 0.0) -> list[str]:
+    """Clips still waiting for the gate whose row has not changed for `older_than_s` seconds (database
+    clock on both sides, so a clock difference between machines does not matter)."""
     rows = db.fetch_all(
-        "select id::text as id from clips where status = 'gating' and updated_at < %s order by created_at",
-        (older_than,),
+        "select id::text as id from clips where status = 'gating' "
+        "and updated_at <= now() - make_interval(secs => %s) order by created_at",
+        (max(0.0, older_than_s),),
     )
     return [str(row["id"]) for row in rows]

@@ -22,9 +22,10 @@ from pathlib import Path
 
 from sixstars.ai import calls
 from sixstars.ai.schemas import VisualVerdict
-from sixstars.clients.anthropic_client import AnthropicClient, BudgetKind
+from sixstars.clients.anthropic_client import AnthropicClient, BudgetKind, InvalidModelOutput
 from sixstars.factory import layout, tools
 from sixstars.gate.models import FileFacts, GateSettings, VisualFindings
+from sixstars.logging import get_logger
 
 # The band, as fractions of the frame height: from 60 px under the hook box to 150 px above the higher of
 # the two subtitle lines (reference canvas 1080x1920).
@@ -36,6 +37,8 @@ BLACK_PIXEL_THRESHOLD = 0.10
 # Where in the clip the P5 frames are taken (docs/10, progress notes M05).
 FRAME_POSITIONS = (0.10, 0.35, 0.60, 0.85)
 DETECT_TIMEOUT_S = 300.0
+# How often P5 is asked when its reply cannot be read (each ask includes the client's own repair retry).
+P5_ATTEMPTS = 2
 
 _BLACK = re.compile(
     r"black_start:(?P<start>[\d.]+)\s+black_end:(?P<end>[\d.]+)\s+black_duration:(?P<d>[\d.]+)"
@@ -192,8 +195,23 @@ def check_frames(
     clip_id: str | None = None,
     client: AnthropicClient | None = None,
 ) -> VisualFindings:
-    """Ask P5 about the frames."""
-    return findings_from_verdict(calls.visual_check(frames, lane=lane, ref_id=clip_id, client=client))
+    """Ask P5 about the frames.
+
+    On real renders with something wrong in the picture the model answered in the wrong shape about every
+    second time, also after the client's repair retry (see the M07 progress notes). The question is
+    therefore asked up to `P5_ATTEMPTS` times before `InvalidModelOutput` is raised; a verdict is never
+    assumed.
+    """
+    for attempt in range(1, P5_ATTEMPTS + 1):
+        try:
+            verdict = calls.visual_check(frames, lane=lane, ref_id=clip_id, client=client)
+        except InvalidModelOutput:
+            if attempt == P5_ATTEMPTS:
+                raise
+            get_logger("gate").warning("gate_p5_invalid_reply", attempt=attempt, clip_id=clip_id)
+        else:
+            return findings_from_verdict(verdict)
+    raise AssertionError("unreachable")
 
 
 def look_at_file(
