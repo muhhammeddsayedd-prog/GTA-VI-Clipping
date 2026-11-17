@@ -1,0 +1,104 @@
+{
+ "id": "a7a13d7a-d9ae-491c-8d14-8090c4f200b8",
+ "mode": "replay",
+ "creator": {
+  "id": "db1bb7fd-d4b7-4e96-971a-8247681eafa0",
+  "tier": "auto",
+  "handle": "paache_",
+  "platform": "twitch",
+  "display_name": "paache_"
+ },
+ "live_session_id": null,
+ "video_id": "bb1a27b9-9875-4271-b92d-af61b6dc3f0e",
+ "detected_at": "2026-11-17T20:41:32.613368+00:00",
+ "spike_wall": null,
+ "spike_offset_s": 3120.0,
+ "score_z": 2.0332,
+ "parts": {
+  "msgs_z": 3.5162,
+  "uniq_z": 2.705,
+  "audio_z": 0.0,
+  "first_t": 3120.0,
+  "pad_end": 3150.0,
+  "react_z": 2.0574,
+  "clipreq_z": -0.3158,
+  "pad_start": 3085.0,
+  "spike_floor": 3120.0,
+  "baseline_mean": {
+   "msgs": 15.6491,
+   "uniq": 14.6667,
+   "audio": 0.0,
+   "react": 0.0719,
+   "clipreq": 0.1579
+  }
+ },
+ "tier": "rejected",
+ "claude_confidence": 0.35,
+ "claude_reason": "possible copypasta or meme spam; no identifiable on-stream action",
+ "status": "rejected",
+ "merged_into": null,
+ "clip_id": null,
+ "clip_series_no": null,
+ "spike_to_post_s": null,
+ "window_start_s": 3100.0,
+ "window_end_s": 3135.0,
+ "window_start_wall": null,
+ "window_end_wall": null,
+ "chat_sample": [
+  {
+   "text": "SIIIIIIIIIIIIIIIIII",
+   "user": "Everxcz",
+   "t_rel": -4.0
+  },
+  {
+   "text": "QUESOOOOOOOOOOO",
+   "user": "miljaus240",
+   "t_rel": -4.0
+  },
+  {
+   "text": "JAJAJJAJAJAJA",
+   "user": "23MegaMaster",
+   "t_rel": -3.0
+  },
+  {
+   "text": "W",
+   "user": "ismaa26__",
+   "t_rel": -3.0
+  },
+  {
+   "text": "OOOOOOOOOOO",
+   "user": "claaudiarc",
+   "t_rel": -2.0
+  },
+  {
+   "text": "SIIIIIIIIIIIIIIIIIIIIIIII",
+   "user": "Everxcz",
+   "t_rel": -2.0
+  }
+ ],
+ "msgs_in_bucket": 46,
+ "unique_chatters": 35,
+ "reaction_count": 14,
+ "clip_requests": 0,
+ "events": [],
+ "trace": {
+  "creator": {
+   "id": "db1bb7fd-d4b7-4e96-971a-8247681eafa0",
+   "label": "paache_",
+   "status": "auto"
+  },
+  "live_session": null,
+  "video": {
+   "id": "bb1a27b9-9875-4271-b92d-af61b6dc3f0e",
+   "label": "🔫GTA A LA NOCHE TEPITO EN ACCIÓN🔫|⬛GANGATHON DIA 13⬛|🔴VOY PUESTISIM0🔴| REVIVIENDO LA WII 458",
+   "status": "done"
+  },
+  "spike": {
+   "id": "a7a13d7a-d9ae-491c-8d14-8090c4f200b8",
+   "label": "replay spike rejected",
+   "status": "rejected"
+  },
+  "clip": null,
+  "posts": []
+ }
+}

@@ -10,6 +10,7 @@ import { Badge, Banner, Btn, Card, CardHead, ErrorState, KV, PageHead, Plat, Ske
 import { POLL, useApi } from "@/lib/api/client";
 import type { Post, TakedownDetail } from "@/lib/api/types";
 import { fmtDay, fmtTime, humanize, series } from "@/lib/format";
+import { readTakedownActions, type TakedownAction } from "@/lib/takedown";
 
 const POST_COLS: Col<Post>[] = [
   { key: "post", head: "Post", render: (p) => <span className="row" style={{ gap: 6 }}><Plat p={p.platform} /><span className="semi">{series(p.clip_series_no)}</span></span> },
@@ -17,7 +18,7 @@ const POST_COLS: Col<Post>[] = [
   { key: "status", head: "Status", render: (p) => <Badge status={p.status} /> },
 ];
 
-type Action = { action?: string; outcome?: string; detail?: string; platform?: string; at?: string; post_id?: string };
+type Action = TakedownAction;
 
 const ACTION_TITLE: Record<string, string> = {
   block_creator: "Creator blocked", cancel_pending: "Pending posts cancelled", remove_post: "Post removal", strike: "Strike counted", notify: "Telegram alert",
@@ -25,12 +26,16 @@ const ACTION_TITLE: Record<string, string> = {
 
 function actionStep(a: Action) {
   const bad = a.outcome === "manual" || a.outcome === "failed";
+  if (a.action === "block_creator") {
+    const sub = `${a.creator ?? "creator"}${a.newly_blocked === false ? " (was blocked already)" : ""} · ${a.clips_dropped ?? 0} waiting clip(s) dropped · ${a.pending_posts_cancelled ?? 0} pending post(s) cancelled`;
+    return { state: "done" as const, title: ACTION_TITLE.block_creator, sub, icon: <Ban size={14} /> };
+  }
   const title = a.action === "remove_post"
     ? `${a.platform ? `${a.platform[0].toUpperCase()}${a.platform.slice(1)} post` : "Post"} — ${a.outcome === "manual" ? "delete by hand" : humanize(a.outcome)}`
     : ACTION_TITLE[a.action ?? ""] ?? humanize(a.action);
   const icon = a.action === "block_creator" ? <Ban size={14} /> : a.action === "remove_post" ? (bad ? <X size={14} /> : <Trash2 size={14} />)
     : a.action === "strike" ? <AlertTriangle size={14} /> : a.action === "notify" ? <Send size={14} /> : <Check size={14} />;
-  return { state: bad ? ("fail" as const) : ("done" as const), title, sub: a.detail ?? humanize(a.outcome), time: a.at ? fmtTime(a.at) : undefined, icon };
+  return { state: bad ? ("fail" as const) : ("done" as const), title, sub: a.detail ?? (a.account_id ? `${a.account_id} · ${humanize(a.outcome)}` : humanize(a.outcome)), time: a.at ? fmtTime(a.at) : undefined, icon };
 }
 
 export function TakedownView({ id }: { id: string }) {
@@ -39,8 +44,9 @@ export function TakedownView({ id }: { id: string }) {
   if (q.error && !q.data) return <><PageHead title="Takedown" back="/guardian" /><ErrorState error={q.error} retry={() => q.refetch()} /></>;
   if (!q.data) return <><PageHead title="Takedown" back="/guardian" sub="Loading…" /><SkeletonCards n={2} /></>;
   const t = q.data;
-  const acts = (Array.isArray(t.actions) ? t.actions : []) as Action[];
-  const manual = acts.filter((a) => a.outcome === "manual").length;
+  const ta = readTakedownActions(t.actions);
+  const acts: Action[] = ta.strike ? [...ta.items, { action: "strike", detail: "Counts toward the strike limit (it hit a post we had published)" }] : ta.items;
+  const manual = acts.filter((a) => a.action === "remove_post" && (a.outcome === "manual" || a.outcome === "failed")).length;
   const platforms = Array.from(new Set(t.matched_posts.map((p) => p.platform)));
   const gmail = t.message_id ? `https://mail.google.com/mail/u/0/#all/${encodeURIComponent(t.message_id)}` : null;
 
@@ -52,7 +58,7 @@ export function TakedownView({ id }: { id: string }) {
 
       {t.status === "open" && (
         <Banner tone="red" icon={<ShieldAlert size={17} />}>
-          <b>This one needs you.</b> {t.is_takedown === null ? "It could not be classified automatically." : t.creator ? "Classification finished, but nothing was actioned." : "It reads as a takedown, but nothing of ours matched it."} Check the email, then block the creator or remove posts by hand if needed.
+          <b>This one needs you.</b> {ta.state === "unclassified" ? `It was not classified${ta.why ? ` (${ta.why})` : ""}.` : t.is_takedown === null ? "It could not be classified automatically." : t.creator ? "Classification finished, but nothing was actioned." : "It reads as a takedown, but nothing of ours matched it."} Check the email, then block the creator or remove posts by hand if needed.
         </Banner>
       )}
 
@@ -61,6 +67,7 @@ export function TakedownView({ id }: { id: string }) {
           <CardHead title={t.source === "email" ? "Email" : humanize(t.source)} hint={t.source === "email" ? "Gmail message · labelled 6stars-processed" : undefined} />
           <KV rows={[["From", t.sender ?? "—"], ["Received", `${fmtDay(t.received_at)} · ${new Date(t.received_at).toISOString().slice(11, 16)} UTC`], ["Subject", t.subject ?? "—"]]} />
           <blockquote className="quote mt" style={{ margin: "16px 0 0" }}>{t.body_excerpt ?? "No body stored."}</blockquote>
+          {ta.summary && <p className="small mt" style={{ marginBottom: 0 }}><b>Claude&apos;s summary{ta.kind ? ` (${humanize(ta.kind)})` : ""}:</b> {ta.summary}</p>}
         </Card>
         <SpotlightCard className="pcard" spotlightColor="rgba(255,255,255,.16)" theme="dark">
           <div className="lbl">Claude P7 · takedown_classify</div>
@@ -68,7 +75,7 @@ export function TakedownView({ id }: { id: string }) {
           <div className="g g2 mt">
             <div className="glass"><div className="v">{t.creator?.handle ?? "—"}</div><div className="k">Creator matched</div></div>
             <div className="glass"><div className="v">{platforms.length ? platforms.map((p) => p[0].toUpperCase() + p.slice(1)).join(" · ") : "—"}</div><div className="k">Platforms</div></div>
-            <div className="glass"><div className="v">{t.matched_posts.length}</div><div className="k">Posts matched</div></div>
+            <div className="glass"><div className="v">{t.matched_posts.length}{ta.matched?.how ? <span style={{ fontSize: 12, opacity: .7 }}> by {humanize(ta.matched.how)}</span> : null}</div><div className="k">Posts matched</div></div>
             <div className="glass"><div className="v">{humanize(t.status)}</div><div className="k">Status</div></div>
           </div>
           <div className="pfoot"><div><div className="k">Message id</div><div className="v mono" style={{ fontSize: 12 }}>{t.message_id ?? "—"}</div></div></div>

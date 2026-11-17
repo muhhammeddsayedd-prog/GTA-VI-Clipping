@@ -5,9 +5,12 @@ import { FileX2, Trash2 } from "lucide-react";
 
 import { CheckRow, Thumb } from "@/components/kit/data";
 import { Badge, Card, CardHead, Plat } from "@/components/kit/primitives";
+import { useState } from "react";
+
 import { useApi } from "@/lib/api/client";
-import type { Clip, ClipDetail, ClipMedia, GateCheck, GateResult, Json } from "@/lib/api/types";
+import type { Clip, ClipDetail, ClipMedia, GateCheck, GateResult } from "@/lib/api/types";
 import { fmtClock, humanize, series } from "@/lib/format";
+import { isRecord, num, showValue, splitReason } from "@/lib/shape";
 
 export function laneTone(lane: string) { return lane === "spike" ? "purple" : "blue"; }
 
@@ -21,26 +24,25 @@ export function ClipCard({ c }: { c: Clip }) {
       <div className="meta">
         <div className="row"><span className="semi pc">{series(c.series_no)}</span><span className="right semi num">{c.score ?? "—"}</span></div>
         <div className="t2"><Plat p={c.source_platform} /><span className="ellipsis">{c.creator.handle}</span></div>
-        <div className="t2"><Badge tone={laneTone(c.lane)}>{c.lane}</Badge>{c.reject_reason && <span className="down xs ellipsis">{humanize(c.reject_reason)}</span>}</div>
+        <div className="t2"><Badge tone={laneTone(c.lane)}>{c.lane}</Badge>{c.reject_reason && <span className="down xs ellipsis" title={c.reject_reason}>{rejectLabel(c.reject_reason)}</span>}</div>
       </div>
     </Link>
   );
+}
+
+/** Short label for a reject reason: gate codes are humanized, writer sentences get a "Writer:" prefix. */
+export function rejectLabel(reason: string | null | undefined): string {
+  const r = splitReason(reason);
+  return r.kind === "writer" ? `Writer: ${r.text}` : r.kind === "code" ? humanize(r.text) : "";
 }
 
 /* ---------- gate checklist ---------- */
 const CHECK_LABEL: Record<string, string> = {
   creator_tier: "Creator tier", length: "Length", music_ratio: "Music ratio", music: "Music ratio", spoiler: "Spoiler",
   safety: "Safety flags", watermark_logos: "Watermark / logos (P5)", watermark: "Watermark / logos (P5)", visual: "Visual · black / freeze / menu",
-  subtitle_drift: "Subtitle drift", subtitles: "Subtitle drift", score: "Writer score", duplicate_topic: "Duplicate topic", duplicate: "Duplicates",
+  subtitle_drift: "Subtitle drift", subtitles: "Subtitle drift", score: "Score", duplicate_topic: "Duplicate topic", duplicate: "Duplicates",
   source_range: "Same source range", file: "File", precheck: "YouTube pre-check",
 };
-function show(v: Json | undefined): string {
-  if (v === undefined || v === null) return "—";
-  if (typeof v === "number") return Number.isInteger(v) ? String(v) : v.toFixed(2);
-  if (typeof v === "boolean") return v ? "yes" : "no";
-  if (typeof v === "string") return v;
-  return JSON.stringify(v);
-}
 
 export function firstFailing(g: GateResult | null): string | null {
   if (!g?.checks) return null;
@@ -48,12 +50,13 @@ export function firstFailing(g: GateResult | null): string | null {
   return e ? e[0] : null;
 }
 
-export function GateChecklist({ gate, status }: { gate: GateResult | null; status: string }) {
+export function GateChecklist({ gate, status, rejectReason }: { gate: GateResult | null; status: string; rejectReason?: string | null }) {
   if (!gate) {
+    const writer = splitReason(rejectReason).kind === "writer";
     return (
       <Card>
         <CardHead title="Quality gate" hint="Runs after the render finishes" actions={<Badge status={status} />} />
-        <div className="muted small">The gate has not decided on this clip yet.</div>
+        <div className="muted small">{writer ? "The gate never ran: the writer rejected this moment before render." : status === "rejected" ? "Rejected before the gate ran." : "The gate has not decided on this clip yet."}</div>
       </Card>
     );
   }
@@ -70,10 +73,10 @@ export function GateChecklist({ gate, status }: { gate: GateResult | null; statu
           <div role="listitem" key={k}>
             <CheckRow state={c.ok === false ? "no" : c.ok === true ? "ok" : "na"}
               name={<>{CHECK_LABEL[k] ?? humanize(k)}{k === first && <span className="b red nodot" style={{ marginLeft: 8 }}>first fail</span>}{c.codes?.length ? <span className="mono xs down" style={{ marginLeft: 6 }}>{c.codes.join(", ")}</span> : null}</>}
-              value={show(c.value)} limit={show(c.limit)} />
+              value={showValue(c.value)} limit={showValue(c.limit)} />
           </div>
         ))}
-        <CheckRow state="na" name={CHECK_LABEL.precheck} value={gate.precheck ?? "—"} limit="deferred (D103)" />
+        {!gate.checks?.precheck && <CheckRow state="na" name={CHECK_LABEL.precheck} value={gate.precheck ?? "—"} limit="deferred (D103)" />}
       </div>
       {gate.hourly_fallback && <div className="muted xs mt">Express failed only express checks, so it was re-gated as hourly: {gate.hourly_fallback.passed ? "passed" : "failed"}.</div>}
       {gate.demoted && <div className="muted xs mt">Demoted to the hourly lane (too old for the spike lane).</div>}
@@ -83,15 +86,25 @@ export function GateChecklist({ gate, status }: { gate: GateResult | null; statu
 
 /* ---------- player ---------- */
 export function ClipPlayer({ clip }: { clip: ClipDetail }) {
-  const m = useApi<ClipMedia>(`admin/clips/${clip.id}/media`, undefined, { interval: false, staleTime: 50 * 60 * 1000 });
-  const media = m.data;
+  // Only ask for a signed URL when the clip has a file; refresh it before it expires (1 h) or when playback fails.
+  const m = useApi<ClipMedia>(clip.has_file ? `admin/clips/${clip.id}/media` : null, undefined, { interval: 45 * 60 * 1000, staleTime: 40 * 60 * 1000 });
+  const [failed, setFailed] = useState<string | null>(null);
+  const media = clip.has_file ? m.data : ({ url: null, expires_at: null, reason: "no_file" } as ClipMedia);
   const gone = media && (media.reason === "deleted" || media.reason === "no_file" || !media.url);
+  const fileInfo = isRecord(clip.gate_result?.checks?.file?.value) ? clip.gate_result.checks.file.value : null;
+  const dims = fileInfo && num(fileInfo.width) && num(fileInfo.height) ? `${fileInfo.width}×${fileInfo.height}` : null;
+  const writerReject = splitReason(clip.reject_reason).kind === "writer";
+  const onVideoError = () => {
+    if (failed === media?.url) return; // already retried this URL once
+    setFailed(media?.url ?? null);
+    void m.refetch();
+  };
   const label = `Clip ${series(clip.series_no)}: ${clip.hook ?? clip.title ?? ""}`;
   return (
     <div id="player" className="clip-player" style={{ background: "var(--dark)", borderRadius: 30, padding: 12 }}>
       {media?.reason === "ok" && media.url ? (
         <div className="thumb" style={{ width: "100%", background: "#000" }}>
-          <video src={media.url} controls playsInline preload="metadata" aria-label={label} style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover" }} />
+          <video key={media.url} src={media.url} controls playsInline preload="metadata" aria-label={label} onError={onVideoError} style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover" }} />
         </div>
       ) : (
         <Thumb seed={clip.id} hook={gone ? null : clip.hook} dur={fmtClock(clip.duration_s)} live={clip.lane === "spike" && clip.source_type === "live"}>
@@ -101,11 +114,14 @@ export function ClipPlayer({ clip }: { clip: ClipDetail }) {
                 <div style={{ width: 60, height: 60, borderRadius: 20, background: "var(--dark3)", color: "#BDBDD0", display: "grid", placeItems: "center", margin: "0 auto 14px" }}>
                   {media?.reason === "deleted" ? <Trash2 size={26} /> : <FileX2 size={26} />}
                 </div>
-                <div className="semi" style={{ fontSize: 15 }}>{m.error ? "Video unavailable" : media?.reason === "deleted" ? "File deleted" : "No file to play"}</div>
+                <div className="semi" style={{ fontSize: 15 }}>{m.error ? "Video unavailable" : media?.reason === "deleted" ? "File deleted" : writerReject ? "Never rendered" : "No file to play"}</div>
                 <div style={{ color: "var(--dmute)", fontSize: 12, marginTop: 6, lineHeight: 1.5 }}>
                   {m.error ? m.error.message : media?.reason === "deleted"
-                    ? <>Rejected clips are kept 24 h, posted clips 3 days.<br />Transcript and gate result are kept.</>
-                    : <>The rendered file is not in storage{clip.status === "rendering" ? " yet — it is still rendering" : ""}.</>}
+                    ? <>The file was removed from storage.<br />Transcript and gate result are kept.</>
+                    : writerReject ? <>The writer rejected this moment before render, so no video exists.</>
+                    : clip.status === "rejected" ? <>Only approved clips are uploaded to storage, so this rejected clip has no video to play.</>
+                    : clip.status === "rendering" || clip.status === "gating" ? <>The file is uploaded once the clip is approved.</>
+                    : <>The rendered file is not in storage.</>}
                 </div>
               </div>
             </div>
@@ -113,10 +129,10 @@ export function ClipPlayer({ clip }: { clip: ClipDetail }) {
         </Thumb>
       )}
       <div className="row" style={{ color: "#fff", padding: "12px 6px 4px", gap: 8, flexWrap: "wrap" }}>
-        <span className="dbadge">1080×1920</span>
+        {dims && <span className="dbadge">{dims}</span>}
         <span className="dbadge">{clip.file_size_bytes ? `${(clip.file_size_bytes / 1e6).toFixed(1)} MB` : "—"}</span>
         <span className="dbadge">{series(clip.series_no)}</span>
-        <span className="right" style={{ color: "var(--dmute)", fontSize: 11 }}>{media?.reason === "ok" ? "signed URL · 1h" : m.isLoading ? "loading…" : ""}</span>
+        <span className="right" style={{ color: "var(--dmute)", fontSize: 11 }}>{media?.reason === "ok" ? "signed URL · 1 h" : clip.has_file && m.isLoading ? "loading…" : ""}</span>
       </div>
     </div>
   );

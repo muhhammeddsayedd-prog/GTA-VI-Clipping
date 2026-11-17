@@ -9,7 +9,7 @@ import { accountState } from "@/components/domain/AccountCard";
 import { hourCells, pauseNote } from "@/components/domain/sources/AccountBig";
 import { POLL, useApi } from "@/lib/api/client";
 import type { AccountDetail, Post } from "@/lib/api/types";
-import { ageSeconds, fmtAgo, fmtCompact, fmtNum, fmtTime, series } from "@/lib/format";
+import { ageSeconds, fmtAgo, fmtCompact, fmtDay, fmtNum, fmtTime, series } from "@/lib/format";
 
 const POST_COLS: Col<Post>[] = [
   { key: "clip", head: "Clip", render: (p) => <span className="semi pc">{series(p.clip_series_no)}</span> },
@@ -29,8 +29,9 @@ export function AccountDetailView({ id }: { id: string }) {
   const a = q.data;
   const st = accountState(a);
   const note = pauseNote(a);
-  const followers = a.stats.map((s) => s.followers ?? 0);
-  const first = followers[0] ?? 0, last = followers[followers.length - 1] ?? 0;
+  // Only snapshots that carry a follower count; a real 0 is shown as 0, "no snapshot" as —.
+  const followers = a.stats.map((s) => s.followers).filter((f): f is number => typeof f === "number");
+  const first = followers[0] ?? 0, last = followers.length ? followers[followers.length - 1] : null;
   const views7 = a.views_by_day.reduce((s, d) => s + d.views, 0);
   const statLabels = a.stats.map((s, i) => (i === 0 || i === a.stats.length - 1 || i === Math.floor(a.stats.length / 2) ? fmtDayShort(s.captured_at) : ""));
   const k = a.caps;
@@ -47,8 +48,8 @@ export function AccountDetailView({ id }: { id: string }) {
       {note && <Banner tone={paused ? "amber" : "blue"} icon={<Pause size={17} />}><b>{paused ? `Paused until ${fmtTime(a.paused_until)} UTC.` : "Disabled."}</b> {note.replace(/^(Paused until [^.]+\. |Disabled · )/, "")}</Banner>}
 
       <Grid cols={4}>
-        <Kpi label={a.platform === "youtube" ? "Subscribers" : "Followers"} value={last || null} icon={<Users size={15} />}
-          delta={followers.length > 1 ? <span><b className={last >= first ? "up" : "down"}>{last >= first ? "↑" : "↓"} {fmtNum(Math.abs(last - first))}</b> in 14 days</span> : undefined} />
+        <Kpi label={a.platform === "youtube" ? "Subscribers" : "Followers"} value={last} icon={<Users size={15} />}
+          delta={followers.length > 1 && last !== null ? <span><b className={last >= first ? "up" : "down"}>{last >= first ? "↑" : "↓"} {fmtNum(Math.abs(last - first))}</b> since {fmtDay(a.stats.find((s) => typeof s.followers === "number")?.captured_at)}</span> : undefined} />
         <Kpi label="Views · 7d" value={views7} icon={<Eye size={15} />} valueText={fmtCompact(views7)} />
         <Kpi label="Posts · 24h" value={a.used_24h} unit={`/ ${a.cap_24h}`} icon={<Send size={15} />} iconTone={a.used_24h >= a.cap_24h ? "red" : undefined} delta={<span>last {a.last_post_at ? fmtAgo(a.last_post_at) : "never"}</span>} />
         <Kpi label="Spike reserve" value={a.lanes.includes("spike") ? a.spike_reserve_remaining : null} unit={a.lanes.includes("spike") ? `/ ${a.spike_reserve}` : undefined} icon={<Star size={15} />} delta={<span>{a.lanes.includes("spike") ? "kept free for spike clips" : "spike lane off"}</span>} />

@@ -5,7 +5,7 @@ import { LayoutGrid, List } from "lucide-react";
 import FadeContent from "@/components/reactbits/FadeContent";
 import { DataTable, Pager, Thumb, type Col } from "@/components/kit/data";
 import { Badge, Card, ErrorState, IconBtn, PageHead, RefreshBtn, SearchField, Seg, SelectField, SkeletonTable, Two, When, Who } from "@/components/kit/primitives";
-import { ClipCard, laneTone } from "@/components/domain/clips/ClipBits";
+import { ClipCard, laneTone, rejectLabel } from "@/components/domain/clips/ClipBits";
 import { useApi } from "@/lib/api/client";
 import type { Clip, Page } from "@/lib/api/types";
 import { fmtClock, humanize, series } from "@/lib/format";
@@ -23,7 +23,7 @@ const COLS: Col<Clip>[] = [
   { key: "status", head: "Status", render: (c) => <Badge status={c.status} /> },
   { key: "score", head: "Score", align: "right", render: (c) => <b className="num">{c.score ?? "—"}</b> },
   { key: "len", head: "Length", align: "right", mobile: "hide", render: (c) => <span className="num">{fmtClock(c.duration_s)}</span> },
-  { key: "reason", head: "Reject reason", render: (c) => (c.reject_reason ? <span className="down semi">{humanize(c.reject_reason)}</span> : <span className="muted">—</span>) },
+  { key: "reason", head: "Reject reason", render: (c) => (c.reject_reason ? <span className="down semi ellipsis" title={c.reject_reason} style={{ maxWidth: 280, display: "block" }}>{rejectLabel(c.reject_reason)}</span> : <span className="muted">—</span>) },
   { key: "created", head: "Created", render: (c) => <When iso={c.created_at} /> },
 ];
 

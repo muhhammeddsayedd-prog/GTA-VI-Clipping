@@ -11,6 +11,7 @@ import { Badge, Btn, Card, CardHead, ErrorState, PageHead, RefreshBtn, Seg, Skel
 import { POLL, useApi } from "@/lib/api/client";
 import type { Pipeline } from "@/lib/api/types";
 import { fmtTime, humanize } from "@/lib/format";
+import { splitReason } from "@/lib/shape";
 
 const STAGE_COLORS = ["#C9C2FF", "#9F94FF", "#7C6EFF", "#5A4AF4", "#3A2CC7", "#12A150", "#0D7A3D", "#6b6b82"];
 const WINDOWS = [{ value: "24h", label: "24h" }, { value: "7d", label: "7 days" }, { value: "30d", label: "30 days" }];
@@ -44,8 +45,10 @@ export function PipelineView() {
   const funnelCats = ["Detected", "Confirmed", "Clipped", "Posted"] as const;
   const tiers = p.funnel.filter((f) => f.tier !== "rejected");
   const rejected = p.funnel.find((f) => f.tier === "rejected");
-  const totalExpress = p.express_stages.reduce((a, s) => a + s.median_s, 0);
-  const hourLabels = p.approved_by_hour.map((x, i) => (i % 3 === 0 ? String(new Date(x.t).getUTCHours()) : ""));
+  const stages = p.express_stages.filter((s): s is { stage: string; median_s: number } => typeof s.median_s === "number");
+  const totalExpress = Math.round(stages.reduce((a, s) => a + s.median_s, 0));
+  const hours = hourBuckets(p.approved_by_hour);
+  const rejects = groupRejects(p.rejects);
 
   return (
     <>
@@ -79,16 +82,16 @@ export function PipelineView() {
           {rejected && <div className="muted xs" style={{ marginTop: 8 }}>{rejected.detected.toLocaleString("en-US")} more detected spikes were rejected as noise by Claude or merged.</div>}
         </Card>
         <Card>
-          <CardHead title="Gate rejects by reason" hint={`${p.rejects.reduce((a, r) => a + r.n, 0)} clips · first failing check`} actions={<Btn sm href="/clips?status=rejected" icon={<Film size={15} />}>Rejected clips</Btn>} />
-          <HBars items={p.rejects.map((r) => ({ label: <span className="mono">{r.reason}</span>, value: r.n, tone: r.reason.startsWith("spoiler") ? "red" as const : r.reason.startsWith("music") ? "amber" as const : undefined }))} />
+          <CardHead title="Rejects by reason" hint={`${p.rejects.reduce((a, r) => a + r.n, 0)} clips · first failing gate check, or the writer's verdict before render`} actions={<Btn sm href="/clips?status=rejected" icon={<Film size={15} />}>Rejected clips</Btn>} />
+          <HBars items={rejects.map((r) => ({ label: r.writer ? <span>Writer (Claude) said no</span> : <span className="mono">{r.reason}</span>, value: r.n, tone: r.reason.startsWith("spoiler") ? "red" as const : r.reason.startsWith("music") ? "amber" as const : undefined }))} />
           {!p.rejects.length && <div className="muted small">No rejects in this window.</div>}
         </Card>
         <Card>
           <CardHead title="Express path · median by stage" hint="Spike detected → post published"
-            actions={<Badge tone={totalExpress <= 240 ? "green" : "amber"}>{totalExpress} s total</Badge>} />
-          {p.express_stages.length ? (
-            <SegBar parts={p.express_stages.map((s, i) => ({ label: humanize(s.stage), value: s.median_s, color: STAGE_COLORS[i % STAGE_COLORS.length] }))} />
-          ) : <div className="muted small">No express clips in this window.</div>}
+            actions={stages.length ? <Badge tone={totalExpress <= 240 ? "green" : "amber"}>{totalExpress} s total</Badge> : undefined} />
+          {stages.length ? (
+            <SegBar parts={stages.map((s, i) => ({ label: humanize(s.stage), value: Math.round(s.median_s), color: STAGE_COLORS[i % STAGE_COLORS.length] }))} />
+          ) : <div className="muted small">No express clips in this window: no S-tier spike went through the express path yet.</div>}
           <div className="mt">
             <Line label="Express latency per clip, seconds; dashed line is the 4 minute target" values={p.express_series.map((x) => x.s)} target={240} width={560} height={110}
               labels={p.express_series.map((x, i) => (i === 0 || i === p.express_series.length - 1 ? fmtTime(x.t) : ""))} />
@@ -97,10 +100,27 @@ export function PipelineView() {
         </Card>
         <Card>
           <CardHead title="Throughput" hint="Clips approved per hour, last 24 hours" />
-          <Bars label="Clips approved per hour; dashed line is one clip per hour" values={p.approved_by_hour.map((x) => x.n)} labels={hourLabels} target={1} width={560} height={150} highlight={null} />
+          <Bars label="Clips approved per hour; dashed line is one clip per hour" values={hours.map((x) => x.n)} labels={hours.map((x, i) => (i % 3 === 0 ? String(x.h) : ""))} target={1} width={560} height={150} highlight={null} />
           <div className="muted xs">Dashed line = 1 clip/hour needed to keep every hourly slot filled.</div>
         </Card>
       </div>
     </>
   );
+}
+
+/** The API lists only hours that had approvals; spread them over the last 24 UTC hours (oldest first). */
+function hourBuckets(rows: { t: string; n: number }[], now = Date.now()) {
+  const top = Math.floor(now / 3_600_000) * 3_600_000;
+  const byHour = new Map(rows.map((r) => [Math.floor(Date.parse(r.t) / 3_600_000) * 3_600_000, r.n]));
+  return Array.from({ length: 24 }, (_, i) => {
+    const t = top - (23 - i) * 3_600_000;
+    return { h: new Date(t).getUTCHours(), n: byHour.get(t) ?? 0 };
+  });
+}
+
+/** Writer verdicts are sentences, one per clip: count them as one reason. */
+function groupRejects(rows: { reason: string; n: number }[]) {
+  const writer = rows.filter((r) => splitReason(r.reason).kind === "writer").reduce((a, r) => a + r.n, 0);
+  const codes = rows.filter((r) => splitReason(r.reason).kind !== "writer").map((r) => ({ ...r, writer: false }));
+  return [...codes, ...(writer ? [{ reason: "writer", n: writer, writer: true }] : [])].sort((a, b) => b.n - a.n);
 }

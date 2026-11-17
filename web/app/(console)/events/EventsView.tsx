@@ -15,8 +15,9 @@ import { fmtTime } from "@/lib/format";
 import { useListParams } from "@/lib/use-list";
 
 const KEYS = ["type_prefix", "level", "service", "entity_type", "entity_id"];
-const SERVICES = ["api", "scheduler", "live-manager", "worker-express", "worker-normal", "posting"];
-const ENTITIES = ["clip", "spike", "post", "video", "live_session", "creator", "account", "job", "incident", "takedown", "setting"];
+// Processes and the modules that name themselves as the service (seen in production events).
+const SERVICES = ["api", "scheduler", "live-manager", "worker-express", "worker-normal", "posting", "vod", "spikes", "gate", "live", "guardian", "stats"];
+const ENTITIES = ["clip", "spike", "post", "video", "live_session", "viewer_clip", "creator", "account", "slot", "job", "incident", "takedown", "setting"];
 
 export function EventsView() {
   const lp = useListParams(KEYS);

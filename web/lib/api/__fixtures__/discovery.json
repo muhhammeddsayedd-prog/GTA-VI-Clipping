@@ -1,0 +1,158 @@
+{
+ "runs": [
+  {
+   "id": 1147,
+   "created_at": "2026-11-17T20:50:50.816427+00:00",
+   "level": "info",
+   "type": "discovery.run",
+   "service": "api",
+   "entity_type": null,
+   "entity_id": null,
+   "message": "live 424, videos 283, new creators 25, assigned 0, released 0, queued 1, viewer clips queued 3",
+   "data": {
+    "notes": [
+     "youtube downloads are blocked since 2026-11-17 16:23 UTC: 78 video(s) not queued, 8 waiting for the VOD lane's retry"
+    ],
+    "errors": [],
+    "skipped": {
+     "too_old": 114,
+     "off_topic": 4,
+     "too_short": 28,
+     "already_queued": 7,
+     "title_blocklist": 20,
+     "platform_blocked": 78,
+     "forbidden_creator": 1
+    },
+    "sources": [
+     {
+      "name": "twitch",
+      "found": 400,
+      "detail": "",
+      "status": "ok"
+     },
+     {
+      "name": "youtube_search",
+      "found": 480,
+      "detail": "12 searches",
+      "status": "ok"
+     },
+     {
+      "name": "youtube_search_api",
+      "found": 0,
+      "detail": "not needed: the yt-dlp search works; 0 of 60 calls today",
+      "status": "skipped"
+     },
+     {
+      "name": "youtube_rss",
+      "found": 144,
+      "detail": "50 feeds",
+      "status": "ok"
+     },
+     {
+      "name": "apify",
+      "found": 0,
+      "detail": "no new run: interval not reached",
+      "status": "skipped"
+     },
+     {
+      "name": "youtube_api",
+      "found": 470,
+      "detail": "10 quota units, 4 off topic",
+      "status": "ok"
+     },
+     {
+      "name": "twitch_clips",
+      "found": 100,
+      "detail": "",
+      "status": "ok"
+     }
+    ],
+    "vod_max": 24,
+    "live_seen": 424,
+    "timings_s": {
+     "sources": 10.26,
+     "permissions": 2.68,
+     "twitch_clips": 3.14,
+     "store_and_assign": 0.61,
+     "creators_and_history": 6.04
+    },
+    "duration_s": 22.87,
+    "started_at": "2026-11-17T20:50:27.850497+00:00",
+    "vod_cutoff": 40.0,
+    "target_game": "Grand Theft Auto V",
+    "videos_seen": 283,
+    "vod_widened": true,
+    "new_creators": 25,
+    "twitch_clips": {
+     "queued": 3,
+     "skipped": {
+      "no_room": 21,
+      "too_short": 20,
+      "same_moment": 1,
+      "already_seen": 12,
+      "per_creator_limit": 3
+     },
+     "eligible": 80,
+     "permission_jobs": 0,
+     "permission_checked": 1
+    },
+    "creators_seen": 617,
+    "videos_queued": 1,
+    "apify_cost_usd": 0.0,
+    "permission_jobs": 25,
+    "sessions_active": 2,
+    "youtube_searches": 12,
+    "candidates_stored": 707,
+    "sessions_assigned": 0,
+    "sessions_released": 0,
+    "permission_checked": 1,
+    "youtube_quota_units": 11,
+    "apify_spent_month_usd": 0.06,
+    "apify_spent_today_usd": 0.06,
+    "youtube_search_api_calls": 0,
+    "youtube_quota_units_today": 681.0,
+    "youtube_search_api_calls_today": 0
+   }
+  }
+ ],
+ "source_health": {
+  "discovery": null,
+  "live": {
+   "youtube": {
+    "error": "the platform refused this machine: [plugins.youtube][error] Could not get video info - LOGIN_REQUIRED: Sign in to confirm you’re not a bot",
+    "since": "2026-11-17T16:23:04.334439+00:00",
+    "access": "PROXY_URL not set, YOUTUBE_COOKIES_FILE not set",
+    "blocks": 5,
+    "notified": true,
+    "skip_until": "2026-11-17T20:46:30.121749+00:00"
+   }
+  },
+  "vod": {
+   "youtube": {
+    "error": "ERROR: [youtube] Cj7zAN6MDwU: Sign in to confirm you’re not a bot. This helps protect our community. Use --cookies-from-browser or --cookies for the authentication. See  https://github.com/yt-dlp/yt-dlp/wiki/FAQ#how-do-i-pass-cookies-to-yt-dlp  for how to manually pass cookies. Also see  https://git",
+    "since": "2026-11-17T16:23:00.978047+00:00",
+    "access": "PROXY_URL not set, YOUTUBE_COOKIES_FILE not set",
+    "blocks": 19,
+    "last_blocked_at": "2026-11-17T20:55:09.676832+00:00"
+   }
+  }
+ },
+ "apify_last_run": {
+  "mode": "live",
+  "run_id": "QHsr65bpCLgz41vGN",
+  "status": "SUCCEEDED",
+  "cost_usd": 0.06,
+  "collected": true,
+  "started_at": "2026-11-17T16:22:35.609940+00:00"
+ },
+ "quotas": {
+  "youtube_units_today": 687.0,
+  "youtube_units_limit": 3000,
+  "search_calls_today": 0,
+  "search_calls_limit": 60,
+  "apify_today_usd": 0.06,
+  "apify_daily_budget_usd": 0.4,
+  "apify_month_usd": 0.06,
+  "apify_monthly_budget_usd": 12.0
+ }
+}

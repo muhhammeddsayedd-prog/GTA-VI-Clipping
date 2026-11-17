@@ -116,6 +116,8 @@ def live_sessions(status: str | None = None, limit: Limit = None, cursor: Cursor
         return {
             "max_slots": max_slots if isinstance(max_slots, int) else None,
             "blocked": q.blocked_live_platforms(_now()),
+            # The whole record (since, error, access, blocks): a platform stays refused between back-offs.
+            "source_health": q.fresh_settings(["live.source_health"]).get("live.source_health"),
         }
 
     return page("live-sessions", [], status, limit, cursor, meta)

@@ -30,7 +30,10 @@ export function SpikeDetailView({ id }: { id: string }) {
   const winFrom = s.window_start_wall ? fmtTime(s.window_start_wall, true) : fmtClock(s.window_start_s);
   const winTo = s.window_end_wall ? fmtTime(s.window_end_wall, true) : fmtClock(s.window_end_s);
   const sample = s.chat_sample ?? [];
-  const peakIdx = Math.floor(sample.length / 2);
+  // The peak line is the message closest to t_rel 0; older samples have no t_rel, so take the middle.
+  const peakIdx = sample.some((m) => typeof m.t_rel === "number")
+    ? sample.reduce((best, m, i) => (Math.abs(m.t_rel ?? Infinity) < Math.abs(sample[best].t_rel ?? Infinity) ? i : best), 0)
+    : Math.floor(sample.length / 2);
 
   return (
     <>
@@ -44,7 +47,7 @@ export function SpikeDetailView({ id }: { id: string }) {
         <Card>
           <CardHead title={`Why this spike scored ${s.score_z ?? "—"}`} hint="z-score parts against a 10 min baseline · tier thresholds come from settings (spikes.z_s / z_a / z_b)" />
           {s.mode === "transcript" ? <div className="muted small">Picked by Claude from the transcript (no chat on this video), so there are no chat parts.</div> : (
-            <HBars labelWidth={200} items={PART_ORDER.filter((k) => k in parts).map((k) => ({ label: <span>{PART_LABELS[k]}<div className="mono muted xs">{k}</div></span>, value: parts[k] }))} />
+            <HBars labelWidth={200} items={PART_ORDER.filter((k) => k in parts).map((k) => ({ label: <span>{PART_LABELS[k]}<div className="mono muted xs">{k}</div></span>, value: typeof parts[k] === "number" ? Math.round((parts[k] as number) * 100) / 100 : Number.NaN }))} />
           )}
           <div className="row" style={{ marginTop: 14, paddingTop: 14, borderTop: "1px solid var(--line)" }}>
             <span className="semi">Weighted z-score</span><span className="right"><TierChip tier={s.tier} /></span>
@@ -92,9 +95,11 @@ export function SpikeDetailView({ id }: { id: string }) {
               {sample.slice(Math.max(0, peakIdx - 6), peakIdx + 6).map((m, i, arr) => {
                 const on = i === Math.min(6, peakIdx) && arr.length > 6;
                 const ts = m.ts ?? m.t;
+                // The detector stores `t_rel`: seconds relative to the spike peak.
+                const rel = typeof m.t_rel === "number" ? `${m.t_rel > 0 ? "+" : ""}${Math.round(m.t_rel)} s` : null;
                 return (
                   <li key={i} className={`chatline${on ? " on" : ""}`}>
-                    <span className="ts">{ts ? fmtTime(ts, true) : ""}</span>
+                    <span className="ts">{rel ?? (ts ? fmtTime(ts, true) : "")}</span>
                     <span className="u">{m.user ?? m.author ?? "?"}</span>
                     <span>{m.text ?? m.message ?? ""}</span>
                   </li>

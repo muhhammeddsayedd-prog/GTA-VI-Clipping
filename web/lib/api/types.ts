@@ -84,8 +84,9 @@ export interface Pipeline {
   };
   funnel: { tier: string; detected: number; confirmed: number; clipped: number; posted: number }[];
   rejects: { reason: string; n: number }[];
-  express_stages: { stage: string; median_s: number }[];
+  express_stages: { stage: string; median_s: number | null }[];
   express_series: { t: Iso; s: number }[];
+  /** Only hours with at least one approval are listed. */
   approved_by_hour: { t: Iso; n: number }[];
 }
 
@@ -117,12 +118,13 @@ export interface VideoDetail extends Video {
 export interface Spike {
   id: string; mode: "live" | "replay" | "transcript"; creator: CreatorRef; live_session_id: string | null; video_id: string | null;
   detected_at: Iso; spike_wall: Iso | null; spike_offset_s: number | null; score_z: number | null;
-  parts: Record<string, number> | null; tier: SpikeTier | null; claude_confidence: number | null; claude_reason: string | null;
+  /** z-score parts (msgs_z, uniq_z, …) plus window numbers and a nested baseline_mean object. */
+  parts: Record<string, Json> | null; tier: SpikeTier | null; claude_confidence: number | null; claude_reason: string | null;
   status: string; merged_into: string | null; clip_id: string | null; clip_series_no: number | null; spike_to_post_s: number | null;
   window_start_s: number | null; window_end_s: number | null; window_start_wall: Iso | null; window_end_wall: Iso | null;
 }
 export interface SpikeDetail extends Spike {
-  chat_sample: { t?: string; ts?: string; user?: string; author?: string; text?: string; message?: string }[] | null;
+  chat_sample: { t_rel?: number; t?: string; ts?: string; user?: string; author?: string; text?: string; message?: string }[] | null;
   msgs_in_bucket: number | null; unique_chatters: number | null; reaction_count: number | null; clip_requests: number | null;
   events: Event[]; trace: Trace;
 }
@@ -141,8 +143,11 @@ export interface GateResult {
 }
 export interface ClipDetail extends Clip {
   caption: string | null; hashtags: string[] | null; commentary: string | null;
-  transcript: { words?: { w?: string; word?: string; s?: number; start?: number; e?: number; end?: number }[]; text?: string } | null;
-  keywords: { line: number; words: string[] }[] | null; safety_flags: Record<string, boolean> | null; score_parts: Record<string, number> | null;
+  transcript: { words?: { w?: string; word?: string; s?: number; start?: number; e?: number; end?: number }[]; text?: string; language?: string } | null;
+  /** The writer stores `{ "<line>": ["phrase", …] }`; read it with `keywordSet` from lib/shape. */
+  keywords: Json; safety_flags: Record<string, boolean> | null;
+  /** Numbers (hook, payoff, clarity, rewatch) plus `source` ("visual" | "writer") and nested `visual` / `writer` objects. */
+  score_parts: Record<string, Json> | null;
   spoiler: boolean | null; profanity_count: number | null; gate_result: GateResult | null; precheck_result: Json;
   render_ms: number | null; file_size_bytes: number | null; storage_path: string | null; start_s: number | null; end_s: number | null;
   original_language: string | null; posts: Post[]; events: Event[]; trace: Trace;
@@ -194,7 +199,9 @@ export interface Discovery {
 export interface Candidate {
   id: number; creator: CreatorRef; source_type: "live" | "vod"; platform: Platform; source_id: string; url: string | null; title: string | null;
   language: string | null; viewers: number | null; views: number | null; views_per_hour: number | null; likes: number | null; comments: number | null;
-  published_at: Iso | null; started_at: Iso | null; trend_score: number; score_parts: Record<string, number> | null; checked_at: Iso; picked: boolean;
+  published_at: Iso | null; started_at: Iso | null; trend_score: number;
+  /** 0–1 weighted parts plus raw metrics (chat_mpm), `origin` and `chat_measured`. */
+  score_parts: Record<string, Json> | null; checked_at: Iso; picked: boolean;
 }
 
 export interface Guardian {

@@ -11,7 +11,7 @@ import { Badge, Btn, Card, CardHead, ErrorState, PageHead, Plat, Prog, RefreshBt
 import { POLL, useApi } from "@/lib/api/client";
 import type { CapRow, Event, QueueView as Q } from "@/lib/api/types";
 import { useNow } from "@/components/domain/clips/useNow";
-import { fmtAgo, fmtDuration, fmtTime, series } from "@/lib/format";
+import { fmtAgo, fmtDuration, fmtTime, series, humanize } from "@/lib/format";
 
 const SLOT_CLS: Record<string, string> = { posted: "done", planned: "on", skipped: "skip", failed: "fail", not_allowed: "off", empty: "skip" };
 
@@ -29,11 +29,12 @@ const CAP_COLS: Col<CapRow>[] = [
 ];
 
 const DEC_COLS: Col<Event>[] = [
-  { key: "t", head: "Slot", render: (e) => <When iso={(e.data?.slot_at as string | undefined) ?? e.created_at} /> },
-  { key: "a", head: "Account", mobile: "primary", render: (e) => String(e.data?.account_id ?? e.entity_id ?? "—") },
+  // posting.slot_empty has no data: its entity is the slot itself (entity_type "slot", entity_id = slot time).
+  { key: "t", head: "Slot", render: (e) => <When iso={(e.data?.slot_at as string | undefined) ?? (e.entity_type === "slot" ? e.entity_id : null) ?? e.created_at} /> },
+  { key: "a", head: "Account", mobile: "primary", render: (e) => (e.entity_type === "slot" ? <span className="muted">all accounts</span> : String(e.data?.account_id ?? e.entity_id ?? "—")) },
   { key: "d", head: "Decision", mobile: "aside", render: (e) => <Badge status={e.type === "posting.slot_empty" ? "empty" : e.type.startsWith("post.failed") ? "failed" : "skipped"}>{e.type === "posting.slot_empty" ? "empty" : e.type.startsWith("post.failed") ? "failed" : "skipped"}</Badge> },
-  { key: "r", head: "Rule", render: (e) => <span className="mono">{String(e.data?.rule ?? "—")}</span> },
-  { key: "w", head: "Why", render: (e) => e.message ?? "—" },
+  { key: "r", head: "Rule", render: (e) => <span className="mono">{String(e.data?.code ?? e.data?.rule ?? "—")}</span> },
+  { key: "w", head: "Why", render: (e) => e.message ?? (e.type === "posting.slot_empty" ? "No approved clip was waiting for this slot" : typeof e.data?.code === "string" ? humanize(e.data.code) : "—") },
 ];
 
 export function QueueView() {
@@ -66,7 +67,8 @@ export function QueueView() {
             <AnimatedContent distance={16} duration={0.45} stagger={0.05} trigger="mount">
               <ol className="dlist" style={{ listStyle: "none", padding: 0 }}>
                 {ranked.map((it, i) => {
-                  const life = it.expires_at && now ? Math.max(0, (Date.parse(it.expires_at) - now) / (72 * 3600e3)) * 100 : 100;
+                  const span = it.expires_at ? Date.parse(it.expires_at) - Date.parse(it.created_at) : 0;
+                  const life = it.expires_at && now && span > 0 ? Math.min(100, Math.max(0, ((Date.parse(it.expires_at) - now) / span) * 100)) : 100;
                   return (
                     <li key={it.clip_id}>
                       <Link href={`/clips/${it.clip_id}`} className={`ditem link${i === 0 ? " on" : ""}`}>

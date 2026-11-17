@@ -142,7 +142,9 @@ export function Spark({ values, color = "#5A4AF4", width = 90, height = 26, labe
   return <Line values={values} width={width} height={height} dots={false} area={false} color={color} label={label} />;
 }
 
-export function HBars({ items, unit = "", labelWidth = 170 }: { items: { label: ReactNode; value: number; tone?: "red" | "amber" | "green" }[]; unit?: string; labelWidth?: number }) {
+export function HBars({ items: all, unit = "", labelWidth = 170 }: { items: { label: ReactNode; value: number; tone?: "red" | "amber" | "green" }[]; unit?: string; labelWidth?: number }) {
+  // Values come from free-form JSON: anything that is not a finite number is left out instead of breaking the chart.
+  const items = all.filter((i) => typeof i.value === "number" && Number.isFinite(i.value));
   const mx = Math.max(...items.map((i) => i.value), 1);
   if (!items.length) return <div className="muted small">Nothing in this window.</div>;
   return (

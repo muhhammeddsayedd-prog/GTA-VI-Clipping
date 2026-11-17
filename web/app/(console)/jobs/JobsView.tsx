@@ -13,7 +13,7 @@ import { useListParams } from "@/lib/use-list";
 import { useDrawerParam } from "@/components/domain/ops/useDrawerParam";
 
 const KEYS = ["status", "queue", "type"];
-const TYPES = ["express.render", "clip.render", "clip.gate", "clip.precheck", "clip.precheck_result", "vod.process", "replay.find", "replay.scan", "vod.cleanup", "creator.permission", "post.hourly", "post.retry"];
+const TYPES = ["express.render", "clip.render", "clip.gate", "clip.precheck", "clip.precheck_result", "vod.process", "replay.find", "replay.scan", "vod.cleanup", "creator.permission", "viewer_clip.process", "post.hourly", "post.retry"];
 
 export function JobsView() {
   const lp = useListParams(KEYS);
