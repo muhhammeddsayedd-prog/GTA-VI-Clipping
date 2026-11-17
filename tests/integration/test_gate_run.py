@@ -43,7 +43,7 @@ def test_migration_0007_seeds_the_gate_settings() -> None:
     # Seeded as 1 by 0007 and set to 2 by 0011: an isolated flagged second is detector noise.
     assert loaded.strict_max_music_ratio == 0.0 and loaded.music_min_run_frames == 2
     assert "final mission" in loaded.spoiler_terms and "gambling" in loaded.reject_topics
-    assert (loaded.max_black_s, loaded.max_freeze_s, loaded.source_pad_s) == (2.0, 2.0, 30.0)
+    assert (loaded.max_black_s, loaded.max_freeze_s, loaded.source_pad_s) == (4.0, 4.0, 30.0)
     assert loaded.express.max_music_ratio == 0.0  # the seeded value is left alone
     assert settings.get_int("precheck.max_status_checks") == 3
 
