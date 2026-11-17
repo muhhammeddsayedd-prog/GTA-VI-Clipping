@@ -1,7 +1,7 @@
 """Helpers for the posting integration tests: a clean set of posting tables, the seeded accounts and small
 builders for creators, clips, spikes and old posts."""
 
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -179,16 +179,21 @@ def video(tmp_path: Path) -> Path:
 
 
 @pytest.fixture
-def production(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Clean posting tables, the production seed and `APP_ENV=production`. Still in dry run (the default)."""
+def production(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
+    """Clean posting tables, the production seed and `APP_ENV=production`. Still in dry run (the default).
+    The tables are emptied again afterwards, so other integration tests find them as they expect."""
     use_env(monkeypatch, "production")
     clean_posting_tables()
     seed("production")
+    yield
+    clean_posting_tables()
 
 
 @pytest.fixture
-def staging(monkeypatch: pytest.MonkeyPatch) -> None:
+def staging(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
     """Clean posting tables, the staging seed (accounts and settings) and `APP_ENV=staging`."""
     use_env(monkeypatch, "staging")
     clean_posting_tables()
     seed("staging")
+    yield
+    clean_posting_tables()
