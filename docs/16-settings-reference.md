@@ -161,6 +161,12 @@ Defaults below are the production values from `supabase/migrations/0002_seed_set
 | `precheck.enabled` | `true` | Run YouTube private-upload pre-check for risky hourly clips. |
 | `precheck.wait_s` | `1800` | Wait before reading pre-check status. |
 | `precheck.daily_max` | `20` | Max pre-check uploads per day. |
+| `gate.spoiler_terms` | `["spoiler", "spoilers", "ending", "endings", "true ending", "secret ending", "final mission", "last mission", "final boss", "final heist", "final choice", "final cutscene", "epilogue", "post credits", "credits scene", "plot twist", "story twist", "character death", "main character dies", "who dies", "death scene", "killed off", "betrayal", "betrays"]` | Words and phrases that may never appear in a hook, title, caption or hashtag (whole words, any case). Checked by the gate whatever the model said (D20). Added by migration 0007. |
+| `gate.strict_max_music_ratio` | `0.0` | Music limit of a risky hourly clip when the YouTube pre-check cannot run (no OAuth token, switched off, daily quota used; D103). Never above `gate.hourly.max_music_ratio`. Added by migration 0007. |
+| `gate.music_min_run_frames` | `1` | Music frames in a run shorter than this many seconds are ignored by the gate. `1` counts every flagged frame. Added by migration 0007. |
+| `gate.checks` | `{"max_black_s": 2.0, "max_freeze_s": 2.0, "freeze_noise": 0.003, "max_subtitle_drift_s": 0.3, "max_file_mb": 100, "width": 1080, "height": 1920, "duration_tolerance_s": 1.0}` | Technical gate limits: a black or frozen picture of this length or more fails, subtitle drift, file size (MB of 10^6 bytes) and frame size, allowed difference between the file length and the clip length plus end card. Added by migration 0007. |
+| `gate.duplicate` | `{"source_pad_s": 30, "topic_overlap_same_creator": 0.5, "topic_overlap_any_creator": 0.8, "transcript_overlap": 0.5}` | Duplicate detection: padding around a source range; shared topic words (same creator: share of the shorter topic, any creator: Jaccard); shared three-word sequences of the transcripts. `0` switches a rule off. Added by migration 0007. |
+| `precheck.max_status_checks` | `3` | How many times the pre-check status is read while YouTube is still processing before the clip is rejected as inconclusive. Added by migration 0007. |
 
 ## Posting
 

@@ -347,7 +347,7 @@ def check_duplicate_topic(
                 failures.append(
                     (
                         ReasonCode.DUPLICATE_TRANSCRIPT,
-                        f"{overlap:.0%} of the words repeat clip {other.id} (window {limits.topic_dedupe_h:g} h)",
+                        f"{overlap:.0%} of the words repeat clip {other.id}",
                     )
                 )
     return _result(failures, matches, limits.topic_dedupe_h)
