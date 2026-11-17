@@ -24,7 +24,7 @@ from typing import Any, Final
 import httpx
 
 from sixstars.chat.models import ChatMessage, ChatSourceError, Kind
-from sixstars.chat.net import usable_cookies
+from sixstars.chat.net import request_error, usable_cookies
 
 WATCH_URL: Final = "https://www.youtube.com/watch"
 CHAT_API_URL: Final = "https://www.youtube.com/youtubei/v1/live_chat/{endpoint}"
@@ -389,7 +389,7 @@ async def fetch_watch_page(http: httpx.AsyncClient, video_id: str) -> WatchPage:
     try:
         response = await http.get(WATCH_URL, params={"v": video_id, "hl": "en"})
     except httpx.HTTPError as exc:
-        raise ChatSourceError(f"YouTube watch page request failed: {type(exc).__name__}") from exc
+        raise ChatSourceError(f"YouTube watch page request failed: {request_error(exc)}") from exc
     if response.status_code != 200:
         raise ChatSourceError(f"YouTube watch page returned HTTP {response.status_code}")
     if response.url.host.startswith("consent."):
@@ -422,7 +422,7 @@ async def post_chat(
             json={"context": {"client": client}, "continuation": continuation},
         )
     except httpx.HTTPError as exc:
-        raise ChatSourceError(f"YouTube chat request failed: {type(exc).__name__}") from exc
+        raise ChatSourceError(f"YouTube chat request failed: {request_error(exc)}") from exc
     if response.status_code != 200:
         raise ChatSourceError(f"YouTube chat endpoint {endpoint} returned HTTP {response.status_code}")
     try:
