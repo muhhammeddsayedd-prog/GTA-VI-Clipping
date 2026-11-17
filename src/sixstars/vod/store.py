@@ -495,13 +495,21 @@ def note_block(video: Video, detail: str, access: str) -> None:
     )
 
 
-def last_block(platform: str) -> datetime | None:
-    """When a download of `platform` was last refused, or None."""
+def block_retry_at(platform: str, backoff_s: float) -> datetime | None:
+    """When downloads of `platform` may be tried again after a refusal, or None when they may be tried
+    now. Measured on the database clock, the one clock every worker shares."""
     row = db.fetch_one(
-        "select max(created_at) as at from events where type = %s and data->>'platform' = %s",
-        (EVENT_BLOCKED, platform),
+        """
+        select max(created_at) + make_interval(secs => %s) as retry_at,
+               max(created_at) + make_interval(secs => %s) > now() as waiting
+        from events where type = %s and data->>'platform' = %s
+        """,
+        (backoff_s, backoff_s, EVENT_BLOCKED, platform),
     )
-    return row["at"] if row is not None else None
+    if row is None or not row["waiting"]:
+        return None
+    retry_at: datetime = row["retry_at"]
+    return retry_at
 
 
 def claim_block_notification(platform: str, interval_s: float) -> bool:

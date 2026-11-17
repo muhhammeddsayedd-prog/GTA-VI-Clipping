@@ -261,11 +261,9 @@ def _gates(video: Video, cfg: VodConfig, deps: Deps, *, force: bool) -> None:
         )
     if force:
         return
-    last_block = store.last_block(video.platform)
-    if last_block is not None:
-        retry_at = last_block + timedelta(seconds=cfg.blocked_backoff_s)
-        if retry_at > now:
-            raise DeferredError("download_blocked", f"{video.platform} downloads were refused", retry_at)
+    retry_at = store.block_retry_at(video.platform, cfg.blocked_backoff_s)
+    if retry_at is not None:
+        raise DeferredError("download_blocked", f"{video.platform} downloads were refused", retry_at)
     if store.count_processing(video.id, cfg.processing_stale_s) >= cfg.max_concurrent:
         raise DeferredError(
             "concurrency",

@@ -115,6 +115,35 @@ Defaults below are the production values from `supabase/migrations/0002_seed_set
 | `vod.paused_until` | `null` | Set by guardian when the spend cap is hit; VOD jobs wait until this time. |
 | `downloads.proxy_platforms` | `["youtube"]` | Platforms whose downloads (yt-dlp, streamlink) go through PROXY_URL. |
 | `downloads.max_height` | `1080` | Max source video height downloaded. |
+| `vod.max_concurrent` | `1` | Videos the VOD lane processes at the same time. A job over the limit waits vod.concurrency_retry_s. (M08) |
+| `vod.concurrency_retry_s` | `120` | Seconds a vod.process job waits when vod.max_concurrent videos are already being processed. (M08) |
+| `vod.processing_stale_s` | `7200` | A video in status processing that was not updated for this long no longer counts as being processed (its worker died). (M08) |
+| `vod.render_priority` | `{"S": 55, "A": 55, "B": 40}` | Priority of the clip.render job per spike tier. (M08) |
+| `vod.clipped_range_margin_s` | `30` | Replay pass after a live stream: spikes closer than this to a range the live lane already clipped are dropped. (M08) |
+| `vod.chat_retry_delay_s` | `20` | Seconds before the single retry when YouTube reports no chat replay for a past stream. (M08) |
+| `vod.confirm_with_captions` | `true` | Fetch the caption track (no media) and show the words around each spike to the confirmation prompt. (M08) |
+| `vod.caption_langs` | `[".*-orig", "en"]` | Caption tracks asked for, in order of preference: language codes or patterns (.*-orig is the automatic track in the language spoken). (M08) |
+| `vod.caption_timeout_s` | `180` | Seconds before the yt-dlp caption download is killed. (M08) |
+| `vod.download_timeout_s` | `900` | Seconds before one yt-dlp window download is killed. (M08) |
+| `vod.download_failures_max` | `3` | Failed window downloads in a row after which the video is given up for this attempt. (M08) |
+| `vod.download_workers` | `3` | Windows of one video downloaded at the same time (YouTube serves each at about 1.5 times playback speed). (M08) |
+| `vod.section_exact_cuts` | `false` | true re-encodes each downloaded window so it starts on the exact frame (slow); false copies the streams and relies on the edit list ffmpeg writes. (M08) |
+| `vod.blocked_backoff_s` | `1800` | Downloads refused by the platform (YouTube bot check, rate limit): seconds before videos of that platform are tried again. (M08) |
+| `vod.blocked_notify_interval_s` | `3600` | At most one "downloads are blocked" notification per this many seconds. (M08) |
+| `vod.stop_retry_s` | `600` | Seconds a video waits while control.emergency_stop is set. (M08) |
+| `vod.fallback_enabled` | `true` | Use the transcript fallback for videos without a usable chat replay. (M08) |
+| `vod.fallback_below_spikes` | `1` | The transcript fallback also runs when the chat replay gave fewer spikes than this. (M08) |
+| `vod.fallback_max_duration_s` | `43200` | Transcript fallback: videos longer than this are skipped. (M08) |
+| `vod.fallback_min_confidence` | `0.5` | Transcript fallback: moments below this confidence are stored as rejected. (M08) |
+| `vod.fallback_chunk_s` | `30` | Transcript fallback: seconds of transcript per block shown to the moment picker. (M08) |
+| `vod.fallback_transcribe_mode` | `"local"` | Transcript fallback without a caption track: local (faster-whisper, no fee) or hosted (transcribe.express_provider, paid). (M08) |
+| `vod.fallback_transcribe_max_s` | `5400` | Transcript fallback without a caption track: seconds of audio transcribed per video at most (0 = never transcribe). (M08) |
+| `vod.fallback_transcribe_daily_s` | `21600` | Transcript fallback without a caption track: seconds of audio transcribed per UTC day at most. (M08) |
+| `vod.fallback_transcribe_block_s` | `600` | Transcript fallback: seconds of audio per transcription request. (M08) |
+| `vod.fallback_whisper_model` | `null` | Local model for the fallback transcription; null uses vod.whisper_model. (M08) |
+| `vod.section_retention_s` | `93600` | Downloaded windows whose render never finished are deleted after this many seconds. (M08) |
+| `vod.chat_retention_s` | `604800` | Chat replay files are deleted this many seconds after the download. (M08) |
+| `vod.cleanup_interval_s` | `900` | Seconds between clean-up passes over one video's downloaded windows. (M08) |
 
 ## Clip factory
 
