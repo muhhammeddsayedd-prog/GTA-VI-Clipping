@@ -1,11 +1,10 @@
 """Process entry point for a queue worker (`express` or `normal`) that claims and runs jobs from the `jobs`
 table. Implemented in M01, completed in M11.
 
-Handlers. Every package that owns job types has a module `<package>.handlers` with a function
-`register()` that calls `worker.register(job_type, handler)` for each of its types. `register_all()` goes
-through `HANDLER_MODULES` at start-up and calls each one. A later milestone only adds its `handlers.py`
-(the module names of every planned package are already listed); a package whose module does not exist yet
-is skipped.
+Handlers. Every package that owns job types has a function that calls `worker.register(job_type,
+handler)` for each of its types. `HANDLER_MODULES` lists those functions as "module" (function `register`)
+or "module:function"; `register_all()` calls each one at start-up. A package adds one line to that list.
+An entry whose module or function does not exist yet is skipped.
 
 Shutdown. On SIGINT or SIGTERM the worker stops claiming and lets the current job finish. docker compose
 kills the container after `stop_grace_period` (60 s), so after `SHUTDOWN_GRACE_S` the worker gives the
@@ -24,14 +23,16 @@ from sixstars.services._runtime import install_stop_signals
 
 HANDLERS: dict[str, jobs.Handler] = {}
 
-# One `handlers` module per package that owns job types. Missing modules are skipped.
+# Where each package registers its job handlers: "module" (its function `register`) or
+# "module:function". To add a package, add one line here. Entries whose module or function does not
+# exist (yet) are skipped.
 HANDLER_MODULES: tuple[str, ...] = (
     "sixstars.posting.handlers",  # M10: post.hourly, post.retry
-    "sixstars.vod.handlers",  # M08
-    "sixstars.factory.handlers",  # M06
-    "sixstars.gate.handlers",  # M07
+    "sixstars.factory.pipeline:register_handlers",  # M06
+    "sixstars.gate.gate:install",  # M07
+    "sixstars.vod:register_handlers",  # M08
+    "sixstars.discovery.tiers:register_handlers",  # M09
     "sixstars.precheck.handlers",  # M07
-    "sixstars.discovery.handlers",  # M09
     "sixstars.live.handlers",  # M14
     "sixstars.guardian.handlers",  # M13
     "sixstars.stats.handlers",  # M13
@@ -66,9 +67,10 @@ def register_all(modules: tuple[str, ...] = HANDLER_MODULES) -> list[str]:
     """
     log = get_logger("worker")
     done: list[str] = []
-    for name in modules:
-        if name in _registered_modules:
+    for entry in modules:
+        if entry in _registered_modules:
             continue
+        name, _, function = entry.partition(":")
         try:
             module = importlib.import_module(name)
         except ModuleNotFoundError as exc:
@@ -80,7 +82,7 @@ def register_all(modules: tuple[str, ...] = HANDLER_MODULES) -> list[str]:
         except Exception as exc:
             _report_broken(name, exc)
             continue
-        register_fn = getattr(module, "register", None)
+        register_fn = getattr(module, function or "register", None)
         if not callable(register_fn):
             log.debug("handlers_module_without_register", module=name)
             continue
@@ -89,8 +91,8 @@ def register_all(modules: tuple[str, ...] = HANDLER_MODULES) -> list[str]:
         except Exception as exc:
             _report_broken(name, exc)
             continue
-        _registered_modules.add(name)
-        done.append(name)
+        _registered_modules.add(entry)
+        done.append(entry)
     log.info("handlers_registered", modules=done, job_types=sorted(HANDLERS))
     return done
 

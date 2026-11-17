@@ -123,6 +123,15 @@ def test_register_all_registers_every_module_that_has_handlers_and_skips_the_res
     assert clean_registry == []  # a package without handlers is not an error
 
 
+def test_an_entry_can_name_its_registration_function(
+    clean_registry: list[tuple[str, str, str]], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fake_module(monkeypatch, "fake_pkg_c.pipeline", register_handlers=lambda: worker.register("c.job", noop))
+    entries = ("fake_pkg_c.pipeline:register_handlers", "fake_pkg_c.pipeline:not_there")
+    assert worker.register_all(entries) == ["fake_pkg_c.pipeline:register_handlers"]
+    assert set(worker.HANDLERS) == {"c.job"} and clean_registry == []
+
+
 def test_register_all_twice_registers_once(
     clean_registry: list[tuple[str, str, str]], monkeypatch: pytest.MonkeyPatch
 ) -> None:
