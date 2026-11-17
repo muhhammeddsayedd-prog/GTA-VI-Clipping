@@ -141,6 +141,7 @@ def test_hosted_cost() -> None:
 
 def test_local_mode_loads_the_model_once(clip: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(transcribe, "_models", {})
+    monkeypatch.setattr(transcribe, "decode_samples", lambda path: f"samples of {path.name}")
     loads: list[str] = []
     calls: list[dict[str, Any]] = []
 
@@ -164,6 +165,7 @@ def test_local_mode_loads_the_model_once(clip: Path, monkeypatch: pytest.MonkeyP
     transcriber.transcribe(clip, mode="local", language="en")
 
     assert loads == ["medium"]
+    assert calls[0]["path"] == "samples of clip.flac"
     assert first.provider == "local" and first.language == "en" and first.duration_s == 5.0
     assert [(word.w, word.s, word.e) for word in first.words] == [("clip", 0.5, 0.9), ("it", 0.9, 1.1)]
     assert (
@@ -180,3 +182,55 @@ def test_too_large_file_is_refused(tmp_path: Path, monkeypatch: pytest.MonkeyPat
     big.write_bytes(b"12345")
     with pytest.raises(TranscriptionError, match="25 MB"):
         Transcriber(openai_api_key="o", express_provider="openai").transcribe(big, mode="hosted")
+
+
+@pytest.mark.ffmpeg
+def test_local_mode_gives_the_model_samples_not_a_path(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """faster-whisper 1.2.1 opens a path with `av.open(metadata_errors=...)`, which PyAV 19 rejects, so the
+    local path must decode the file itself and hand over 16 kHz mono float samples."""
+    import shutil
+    import wave
+
+    import numpy as np
+
+    if shutil.which("ffmpeg") is None:
+        pytest.skip("ffmpeg not installed")
+    source = tmp_path / "tone.wav"
+    rate, seconds = 8000, 2
+    tone = (np.sin(np.arange(rate * seconds) * 2 * np.pi * 440 / rate) * 12000).astype(np.int16)
+    with wave.open(str(source), "wb") as handle:
+        handle.setnchannels(2)
+        handle.setsampwidth(2)
+        handle.setframerate(rate)
+        handle.writeframes(np.repeat(tone, 2).tobytes())
+    monkeypatch.setattr(transcribe, "_models", {})
+    seen: list[Any] = []
+
+    class PathRejectingWhisper:
+        def transcribe(self, audio: Any, **kwargs: Any) -> tuple[Any, Any]:
+            if isinstance(audio, str | Path):
+                raise TypeError("open() got an unexpected keyword argument 'metadata_errors'")
+            seen.append(audio)
+            return iter([]), SimpleNamespace(language="en", duration=float(len(audio)) / 16000)
+
+    transcriber = Transcriber(whisper_model="tiny", model_factory=lambda name: PathRejectingWhisper())
+    result = transcriber.transcribe(source, mode="local")
+
+    samples = seen[0]
+    assert samples.dtype == np.float32 and samples.ndim == 1
+    assert abs(len(samples) - transcribe.AUDIO_SAMPLE_RATE * seconds) <= 16
+    assert 0.2 < float(np.abs(samples).max()) <= 1.0
+    assert result.duration_s == pytest.approx(seconds, abs=0.01) and result.words == ()
+
+
+def test_decode_samples_reports_an_unreadable_file(tmp_path: Path) -> None:
+    import shutil
+
+    if shutil.which("ffmpeg") is None:
+        pytest.skip("ffmpeg not installed")
+    broken = tmp_path / "broken.wav"
+    broken.write_bytes(b"not audio")
+    with pytest.raises(TranscriptionError, match="could not decode broken.wav"):
+        transcribe.decode_samples(broken)
