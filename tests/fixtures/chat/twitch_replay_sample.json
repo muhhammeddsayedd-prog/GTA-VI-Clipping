@@ -1,0 +1,6987 @@
+{
+ "FileInfo": {
+  "Version": {
+   "Major": 1,
+   "Minor": 4,
+   "Patch": 0
+  },
+  "CreatedAt": "2026-11-17T02:51:26.468733+02:00",
+  "UpdatedAt": "0001-01-01T00:00:00"
+ },
+ "streamer": {
+  "name": "ExampleStreamer",
+  "login": "examplestreamer",
+  "id": 100000001
+ },
+ "clipper": null,
+ "video": {
+  "title": "GTA V roleplay stream",
+  "description": null,
+  "id": "1000000001",
+  "created_at": "2026-10-16T18:01:19Z",
+  "start": 0,
+  "end": 42450,
+  "length": 42450,
+  "viewCount": 1000,
+  "game": "Grand Theft Auto V",
+  "chapters": [
+   {
+    "id": "",
+    "startMilliseconds": 0,
+    "lengthMilliseconds": 42450000,
+    "type": "GAME_CHANGE",
+    "description": "Grand Theft Auto V",
+    "subDescription": "",
+    "thumbnailUrl": null,
+    "gameId": "32982",
+    "gameDisplayName": "Grand Theft Auto V",
+    "gameBoxArtUrl": null
+   }
+  ]
+ },
+ "comments": [
+  {
+   "_id": "7d9df73d9da902f8373860345f3d067e",
+   "created_at": "2026-10-16T18:01:56.524Z",
+   "channel_id": "100000001",
+   "content_type": "video",
+   "content_id": "1000000001",
+   "content_offset_seconds": 35,
+   "commenter": {
+    "display_name": "StreamElements",
+    "_id": "607023095",
+    "name": "streamelements",
+    "bio": null,
+    "created_at": "2020-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z",
+    "logo": null
+   },
+   "message": {
+    "body": "@user_789c6d5f fender2k1 has spent  3 months 19 days 13 hours watching streamer",
+    "bits_spent": 0,
+    "fragments": [
+     {
+      "text": "@user_789c6d5f fender2k1 has spent  3 months 19 days 13 hours watching streamer",
+      "emoticon": null
+     }
+    ],
+    "user_badges": [
+     {
+      "_id": "moderator",
+      "version": "1"
+     },
+     {
+      "_id": "bot-badge",
+      "version": "1"
+     }
+    ],
+    "user_color": "#5B99FF",
+    "emoticons": []
+   }
+  },
+  {
+   "_id": "59a6a6cbcb0cf2490e240e338067ce7a",
+   "created_at": "2026-10-16T18:02:15.396Z",
+   "channel_id": "100000001",
+   "content_type": "video",
+   "content_id": "1000000001",
+   "content_offset_seconds": 54,
+   "commenter": {
+    "display_name": "StreamElements",
+    "_id": "607023095",
+    "name": "streamelements",
+    "bio": null,
+    "created_at": "2020-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z",
+    "logo": null
+   },
+   "message": {
+    "body": "*NEW* Watch the latest NoPixel News | EP.5 | https://example.com/link",
+    "bits_spent": 0,
+    "fragments": [
+     {
+      "text": "*NEW* Watch the latest NoPixel News | EP.5 | https://example.com/link",
+      "emoticon": null
+     }
+    ],
+    "user_badges": [
+     {
+      "_id": "moderator",
+      "version": "1"
+     },
+     {
+      "_id": "bot-badge",
+      "version": "1"
+     }
+    ],
+    "user_color": "#5B99FF",
+    "emoticons": []
+   }
+  },
+  {
+   "_id": "cf5516249e59cf1e02e1fbf1c1d450ab",
+   "created_at": "2026-10-16T21:13:48.904Z",
+   "channel_id": "100000001",
+   "content_type": "video",
+   "content_id": "1000000001",
+   "content_offset_seconds": 11548,
+   "commenter": {
+    "display_name": "user_8499c084",
+    "_id": "545716925",
+    "name": "user_8499c084",
+    "bio": null,
+    "created_at": "2020-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z",
+    "logo": null
+   },
+   "message": {
+    "body": "Cheer100",
+    "bits_spent": 100,
+    "fragments": [
+     {
+      "text": "Cheer100",
+      "emoticon": null
+     }
+    ],
+    "user_badges": [
+     {
+      "_id": "moments",
+      "version": "1"
+     }
+    ],
+    "user_color": "#E82E4D",
+    "emoticons": []
+   }
+  },
+  {
+   "_id": "dc304c54243b26db1cf2055a9085f4cd",
+   "created_at": "2026-10-17T03:56:20.726Z",
+   "channel_id": "100000001",
+   "content_type": "video",
+   "content_id": "1000000001",
+   "content_offset_seconds": 35700,
+   "commenter": {
+    "display_name": "user_06735739",
+    "_id": "398677249",
+    "name": "user_06735739",
+    "bio": null,
+    "created_at": "2020-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z",
+    "logo": null
+   },
+   "message": {
+    "body": "LOL",
+    "bits_spent": 0,
+    "fragments": [
+     {
+      "text": "LOL",
+      "emoticon": null
+     }
+    ],
+    "user_badges": [
+     {
+      "_id": "turbo",
+      "version": "1"
+     }
+    ],
+    "user_color": "#0B730C",
+    "emoticons": []
+   }
+  },
+  {
+   "_id": "4cd2fa58ef42b4af64961eee6b122513",
+   "created_at": "2026-10-17T03:56:20.795Z",
+   "channel_id": "100000001",
+   "content_type": "video",
+   "content_id": "1000000001",
+   "content_offset_seconds": 35700,
+   "commenter": {
+    "display_name": "user_beb8b29c",
+    "_id": "510226000",
+    "name": "user_beb8b29c",
+    "bio": null,
+    "created_at": "2020-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z",
+    "logo": null
+   },
+   "message": {
+    "body": "ADMIN RP",
+    "bits_spent": 0,
+    "fragments": [
+     {
+      "text": "ADMIN RP",
+      "emoticon": null
+     }
+    ],
+    "user_badges": [],
+    "user_color": "#9ACD32",
+    "emoticons": []
+   }
+  },
+  {
+   "_id": "c3fafc84b35316fd4f9527f279ea86e8",
+   "created_at": "2026-10-17T03:56:20.946Z",
+   "channel_id": "100000001",
+   "content_type": "video",
+   "content_id": "1000000001",
+   "content_offset_seconds": 35700,
+   "commenter": {
+    "display_name": "user_d3b7532b",
+    "_id": "323939613",
+    "name": "user_d3b7532b",
+    "bio": null,
+    "created_at": "2020-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z",
+    "logo": null
+   },
+   "message": {
+    "body": "shoot him once",
+    "bits_spent": 0,
+    "fragments": [
+     {
+      "text": "shoot him once",
+      "emoticon": null
+     }
+    ],
+    "user_badges": [
+     {
+      "_id": "heartsteel-fan",
+      "version": "1"
+     }
+    ],
+    "user_color": "#B22222",
+    "emoticons": []
+   }
+  },
+  {
+   "_id": "1e93a3e89eec5abb6e1a2544f1eb6a20",
+   "created_at": "2026-10-17T03:56:22.311Z",
+   "channel_id": "100000001",
+   "content_type": "video",
+   "content_id": "1000000001",
+   "content_offset_seconds": 35701,
+   "commenter": {
+    "display_name": "user_75367bfa",
+    "_id": "467732605",
+    "name": "user_75367bfa",
+    "bio": null,
+    "created_at": "2020-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z",
+    "logo": null
+   },
+   "message": {
+    "body": "kill the hostage",
+    "bits_spent": 0,
+    "fragments": [
+     {
+      "text": "kill the hostage",
+      "emoticon": null
+     }
+    ],
+    "user_badges": [],
+    "user_color": "#0000FF",
+    "emoticons": []
+   }
+  },
+  {
+   "_id": "391d6debf617e8f450ee41d27bdcdd11",
+   "created_at": "2026-10-17T03:56:22.768Z",
+   "channel_id": "100000001",
+   "content_type": "video",
+   "content_id": "1000000001",
+   "content_offset_seconds": 35702,
+   "commenter": {
+    "display_name": "user_fd16c67f",
+    "_id": "843524662",
+    "name": "user_fd16c67f",
+    "bio": null,
+    "created_at": "2020-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z",
+    "logo": null
+   },
+   "message": {
+    "body": "NPC OFFICER LMAO",
+    "bits_spent": 0,
+    "fragments": [
+     {
+      "text": "NPC OFFICER LMAO",
+      "emoticon": null
+     }
+    ],
+    "user_badges": [
+     {
+      "_id": "moments",
+      "version": "4"
+     }
+    ],
+    "user_color": "#E5FF00",
+    "emoticons": []
+   }
+  },
+  {
+   "_id": "610edf8308782fa8d5dcc5de9411c0e8",
+   "created_at": "2026-10-17T03:56:23.024Z",
+   "channel_id": "100000001",
+   "content_type": "video",
+   "content_id": "1000000001",
+   "content_offset_seconds": 35702,
+   "commenter": {
+    "display_name": "user_7516a770",
+    "_id": "861719600",
+    "name": "user_7516a770",
+    "bio": null,
+    "created_at": "2020-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z",
+    "logo": null
+   },
+   "message": {
+    "body": "LOL no bullets",
+    "bits_spent": 0,
+    "fragments": [
+     {
+      "text": "LOL no bullets",
+      "emoticon": null
+     }
+    ],
+    "user_badges": [
+     {
+      "_id": "nopixel-v-launch",
+      "version": "1"
+     }
+    ],
+    "user_color": "#FF0000",
+    "emoticons": []
+   }
+  },
+  {
+   "_id": "8e86db8c808e13ae5e29757cfb5119aa",
+   "created_at": "2026-10-17T03:56:23.756Z",
+   "channel_id": "100000001",
+   "content_type": "video",
+   "content_id": "1000000001",
+   "content_offset_seconds": 35703,
+   "commenter": {
+    "display_name": "user_3f914181",
+    "_id": "579470616",
+    "name": "user_3f914181",
+    "bio": null,
+    "created_at": "2020-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z",
+    "logo": null
+   },
+   "message": {
+    "body": "HOMEOWNER RP",
+    "bits_spent": 0,
+    "fragments": [
+     {
+      "text": "HOMEOWNER RP",
+      "emoticon": null
+     }
+    ],
+    "user_badges": [
+     {
+      "_id": "moments",
+      "version": "5"
+     }
+    ],
+    "user_color": "#5F9EA0",
+    "emoticons": []
+   }
+  },
+  {
+   "_id": "e3ae1e0afb8287744094937b94c6197e",
+   "created_at": "2026-10-17T03:56:23.994Z",
+   "channel_id": "100000001",
+   "content_type": "video",
+   "content_id": "1000000001",
+   "content_offset_seconds": 35703,
+   "commenter": {
+    "display_name": "user_6b6e217f",
+    "_id": "662011034",
+    "name": "user_6b6e217f",
+    "bio": null,
+    "created_at": "2020-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z",
+    "logo": null
+   },
+   "message": {
+    "body": "this cop is a dud LUL",
+    "bits_spent": 0,
+    "fragments": [
+     {
+      "text": "this cop is a dud LUL",
+      "emoticon": null
+     }
+    ],
+    "user_badges": [
+     {
+      "_id": "subscriber",
+      "version": "6"
+     },
+     {
+      "_id": "moments",
+      "version": "2"
+     }
+    ],
+    "user_color": "#5F9EA0",
+    "emoticons": []
+   }
+  },
+  {
+   "_id": "c1a742fde5c40d748457c1902e291d1b",
+   "created_at": "2026-10-17T03:56:24.05Z",
+   "channel_id": "100000001",
+   "content_type": "video",
+   "content_id": "1000000001",
+   "content_offset_seconds": 35703,
+   "commenter": {
+    "display_name": "user_e2be2822",
+    "_id": "450337285",
+    "name": "user_e2be2822",
+    "bio": null,
+    "created_at": "2020-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z",
+    "logo": null
+   },
+   "message": {
+    "body": "LO",
+    "bits_spent": 0,
+    "fragments": [
+     {
+      "text": "LO",
+      "emoticon": null
+     }
+    ],
+    "user_badges": [
+     {
+      "_id": "moments",
+      "version": "3"
+     }
+    ],
+    "user_color": "#1E90FF",
+    "emoticons": []
+   }
+  },
+  {
+   "_id": "238502e40096c5cc43c4f8d5f5293e4b",
+   "created_at": "2026-10-17T03:56:24.735Z",
+   "channel_id": "100000001",
+   "content_type": "video",
+   "content_id": "1000000001",
+   "content_offset_seconds": 35704,
+   "commenter": {
+    "display_name": "user_a5657a1c",
+    "_id": "586280178",
+    "name": "user_a5657a1c",
+    "bio": null,
+    "created_at": "2020-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z",
+    "logo": null
+   },
+   "message": {
+    "body": "om  ͏",
+    "bits_spent": 0,
+    "fragments": [
+     {
+      "text": "om  ͏",
+      "emoticon": null
+     }
+    ],
+    "user_badges": [
+     {
+      "_id": "moments",
+      "version": "4"
+     }
+    ],
+    "user_color": "#FF69B4",
+    "emoticons": []
+   }
+  },
+  {
+   "_id": "cd9452938666dd37ef65dd5b35576e11",
+   "created_at": "2026-10-17T03:56:24.773Z",
+   "channel_id": "100000001",
+   "content_type": "video",
+   "content_id": "1000000001",
+   "content_offset_seconds": 35704,
+   "commenter": {
+    "display_name": "user_01f75024",
+    "_id": "775658070",
+    "name": "user_01f75024",
+    "bio": null,
+    "created_at": "2020-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z",
+    "logo": null
+   },
+   "message": {
+    "body": "LOL ͏",
+    "bits_spent": 0,
+    "fragments": [
+     {
+      "text": "LOL ͏",
+      "emoticon": null
+     }
+    ],
+    "user_badges": [
+     {
+      "_id": "pokemon-30th-anniversary",
+      "version": "1"
+     }
+    ],
+    "user_color": "#0000FF",
+    "emoticons": []
+   }
+  },
+  {
+   "_id": "37c21686329111bbbf2dd38072f6d4a1",
+   "created_at": "2026-10-17T03:56:24.784Z",
+   "channel_id": "100000001",
+   "content_type": "video",
+   "content_id": "1000000001",
+   "content_offset_seconds": 35704,
+   "commenter": {
+    "display_name": "user_d123ac15",
+    "_id": "162362481",
+    "name": "user_d123ac15",
+    "bio": null,
+    "created_at": "2020-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z",
+    "logo": null
+   },
+   "message": {
+    "body": "OWNER RP KEKW",
+    "bits_spent": 0,
+    "fragments": [
+     {
+      "text": "OWNER RP KEKW",
+      "emoticon": null
+     }
+    ],
+    "user_badges": [
+     {
+      "_id": "marathon-silkworm",
+      "version": "1"
+     }
+    ],
+    "user_color": null,
+    "emoticons": []
+   }
+  },
+  {
+   "_id": "9eba3d48541a6c1f7adf3228d2a2025c",
+   "created_at": "2026-10-17T03:56:24.917Z",
+   "channel_id": "100000001",
+   "content_type": "video",
+   "content_id": "1000000001",
+   "content_offset_seconds": 35704,
+   "commenter": {
+    "display_name": "user_718aa14c",
+    "_id": "771815578",
+    "name": "user_718aa14c",
+    "bio": null,
+    "created_at": "2020-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z",
+    "logo": null
+   },
+   "message": {
+    "body": "L COP",
+    "bits_spent": 0,
+    "fragments": [
+     {
+      "text": "L COP",
+      "emoticon": null
+     }
+    ],
+    "user_badges": [
+     {
+      "_id": "squirtle",
+      "version": "1"
+     }
+    ],
+    "user_color": "#7300FF",
+    "emoticons": []
+   }
+  },
+  {
+   "_id": "7e0596ec1b81574f527682da65eeb318",
+   "created_at": "2026-10-17T03:56:25.47Z",
+   "channel_id": "100000001",
+   "content_type": "video",
+   "content_id": "1000000001",
+   "content_offset_seconds": 35704,
+   "commenter": {
+    "display_name": "user_028d0620",
+    "_id": "505679691",
+    "name": "user_028d0620",
+    "bio": null,
+    "created_at": "2020-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z",
+    "logo": null
+   },
+   "message": {
+    "body": "Lol",
+    "bits_spent": 0,
+    "fragments": [
+     {
+      "text": "Lol",
+      "emoticon": null
+     }
+    ],
+    "user_badges": [
+     {
+      "_id": "rustmas-2025",
+      "version": "1"
+     }
+    ],
+    "user_color": "#00FF7F",
+    "emoticons": []
+   }
+  },
+  {
+   "_id": "3b0f554cd97886c41013d1b771fe20fe",
+   "created_at": "2026-10-17T03:56:27.011Z",
+   "channel_id": "100000001",
+   "content_type": "video",
+   "content_id": "1000000001",
+   "content_offset_seconds": 35706,
+   "commenter": {
+    "display_name": "user_f5dad38b",
+    "_id": "743567262",
+    "name": "user_f5dad38b",
+    "bio": null,
+    "created_at": "2020-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z",
+    "logo": null
+   },
+   "message": {
+    "body": "kill him",
+    "bits_spent": 0,
+    "fragments": [
+     {
+      "text": "kill him",
+      "emoticon": null
+     }
+    ],
+    "user_badges": [
+     {
+      "_id": "premium",
+      "version": "1"
+     }
+    ],
+    "user_color": null,
+    "emoticons": []
+   }
+  },
+  {
+   "_id": "3595b692c77918cd7e69f064cf9ea3cb",
+   "created_at": "2026-10-17T03:56:27.286Z",
+   "channel_id": "100000001",
+   "content_type": "video",
+   "content_id": "1000000001",
+   "content_offset_seconds": 35706,
+   "commenter": {
+    "display_name": "user_667316c9",
+    "_id": "410315674",
+    "name": "user_667316c9",
+    "bio": null,
+    "created_at": "2020-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z",
+    "logo": null
+   },
+   "message": {
+    "body": "LOOOL",
+    "bits_spent": 0,
+    "fragments": [
+     {
+      "text": "LOOOL",
+      "emoticon": null
+     }
+    ],
+    "user_badges": [],
+    "user_color": "#FFD700",
+    "emoticons": []
+   }
+  },
+  {
+   "_id": "436bc15d129568da5a7bfe4160f57afa",
+   "created_at": "2026-10-17T03:56:27.596Z",
+   "channel_id": "100000001",
+   "content_type": "video",
+   "content_id": "1000000001",
+   "content_offset_seconds": 35706,
+   "commenter": {
+    "display_name": "user_3cfa51d3",
+    "_id": "265096877",
+    "name": "user_3cfa51d3",
+    "bio": null,
+    "created_at": "2020-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z",
+    "logo": null
+   },
+   "message": {
+    "body": "LOL",
+    "bits_spent": 0,
+    "fragments": [
+     {
+      "text": "LOL",
+      "emoticon": null
+     }
+    ],
+    "user_badges": [
+     {
+      "_id": "nopixel-v-launch",
+      "version": "1"
+     }
+    ],
+    "user_color": "#FFEA17",
+    "emoticons": []
+   }
+  },
+  {
+   "_id": "9cc747b09acaa9e006b55f7bde67d3af",
+   "created_at": "2026-10-17T03:56:27.663Z",
+   "channel_id": "100000001",
+   "content_type": "video",
+   "content_id": "1000000001",
+   "content_offset_seconds": 35706,
+   "commenter": {
+    "display_name": "user_779b71e4",
+    "_id": "932134026",
+    "name": "user_779b71e4",
+    "bio": null,
+    "created_at": "2020-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z",
+    "logo": null
+   },
+   "message": {
+    "body": "BRO HIM OVER THE RADIO LOL",
+    "bits_spent": 0,
+    "fragments": [
+     {
+      "text": "BRO HIM OVER THE RADIO LOL",
+      "emoticon": null
+     }
+    ],
+    "user_badges": [
+     {
+      "_id": "ewc-2026-diamond",
+      "version": "1"
+     }
+    ],
+    "user_color": "#0000FF",
+    "emoticons": []
+   }
+  },
+  {
+   "_id": "88289bdc46e8e978643fc179da09d425",
+   "created_at": "2026-10-17T03:56:27.713Z",
+   "channel_id": "100000001",
+   "content_type": "video",
+   "content_id": "1000000001",
+   "content_offset_seconds": 35707,
+   "commenter": {
+    "display_name": "user_9a617e37",
+    "_id": "469163225",
+    "name": "user_9a617e37",
+    "bio": null,
+    "created_at": "2020-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z",
+    "logo": null
+   },
+   "message": {
+    "body": "LOL",
+    "bits_spent": 0,
+    "fragments": [
+     {
+      "text": "LOL",
+      "emoticon": null
+     }
+    ],
+    "user_badges": [
+     {
+      "_id": "moments",
+      "version": "1"
+     }
+    ],
+    "user_color": "#FF69B4",
+    "emoticons": []
+   }
+  },
+  {
+   "_id": "a062d530f24783507dafdf62cf3bb779",
+   "created_at": "2026-10-17T03:56:27.854Z",
+   "channel_id": "100000001",
+   "content_type": "video",
+   "content_id": "1000000001",
+   "content_offset_seconds": 35707,
+   "commenter": {
+    "display_name": "user_61c7ea8b",
+    "_id": "408852059",
+    "name": "user_61c7ea8b",
+    "bio": null,
+    "created_at": "2020-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z",
+    "logo": null
+   },
+   "message": {
+    "body": "LMAAOO",
+    "bits_spent": 0,
+    "fragments": [
+     {
+      "text": "LMAAOO",
+      "emoticon": null
+     }
+    ],
+    "user_badges": [
+     {
+      "_id": "moments",
+      "version": "5"
+     }
+    ],
+    "user_color": "#5F9EA0",
+    "emoticons": []
+   }
+  },
+  {
+   "_id": "c5dbd6c9f9ddc225396ce32cd3a29b66",
+   "created_at": "2026-10-17T03:56:27.883Z",
+   "channel_id": "100000001",
+   "content_type": "video",
+   "content_id": "1000000001",
+   "content_offset_seconds": 35707,
+   "commenter": {
+    "display_name": "user_621a3586",
+    "_id": "437524971",
+    "name": "user_621a3586",
+    "bio": null,
+    "created_at": "2020-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z",
+    "logo": null
+   },
+   "message": {
+    "body": "he cant NVL bruh lol",
+    "bits_spent": 0,
+    "fragments": [
+     {
+      "text": "he cant NVL bruh lol",
+      "emoticon": null
+     }
+    ],
+    "user_badges": [],
+    "user_color": "#FF0000",
+    "emoticons": []
+   }
+  },
+  {
+   "_id": "144e2b9dd247b4d9368bafbd0bf5d432",
+   "created_at": "2026-10-17T03:56:28.417Z",
+   "channel_id": "100000001",
+   "content_type": "video",
+   "content_id": "1000000001",
+   "content_offset_seconds": 35707,
+   "commenter": {
+    "display_name": "user_5ddb8116",
+    "_id": "437276362",
+    "name": "user_5ddb8116",
+    "bio": null,
+    "created_at": "2020-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z",
+    "logo": null
+   },
+   "message": {
+    "body": "y SAJ",
+    "bits_spent": 0,
+    "fragments": [
+     {
+      "text": "y SAJ",
+      "emoticon": null
+     }
+    ],
+    "user_badges": [
+     {
+      "_id": "warlord",
+      "version": "1"
+     }
+    ],
+    "user_color": "#1E90FF",
+    "emoticons": []
+   }
+  },
+  {
+   "_id": "347d7e0fcbe1b04d20fb969a97c14ad7",
+   "created_at": "2026-10-17T03:56:28.714Z",
+   "channel_id": "100000001",
+   "content_type": "video",
+   "content_id": "1000000001",
+   "content_offset_seconds": 35708,
+   "commenter": {
+    "display_name": "user_e2be2822",
+    "_id": "450337285",
+    "name": "user_e2be2822",
+    "bio": null,
+    "created_at": "2020-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z",
+    "logo": null
+   },
+   "message": {
+    "body": "SHOOT HIM BLUD",
+    "bits_spent": 0,
+    "fragments": [
+     {
+      "text": "SHOOT HIM BLUD",
+      "emoticon": null
+     }
+    ],
+    "user_badges": [
+     {
+      "_id": "moments",
+      "version": "3"
+     }
+    ],
+    "user_color": "#1E90FF",
+    "emoticons": []
+   }
+  },
+  {
+   "_id": "5dabcf1e400dc1b3edaf598d2866eb1c",
+   "created_at": "2026-10-17T03:56:29.018Z",
+   "channel_id": "100000001",
+   "content_type": "video",
+   "content_id": "1000000001",
+   "content_offset_seconds": 35708,
+   "commenter": {
+    "display_name": "user_415affd1",
+    "_id": "356001675",
+    "name": "user_415affd1",
+    "bio": null,
+    "created_at": "2020-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z",
+    "logo": null
+   },
+   "message": {
+    "body": "KEKW",
+    "bits_spent": 0,
+    "fragments": [
+     {
+      "text": "KEKW",
+      "emoticon": null
+     }
+    ],
+    "user_badges": [
+     {
+      "_id": "premium",
+      "version": "1"
+     }
+    ],
+    "user_color": "#B885E7",
+    "emoticons": []
+   }
+  },
+  {
+   "_id": "9aa4dc9d5636be0db7982de3e9352ed7",
+   "created_at": "2026-10-17T03:56:29.229Z",
+   "channel_id": "100000001",
+   "content_type": "video",
+   "content_id": "1000000001",
+   "content_offset_seconds": 35708,
+   "commenter": {
+    "display_name": "user_d5d38328",
+    "_id": "759922801",
+    "name": "user_d5d38328",
+    "bio": null,
+    "created_at": "2020-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z",
+    "logo": null
+   },
+   "message": {
+    "body": "THIS COP BRUH",
+    "bits_spent": 0,
+    "fragments": [
+     {
+      "text": "THIS COP BRUH",
+      "emoticon": null
+     }
+    ],
+    "user_badges": [
+     {
+      "_id": "twitch-recap-2023",
+      "version": "1"
+     }
+    ],
+    "user_color": "#FF4500",
+    "emoticons": []
+   }
+  },
+  {
+   "_id": "959115dfe5b1ec2ec3fdd232990da77f",
+   "created_at": "2026-10-17T03:56:29.605Z",
+   "channel_id": "100000001",
+   "content_type": "video",
+   "content_id": "1000000001",
+   "content_offset_seconds": 35708,
+   "commenter": {
+    "display_name": "user_6e3d1e2a",
+    "_id": "833136698",
+    "name": "user_6e3d1e2a",
+    "bio": null,
+    "created_at": "2020-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z",
+    "logo": null
+   },
+   "message": {
+    "body": "he cant shoot, NVL",
+    "bits_spent": 0,
+    "fragments": [
+     {
+      "text": "he cant shoot, NVL",
+      "emoticon": null
+     }
+    ],
+    "user_badges": [
+     {
+      "_id": "subscriber",
+      "version": "3"
+     },
+     {
+      "_id": "destiny-2-final-shape-raid-race",
+      "version": "1"
+     }
+    ],
+    "user_color": "#8BEFA0",
+    "emoticons": []
+   }
+  },
+  {
+   "_id": "2644a81f694ea13c7a2bf71e0e1c44dc",
+   "created_at": "2026-10-17T03:56:29.885Z",
+   "channel_id": "100000001",
+   "content_type": "video",
+   "content_id": "1000000001",
+   "content_offset_seconds": 35709,
+   "commenter": {
+    "display_name": "user_c8633d07",
+    "_id": "435615385",
+    "name": "user_c8633d07",
+    "bio": null,
+    "created_at": "2020-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z",
+    "logo": null
+   },
+   "message": {
+    "body": "LO SAJ LO",
+    "bits_spent": 0,
+    "fragments": [
+     {
+      "text": "LO SAJ LO",
+      "emoticon": null
+     }
+    ],
+    "user_badges": [
+     {
+      "_id": "glitchcon2020",
+      "version": "1"
+     }
+    ],
+    "user_color": "#008000",
+    "emoticons": []
+   }
+  },
+  {
+   "_id": "7b43b53caca1bf58f6ec74825fc3f98a",
+   "created_at": "2026-10-17T03:56:29.93Z",
+   "channel_id": "100000001",
+   "content_type": "video",
+   "content_id": "1000000001",
+   "content_offset_seconds": 35709,
+   "commenter": {
+    "display_name": "user_dc5ff729",
+    "_id": "335128318",
+    "name": "user_dc5ff729",
+    "bio": null,
+    "created_at": "2020-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z",
+    "logo": null
+   },
+   "message": {
+    "body": "PewPewPew PewPewPew PewPewPew",
+    "bits_spent": 0,
+    "fragments": [
+     {
+      "text": "PewPewPew PewPewPew PewPewPew",
+      "emoticon": null
+     }
+    ],
+    "user_badges": [
+     {
+      "_id": "seegson-synthetics",
+      "version": "1"
+     }
+    ],
+    "user_color": "#008000",
+    "emoticons": []
+   }
+  },
+  {
+   "_id": "9431d6dcdd70685c7f0669a8f6549f87",
+   "created_at": "2026-10-17T03:56:29.968Z",
+   "channel_id": "100000001",
+   "content_type": "video",
+   "content_id": "1000000001",
+   "content_offset_seconds": 35709,
+   "commenter": {
+    "display_name": "user_5f3db65a",
+    "_id": "873581690",
+    "name": "user_5f3db65a",
+    "bio": null,
+    "created_at": "2020-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z",
+    "logo": null
+   },
+   "message": {
+    "body": "HGAHGAHAHA",
+    "bits_spent": 0,
+    "fragments": [
+     {
+      "text": "HGAHGAHAHA",
+      "emoticon": null
+     }
+    ],
+    "user_badges": [
+     {
+      "_id": "moments",
+      "version": "1"
+     }
+    ],
+    "user_color": "#009AE4",
+    "emoticons": []
+   }
+  },
+  {
+   "_id": "0d6637ccb0aa182ea85212809f3ddc47",
+   "created_at": "2026-10-17T03:56:30.097Z",
+   "channel_id": "100000001",
+   "content_type": "video",
+   "content_id": "1000000001",
+   "content_offset_seconds": 35709,
+   "commenter": {
+    "display_name": "user_3bc40848",
+    "_id": "902163456",
+    "name": "user_3bc40848",
+    "bio": null,
+    "created_at": "2020-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z",
+    "logo": null
+   },
+   "message": {
+    "body": "BRO",
+    "bits_spent": 0,
+    "fragments": [
+     {
+      "text": "BRO",
+      "emoticon": null
+     }
+    ],
+    "user_badges": [
+     {
+      "_id": "subtember-2024",
+      "version": "1"
+     }
+    ],
+    "user_color": null,
+    "emoticons": []
+   }
+  },
+  {
+   "_id": "6cf56543e61d7ffb9fca21e742667b20",
+   "created_at": "2026-10-17T03:56:30.103Z",
+   "channel_id": "100000001",
+   "content_type": "video",
+   "content_id": "1000000001",
+   "content_offset_seconds": 35709,
+   "commenter": {
+    "display_name": "user_8f05f920",
+    "_id": "218260924",
+    "name": "user_8f05f920",
+    "bio": null,
+    "created_at": "2020-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z",
+    "logo": null
+   },
+   "message": {
+    "body": "One lone cop vs minigun LOL",
+    "bits_spent": 0,
+    "fragments": [
+     {
+      "text": "One lone cop vs minigun LOL",
+      "emoticon": null
+     }
+    ],
+    "user_badges": [
+     {
+      "_id": "moments",
+      "version": "6"
+     }
+    ],
+    "user_color": "#8A2BE2",
+    "emoticons": []
+   }
+  },
+  {
+   "_id": "ee23772e931b4c017a09d62ff1cdaf04",
+   "created_at": "2026-10-17T03:56:30.608Z",
+   "channel_id": "100000001",
+   "content_type": "video",
+   "content_id": "1000000001",
+   "content_offset_seconds": 35709,
+   "commenter": {
+    "display_name": "user_0bcebc64",
+    "_id": "776985693",
+    "name": "user_0bcebc64",
+    "bio": null,
+    "created_at": "2020-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z",
+    "logo": null
+   },
+   "message": {
+    "body": "LOL",
+    "bits_spent": 0,
+    "fragments": [
+     {
+      "text": "LOL",
+      "emoticon": null
+     }
+    ],
+    "user_badges": [
+     {
+      "_id": "twitch-recap-2023",
+      "version": "1"
+     }
+    ],
+    "user_color": "#FF69B4",
+    "emoticons": []
+   }
+  },
+  {
+   "_id": "454a6ff5135d0f318f8b0c00c3d857b6",
+   "created_at": "2026-10-17T03:56:30.623Z",
+   "channel_id": "100000001",
+   "content_type": "video",
+   "content_id": "1000000001",
+   "content_offset_seconds": 35709,
+   "commenter": {
+    "display_name": "user_4a5b1ef9",
+    "_id": "368728169",
+    "name": "user_4a5b1ef9",
+    "bio": null,
+    "created_at": "2020-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z",
+    "logo": null
+   },
+   "message": {
+    "body": "no ammo LO",
+    "bits_spent": 0,
+    "fragments": [
+     {
+      "text": "no ammo LO",
+      "emoticon": null
+     }
+    ],
+    "user_badges": [
+     {
+      "_id": "moments",
+      "version": "1"
+     }
+    ],
+    "user_color": "#008000",
+    "emoticons": []
+   }
+  },
+  {
+   "_id": "af723eeacfb210179de858f49589b05e",
+   "created_at": "2026-10-17T03:56:30.994Z",
+   "channel_id": "100000001",
+   "content_type": "video",
+   "content_id": "1000000001",
+   "content_offset_seconds": 35710,
+   "commenter": {
+    "display_name": "user_d9f9c304",
+    "_id": "208045507",
+    "name": "user_d9f9c304",
+    "bio": null,
+    "created_at": "2020-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z",
+    "logo": null
+   },
+   "message": {
+    "body": "LOL",
+    "bits_spent": 0,
+    "fragments": [
+     {
+      "text": "LOL",
+      "emoticon": null
+     }
+    ],
+    "user_badges": [
+     {
+      "_id": "nopixel-v-launch",
+      "version": "1"
+     }
+    ],
+    "user_color": "#00FF7F",
+    "emoticons": []
+   }
+  },
+  {
+   "_id": "1d29e809f0806d44829f87b01839229d",
+   "created_at": "2026-10-17T03:56:31.128Z",
+   "channel_id": "100000001",
+   "content_type": "video",
+   "content_id": "1000000001",
+   "content_offset_seconds": 35710,
+   "commenter": {
+    "display_name": "user_541cff28",
+    "_id": "227005354",
+    "name": "user_541cff28",
+    "bio": null,
+    "created_at": "2020-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z",
+    "logo": null
+   },
+   "message": {
+    "body": "lead him to the vault",
+    "bits_spent": 0,
+    "fragments": [
+     {
+      "text": "lead him to the vault",
+      "emoticon": null
+     }
+    ],
+    "user_badges": [
+     {
+      "_id": "moments",
+      "version": "4"
+     }
+    ],
+    "user_color": "#FF4500",
+    "emoticons": []
+   }
+  },
+  {
+   "_id": "d42212cab96f42b9dba071abc130d5c9",
+   "created_at": "2026-10-17T03:56:31.413Z",
+   "channel_id": "100000001",
+   "content_type": "video",
+   "content_id": "1000000001",
+   "content_offset_seconds": 35710,
+   "commenter": {
+    "display_name": "user_f5dad38b",
+    "_id": "743567262",
+    "name": "user_f5dad38b",
+    "bio": null,
+    "created_at": "2020-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z",
+    "logo": null
+   },
+   "message": {
+    "body": "he has no fear",
+    "bits_spent": 0,
+    "fragments": [
+     {
+      "text": "he has no fear",
+      "emoticon": null
+     }
+    ],
+    "user_badges": [
+     {
+      "_id": "premium",
+      "version": "1"
+     }
+    ],
+    "user_color": null,
+    "emoticons": []
+   }
+  },
+  {
+   "_id": "3e8f681fa35926e60bcdf927271381cb",
+   "created_at": "2026-10-17T03:56:31.707Z",
+   "channel_id": "100000001",
+   "content_type": "video",
+   "content_id": "1000000001",
+   "content_offset_seconds": 35711,
+   "commenter": {
+    "display_name": "user_a0848a0f",
+    "_id": "416819441",
+    "name": "user_a0848a0f",
+    "bio": null,
+    "created_at": "2020-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z",
+    "logo": null
+   },
+   "message": {
+    "body": "COUNT DOWN TO PRRRRR",
+    "bits_spent": 0,
+    "fragments": [
+     {
+      "text": "COUNT DOWN TO PRRRRR",
+      "emoticon": null
+     }
+    ],
+    "user_badges": [
+     {
+      "_id": "la-velada-vi",
+      "version": "1"
+     }
+    ],
+    "user_color": "#2281DC",
+    "emoticons": []
+   }
+  },
+  {
+   "_id": "06d9014479bf12ee8102aafbc079adfc",
+   "created_at": "2026-10-17T03:56:31.711Z",
+   "channel_id": "100000001",
+   "content_type": "video",
+   "content_id": "1000000001",
+   "content_offset_seconds": 35711,
+   "commenter": {
+    "display_name": "user_e2324f2f",
+    "_id": "334500050",
+    "name": "user_e2324f2f",
+    "bio": null,
+    "created_at": "2020-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z",
+    "logo": null
+   },
+   "message": {
+    "body": "was it her, was it the girl",
+    "bits_spent": 0,
+    "fragments": [
+     {
+      "text": "was it her, was it the girl",
+      "emoticon": null
+     }
+    ],
+    "user_badges": [
+     {
+      "_id": "moments",
+      "version": "4"
+     }
+    ],
+    "user_color": null,
+    "emoticons": []
+   }
+  },
+  {
+   "_id": "1c8c3b8f6b10092791a6e52713cb9ce9",
+   "created_at": "2026-10-17T03:56:31.728Z",
+   "channel_id": "100000001",
+   "content_type": "video",
+   "content_id": "1000000001",
+   "content_offset_seconds": 35711,
+   "commenter": {
+    "display_name": "user_fd16c67f",
+    "_id": "843524662",
+    "name": "user_fd16c67f",
+    "bio": null,
+    "created_at": "2020-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z",
+    "logo": null
+   },
+   "message": {
+    "body": "\"WHY\"",
+    "bits_spent": 0,
+    "fragments": [
+     {
+      "text": "\"WHY\"",
+      "emoticon": null
+     }
+    ],
+    "user_badges": [
+     {
+      "_id": "moments",
+      "version": "4"
+     }
+    ],
+    "user_color": "#E5FF00",
+    "emoticons": []
+   }
+  },
+  {
+   "_id": "734c22660df653dbcc14510c43059c7c",
+   "created_at": "2026-10-17T03:56:31.743Z",
+   "channel_id": "100000001",
+   "content_type": "video",
+   "content_id": "1000000001",
+   "content_offset_seconds": 35711,
+   "commenter": {
+    "display_name": "user_6d13c2fa",
+    "_id": "978485255",
+    "name": "user_6d13c2fa",
+    "bio": null,
+    "created_at": "2020-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z",
+    "logo": null
+   },
+   "message": {
+    "body": "kill the hostage",
+    "bits_spent": 0,
+    "fragments": [
+     {
+      "text": "kill the hostage",
+      "emoticon": null
+     }
+    ],
+    "user_badges": [
+     {
+      "_id": "moments",
+      "version": "2"
+     }
+    ],
+    "user_color": null,
+    "emoticons": []
+   }
+  },
+  {
+   "_id": "0f0c1ba2d7e5c30fa89056456f330e87",
+   "created_at": "2026-10-17T03:56:32.54Z",
+   "channel_id": "100000001",
+   "content_type": "video",
+   "content_id": "1000000001",
+   "content_offset_seconds": 35711,
+   "commenter": {
+    "display_name": "user_3e6f249f",
+    "_id": "285825848",
+    "name": "user_3e6f249f",
+    "bio": null,
+    "created_at": "2020-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z",
+    "logo": null
+   },
+   "message": {
+    "body": "Would be nvl right? Lol",
+    "bits_spent": 0,
+    "fragments": [
+     {
+      "text": "Would be nvl right? Lol",
+      "emoticon": null
+     }
+    ],
+    "user_badges": [
+     {
+      "_id": "marathon-reveal-runner",
+      "version": "1"
+     }
+    ],
+    "user_color": "#8A2BE2",
+    "emoticons": []
+   }
+  },
+  {
+   "_id": "344423f9d523778a1a453a53571b63c1",
+   "created_at": "2026-10-17T03:56:32.651Z",
+   "channel_id": "100000001",
+   "content_type": "video",
+   "content_id": "1000000001",
+   "content_offset_seconds": 35711,
+   "commenter": {
+    "display_name": "user_476650ca",
+    "_id": "149399692",
+    "name": "user_476650ca",
+    "bio": null,
+    "created_at": "2020-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z",
+    "logo": null
+   },
+   "message": {
+    "body": "jolly ass cop LOL",
+    "bits_spent": 0,
+    "fragments": [
+     {
+      "text": "jolly ass cop LOL",
+      "emoticon": null
+     }
+    ],
+    "user_badges": [
+     {
+      "_id": "subscriber",
+      "version": "0"
+     },
+     {
+      "_id": "destiny-2-final-shape-raid-race",
+      "version": "1"
+     }
+    ],
+    "user_color": "#4C4B85",
+    "emoticons": []
+   }
+  },
+  {
+   "_id": "46059ca92ec80f184d53836c3d1b1276",
+   "created_at": "2026-10-17T03:56:32.676Z",
+   "channel_id": "100000001",
+   "content_type": "video",
+   "content_id": "1000000001",
+   "content_offset_seconds": 35711,
+   "commenter": {
+    "display_name": "user_08a8f352",
+    "_id": "146319395",
+    "name": "user_08a8f352",
+    "bio": null,
+    "created_at": "2020-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z",
+    "logo": null
+   },
+   "message": {
+    "body": "KILLTHATBOY",
+    "bits_spent": 0,
+    "fragments": [
+     {
+      "text": "KILLTHATBOY",
+      "emoticon": null
+     }
+    ],
+    "user_badges": [
+     {
+      "_id": "nasa-artemis-ii",
+      "version": "1"
+     }
+    ],
+    "user_color": "#DAA520",
+    "emoticons": []
+   }
+  },
+  {
+   "_id": "117b5525c5c711af01974dfba0441773",
+   "created_at": "2026-10-17T03:56:32.844Z",
+   "channel_id": "100000001",
+   "content_type": "video",
+   "content_id": "1000000001",
+   "content_offset_seconds": 35712,
+   "commenter": {
+    "display_name": "user_e2be2822",
+    "_id": "450337285",
+    "name": "user_e2be2822",
+    "bio": null,
+    "created_at": "2020-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z",
+    "logo": null
+   },
+   "message": {
+    "body": "LOL",
+    "bits_spent": 0,
+    "fragments": [
+     {
+      "text": "LOL",
+      "emoticon": null
+     }
+    ],
+    "user_badges": [
+     {
+      "_id": "moments",
+      "version": "3"
+     }
+    ],
+    "user_color": "#1E90FF",
+    "emoticons": []
+   }
+  },
+  {
+   "_id": "812e69907736669588d48b43b27e6e6a",
+   "created_at": "2026-10-17T03:56:32.933Z",
+   "channel_id": "100000001",
+   "content_type": "video",
+   "content_id": "1000000001",
+   "content_offset_seconds": 35712,
+   "commenter": {
+    "display_name": "user_7f2a02d1",
+    "_id": "105874464",
+    "name": "user_7f2a02d1",
+    "bio": null,
+    "created_at": "2020-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z",
+    "logo": null
+   },
+   "message": {
+    "body": "npc cop",
+    "bits_spent": 0,
+    "fragments": [
+     {
+      "text": "npc cop",
+      "emoticon": null
+     }
+    ],
+    "user_badges": [],
+    "user_color": "#FF4500",
+    "emoticons": []
+   }
+  },
+  {
+   "_id": "abb1be3023cb92e98a7c2a76ee5158b3",
+   "created_at": "2026-10-17T03:56:33.02Z",
+   "channel_id": "100000001",
+   "content_type": "video",
+   "content_id": "1000000001",
+   "content_offset_seconds": 35712,
+   "commenter": {
+    "display_name": "user_6b035f28",
+    "_id": "878366066",
+    "name": "user_6b035f28",
+    "bio": null,
+    "created_at": "2020-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z",
+    "logo": null
+   },
+   "message": {
+    "body": "this cop is kinda ass",
+    "bits_spent": 0,
+    "fragments": [
+     {
+      "text": "this cop is kinda ass",
+      "emoticon": null
+     }
+    ],
+    "user_badges": [],
+    "user_color": "#B22222",
+    "emoticons": []
+   }
+  },
+  {
+   "_id": "8eee2af625c6b118ec872b716b1adfd6",
+   "created_at": "2026-10-17T03:56:33.342Z",
+   "channel_id": "100000001",
+   "content_type": "video",
+   "content_id": "1000000001",
+   "content_offset_seconds": 35712,
+   "commenter": {
+    "display_name": "user_0dd78de4",
+    "_id": "911353195",
+    "name": "user_0dd78de4",
+    "bio": null,
+    "created_at": "2020-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z",
+    "logo": null
+   },
+   "message": {
+    "body": "LOL",
+    "bits_spent": 0,
+    "fragments": [
+     {
+      "text": "LOL",
+      "emoticon": null
+     }
+    ],
+    "user_badges": [
+     {
+      "_id": "rplace-2023",
+      "version": "1"
+     }
+    ],
+    "user_color": "#FF0000",
+    "emoticons": []
+   }
+  },
+  {
+   "_id": "c9019894129ea1e86ea4627d5976f216",
+   "created_at": "2026-10-17T03:56:34.383Z",
+   "channel_id": "100000001",
+   "content_type": "video",
+   "content_id": "1000000001",
+   "content_offset_seconds": 35713,
+   "commenter": {
+    "display_name": "user_c8fd88ac",
+    "_id": "607060208",
+    "name": "user_c8fd88ac",
+    "bio": null,
+    "created_at": "2020-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z",
+    "logo": null
+   },
+   "message": {
+    "body": "LOL",
+    "bits_spent": 0,
+    "fragments": [
+     {
+      "text": "LOL",
+      "emoticon": null
+     }
+    ],
+    "user_badges": [
+     {
+      "_id": "moments",
+      "version": "1"
+     }
+    ],
+    "user_color": "#FF69B4",
+    "emoticons": []
+   }
+  },
+  {
+   "_id": "8381fc769e5337143afe95e68947e42e",
+   "created_at": "2026-10-17T03:56:34.611Z",
+   "channel_id": "100000001",
+   "content_type": "video",
+   "content_id": "1000000001",
+   "content_offset_seconds": 35713,
+   "commenter": {
+    "display_name": "user_be5a6daa",
+    "_id": "268506899",
+    "name": "user_be5a6daa",
+    "bio": null,
+    "created_at": "2020-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z",
+    "logo": null
+   },
+   "message": {
+    "body": "Why LMAO",
+    "bits_spent": 0,
+    "fragments": [
+     {
+      "text": "Why LMAO",
+      "emoticon": null
+     }
+    ],
+    "user_badges": [
+     {
+      "_id": "runescape-dragon-dagger",
+      "version": "1"
+     }
+    ],
+    "user_color": null,
+    "emoticons": []
+   }
+  },
+  {
+   "_id": "981acc6c99cf67300c688fe8452e3e82",
+   "created_at": "2026-10-17T03:56:34.782Z",
+   "channel_id": "100000001",
+   "content_type": "video",
+   "content_id": "1000000001",
+   "content_offset_seconds": 35714,
+   "commenter": {
+    "display_name": "user_f7fefbfb",
+    "_id": "448242580",
+    "name": "user_f7fefbfb",
+    "bio": null,
+    "created_at": "2020-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z",
+    "logo": null
+   },
+   "message": {
+    "body": "WHAT AN IDIOT LMAO",
+    "bits_spent": 0,
+    "fragments": [
+     {
+      "text": "WHAT AN IDIOT LMAO",
+      "emoticon": null
+     }
+    ],
+    "user_badges": [
+     {
+      "_id": "pichu",
+      "version": "1"
+     }
+    ],
+    "user_color": "#00FF7F",
+    "emoticons": []
+   }
+  },
+  {
+   "_id": "5127b21a4f1c9eee1d99f56cd3345e2d",
+   "created_at": "2026-10-17T03:56:34.876Z",
+   "channel_id": "100000001",
+   "content_type": "video",
+   "content_id": "1000000001",
+   "content_offset_seconds": 35714,
+   "commenter": {
+    "display_name": "user_31ec70b2",
+    "_id": "756032464",
+    "name": "user_31ec70b2",
+    "bio": null,
+    "created_at": "2020-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z",
+    "logo": null
+   },
+   "message": {
+    "body": "LOL ͏",
+    "bits_spent": 0,
+    "fragments": [
+     {
+      "text": "LOL ͏",
+      "emoticon": null
+     }
+    ],
+    "user_badges": [
+     {
+      "_id": "2026-worlds-costumed-pikachu",
+      "version": "1"
+     }
+    ],
+    "user_color": "#FF0000",
+    "emoticons": []
+   }
+  },
+  {
+   "_id": "91b7efd961c6e209d27c38c5928b1659",
+   "created_at": "2026-10-17T03:56:35.167Z",
+   "channel_id": "100000001",
+   "content_type": "video",
+   "content_id": "1000000001",
+   "content_offset_seconds": 35714,
+   "commenter": {
+    "display_name": "user_24cbfea6",
+    "_id": "920745135",
+    "name": "user_24cbfea6",
+    "bio": null,
+    "created_at": "2020-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z",
+    "logo": null
+   },
+   "message": {
+    "body": "Why Sadge",
+    "bits_spent": 0,
+    "fragments": [
+     {
+      "text": "Why Sadge",
+      "emoticon": null
+     }
+    ],
+    "user_badges": [
+     {
+      "_id": "moments",
+      "version": "4"
+     }
+    ],
+    "user_color": "#646AFF",
+    "emoticons": []
+   }
+  },
+  {
+   "_id": "2baec1b525db661ab0ceea3f18b90a61",
+   "created_at": "2026-10-17T03:56:35.201Z",
+   "channel_id": "100000001",
+   "content_type": "video",
+   "content_id": "1000000001",
+   "content_offset_seconds": 35714,
+   "commenter": {
+    "display_name": "user_75367bfa",
+    "_id": "467732605",
+    "name": "user_75367bfa",
+    "bio": null,
+    "created_at": "2020-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z",
+    "logo": null
+   },
+   "message": {
+    "body": "NAHHH",
+    "bits_spent": 0,
+    "fragments": [
+     {
+      "text": "NAHHH",
+      "emoticon": null
+     }
+    ],
+    "user_badges": [],
+    "user_color": "#0000FF",
+    "emoticons": []
+   }
+  },
+  {
+   "_id": "594b5019475c373b2fe19d5370e0a473",
+   "created_at": "2026-10-17T03:56:35.272Z",
+   "channel_id": "100000001",
+   "content_type": "video",
+   "content_id": "1000000001",
+   "content_offset_seconds": 35714,
+   "commenter": {
+    "display_name": "user_bcb9624a",
+    "_id": "415695350",
+    "name": "user_bcb9624a",
+    "bio": null,
+    "created_at": "2020-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z",
+    "logo": null
+   },
+   "message": {
+    "body": "chill they gonna break off chase",
+    "bits_spent": 0,
+    "fragments": [
+     {
+      "text": "chill they gonna break off chase",
+      "emoticon": null
+     }
+    ],
+    "user_badges": [
+     {
+      "_id": "premium",
+      "version": "1"
+     }
+    ],
+    "user_color": "#2E8B57",
+    "emoticons": []
+   }
+  },
+  {
+   "_id": "0b1833dd42169b3fa449892862e1253c",
+   "created_at": "2026-10-17T03:56:35.586Z",
+   "channel_id": "100000001",
+   "content_type": "video",
+   "content_id": "1000000001",
+   "content_offset_seconds": 35714,
+   "commenter": {
+    "display_name": "user_02e5c19f",
+    "_id": "391097332",
+    "name": "user_02e5c19f",
+    "bio": null,
+    "created_at": "2020-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z",
+    "logo": null
+   },
+   "message": {
+    "body": "???????",
+    "bits_spent": 0,
+    "fragments": [
+     {
+      "text": "???????",
+      "emoticon": null
+     }
+    ],
+    "user_badges": [
+     {
+      "_id": "subscriber",
+      "version": "6"
+     },
+     {
+      "_id": "nopixel-v-launch",
+      "version": "1"
+     }
+    ],
+    "user_color": "#FF69B4",
+    "emoticons": []
+   }
+  },
+  {
+   "_id": "6abf19c3507c0d3efcb84e3db8888ab6",
+   "created_at": "2026-10-17T03:56:35.989Z",
+   "channel_id": "100000001",
+   "content_type": "video",
+   "content_id": "1000000001",
+   "content_offset_seconds": 35715,
+   "commenter": {
+    "display_name": "user_5f3db65a",
+    "_id": "873581690",
+    "name": "user_5f3db65a",
+    "bio": null,
+    "created_at": "2020-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z",
+    "logo": null
+   },
+   "message": {
+    "body": "LMAO",
+    "bits_spent": 0,
+    "fragments": [
+     {
+      "text": "LMAO",
+      "emoticon": null
+     }
+    ],
+    "user_badges": [
+     {
+      "_id": "moments",
+      "version": "1"
+     }
+    ],
+    "user_color": "#009AE4",
+    "emoticons": []
+   }
+  },
+  {
+   "_id": "652684ebf9e1f299c3de98f0d675a64a",
+   "created_at": "2026-10-17T03:56:36.048Z",
+   "channel_id": "100000001",
+   "content_type": "video",
+   "content_id": "1000000001",
+   "content_offset_seconds": 35715,
+   "commenter": {
+    "display_name": "user_c6121577",
+    "_id": "537822480",
+    "name": "user_c6121577",
+    "bio": null,
+    "created_at": "2020-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z",
+    "logo": null
+   },
+   "message": {
+    "body": "om",
+    "bits_spent": 0,
+    "fragments": [
+     {
+      "text": "om",
+      "emoticon": null
+     }
+    ],
+    "user_badges": [
+     {
+      "_id": "moments",
+      "version": "3"
+     }
+    ],
+    "user_color": "#FF9A00",
+    "emoticons": []
+   }
+  },
+  {
+   "_id": "3a36a533203aaa3a836c3689864ad824",
+   "created_at": "2026-10-17T03:56:36.141Z",
+   "channel_id": "100000001",
+   "content_type": "video",
+   "content_id": "1000000001",
+   "content_offset_seconds": 35715,
+   "commenter": {
+    "display_name": "user_718aa14c",
+    "_id": "771815578",
+    "name": "user_718aa14c",
+    "bio": null,
+    "created_at": "2020-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z",
+    "logo": null
+   },
+   "message": {
+    "body": "this cop om",
+    "bits_spent": 0,
+    "fragments": [
+     {
+      "text": "this cop om",
+      "emoticon": null
+     }
+    ],
+    "user_badges": [
+     {
+      "_id": "squirtle",
+      "version": "1"
+     }
+    ],
+    "user_color": "#7300FF",
+    "emoticons": []
+   }
+  },
+  {
+   "_id": "7d38c2c64eb58ead0efca80642940e58",
+   "created_at": "2026-10-17T03:56:36.476Z",
+   "channel_id": "100000001",
+   "content_type": "video",
+   "content_id": "1000000001",
+   "content_offset_seconds": 35715,
+   "commenter": {
+    "display_name": "user_3bc40848",
+    "_id": "902163456",
+    "name": "user_3bc40848",
+    "bio": null,
+    "created_at": "2020-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z",
+    "logo": null
+   },
+   "message": {
+    "body": "wtf LMAO",
+    "bits_spent": 0,
+    "fragments": [
+     {
+      "text": "wtf LMAO",
+      "emoticon": null
+     }
+    ],
+    "user_badges": [
+     {
+      "_id": "subtember-2024",
+      "version": "1"
+     }
+    ],
+    "user_color": null,
+    "emoticons": []
+   }
+  },
+  {
+   "_id": "953a4b3930320f694b64c13f7e477dad",
+   "created_at": "2026-10-17T03:56:36.94Z",
+   "channel_id": "100000001",
+   "content_type": "video",
+   "content_id": "1000000001",
+   "content_offset_seconds": 35716,
+   "commenter": {
+    "display_name": "user_e3c565ef",
+    "_id": "965611918",
+    "name": "user_e3c565ef",
+    "bio": null,
+    "created_at": "2020-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z",
+    "logo": null
+   },
+   "message": {
+    "body": "LMFAO",
+    "bits_spent": 0,
+    "fragments": [
+     {
+      "text": "LMFAO",
+      "emoticon": null
+     }
+    ],
+    "user_badges": [
+     {
+      "_id": "moments",
+      "version": "5"
+     }
+    ],
+    "user_color": "#0000FF",
+    "emoticons": []
+   }
+  },
+  {
+   "_id": "f837fe882a7999dc4ec380e18bff2254",
+   "created_at": "2026-10-17T03:56:37.143Z",
+   "channel_id": "100000001",
+   "content_type": "video",
+   "content_id": "1000000001",
+   "content_offset_seconds": 35716,
+   "commenter": {
+    "display_name": "user_b008af3d",
+    "_id": "287389019",
+    "name": "user_b008af3d",
+    "bio": null,
+    "created_at": "2020-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z",
+    "logo": null
+   },
+   "message": {
+    "body": "LOL",
+    "bits_spent": 0,
+    "fragments": [
+     {
+      "text": "LOL",
+      "emoticon": null
+     }
+    ],
+    "user_badges": [],
+    "user_color": "#D2691E",
+    "emoticons": []
+   }
+  },
+  {
+   "_id": "59c58c9929902cac4dce340b57d191d5",
+   "created_at": "2026-10-17T03:56:37.168Z",
+   "channel_id": "100000001",
+   "content_type": "video",
+   "content_id": "1000000001",
+   "content_offset_seconds": 35716,
+   "commenter": {
+    "display_name": "user_7608ae55",
+    "_id": "524992143",
+    "name": "user_7608ae55",
+    "bio": null,
+    "created_at": "2020-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z",
+    "logo": null
+   },
+   "message": {
+    "body": "go up to himm and hit him",
+    "bits_spent": 0,
+    "fragments": [
+     {
+      "text": "go up to himm and hit him",
+      "emoticon": null
+     }
+    ],
+    "user_badges": [
+     {
+      "_id": "2026-bafta-games-awards",
+      "version": "1"
+     }
+    ],
+    "user_color": "#FF1BE2",
+    "emoticons": []
+   }
+  },
+  {
+   "_id": "ca2ea9aff1963f9c65d462411f5558fc",
+   "created_at": "2026-10-17T03:56:37.411Z",
+   "channel_id": "100000001",
+   "content_type": "video",
+   "content_id": "1000000001",
+   "content_offset_seconds": 35716,
+   "commenter": {
+    "display_name": "user_fa33eb27",
+    "_id": "431267996",
+    "name": "user_fa33eb27",
+    "bio": null,
+    "created_at": "2020-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z",
+    "logo": null
+   },
+   "message": {
+    "body": "Too kind LO",
+    "bits_spent": 0,
+    "fragments": [
+     {
+      "text": "Too kind LO",
+      "emoticon": null
+     }
+    ],
+    "user_badges": [
+     {
+      "_id": "pichu",
+      "version": "1"
+     }
+    ],
+    "user_color": "#8A2BE2",
+    "emoticons": []
+   }
+  },
+  {
+   "_id": "a890ab96e8a13248c0655b4dd2462435",
+   "created_at": "2026-10-17T03:56:37.489Z",
+   "channel_id": "100000001",
+   "content_type": "video",
+   "content_id": "1000000001",
+   "content_offset_seconds": 35716,
+   "commenter": {
+    "display_name": "user_6d13c2fa",
+    "_id": "978485255",
+    "name": "user_6d13c2fa",
+    "bio": null,
+    "created_at": "2020-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z",
+    "logo": null
+   },
+   "message": {
+    "body": "KILL THE HOSTAGE",
+    "bits_spent": 0,
+    "fragments": [
+     {
+      "text": "KILL THE HOSTAGE",
+      "emoticon": null
+     }
+    ],
+    "user_badges": [
+     {
+      "_id": "moments",
+      "version": "2"
+     }
+    ],
+    "user_color": null,
+    "emoticons": []
+   }
+  },
+  {
+   "_id": "d4a8254cfcda039fc2858690192f3ce3",
+   "created_at": "2026-10-17T03:56:37.68Z",
+   "channel_id": "100000001",
+   "content_type": "video",
+   "content_id": "1000000001",
+   "content_offset_seconds": 35716,
+   "commenter": {
+    "display_name": "user_acbd986c",
+    "_id": "456536926",
+    "name": "user_acbd986c",
+    "bio": null,
+    "created_at": "2020-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z",
+    "logo": null
+   },
+   "message": {
+    "body": "Cinema",
+    "bits_spent": 0,
+    "fragments": [
+     {
+      "text": "Cinema",
+      "emoticon": null
+     }
+    ],
+    "user_badges": [
+     {
+      "_id": "moderator",
+      "version": "1"
+     },
+     {
+      "_id": "nopixel-v-launch",
+      "version": "1"
+     }
+    ],
+    "user_color": "#9CEA00",
+    "emoticons": []
+   }
+  },
+  {
+   "_id": "590d1796245808ba981efe58fa8574fb",
+   "created_at": "2026-10-17T03:56:37.838Z",
+   "channel_id": "100000001",
+   "content_type": "video",
+   "content_id": "1000000001",
+   "content_offset_seconds": 35717,
+   "commenter": {
+    "display_name": "user_4defbca8",
+    "_id": "196934994",
+    "name": "user_4defbca8",
+    "bio": null,
+    "created_at": "2020-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z",
+    "logo": null
+   },
+   "message": {
+    "body": "ADFASDLKASDL",
+    "bits_spent": 0,
+    "fragments": [
+     {
+      "text": "ADFASDLKASDL",
+      "emoticon": null
+     }
+    ],
+    "user_badges": [
+     {
+      "_id": "moments",
+      "version": "3"
+     }
+    ],
+    "user_color": "#0000FF",
+    "emoticons": []
+   }
+  },
+  {
+   "_id": "76fc1f73b62716a1cf85734b794e62de",
+   "created_at": "2026-10-17T03:56:37.931Z",
+   "channel_id": "100000001",
+   "content_type": "video",
+   "content_id": "1000000001",
+   "content_offset_seconds": 35717,
+   "commenter": {
+    "display_name": "user_574a66a0",
+    "_id": "991584373",
+    "name": "user_574a66a0",
+    "bio": null,
+    "created_at": "2020-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z",
+    "logo": null
+   },
+   "message": {
+    "body": "shooting you is NVL LOL",
+    "bits_spent": 0,
+    "fragments": [
+     {
+      "text": "shooting you is NVL LOL",
+      "emoticon": null
+     }
+    ],
+    "user_badges": [
+     {
+      "_id": "moments",
+      "version": "5"
+     }
+    ],
+    "user_color": "#690000",
+    "emoticons": []
+   }
+  },
+  {
+   "_id": "7ff1774b370b0faa76856f8b1dbd2989",
+   "created_at": "2026-10-17T03:56:38.197Z",
+   "channel_id": "100000001",
+   "content_type": "video",
+   "content_id": "1000000001",
+   "content_offset_seconds": 35717,
+   "commenter": {
+    "display_name": "user_b7ee7859",
+    "_id": "132629049",
+    "name": "user_b7ee7859",
+    "bio": null,
+    "created_at": "2020-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z",
+    "logo": null
+   },
+   "message": {
+    "body": "LOL",
+    "bits_spent": 0,
+    "fragments": [
+     {
+      "text": "LOL",
+      "emoticon": null
+     }
+    ],
+    "user_badges": [],
+    "user_color": "#DAA520",
+    "emoticons": []
+   }
+  },
+  {
+   "_id": "acbdbb93fe08e5b536d352ed66696318",
+   "created_at": "2026-10-17T03:56:38.226Z",
+   "channel_id": "100000001",
+   "content_type": "video",
+   "content_id": "1000000001",
+   "content_offset_seconds": 35717,
+   "commenter": {
+    "display_name": "user_6eedd16e",
+    "_id": "233801710",
+    "name": "user_6eedd16e",
+    "bio": null,
+    "created_at": "2020-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z",
+    "logo": null
+   },
+   "message": {
+    "body": "YOU HAVE A MINI GUN DUDE",
+    "bits_spent": 0,
+    "fragments": [
+     {
+      "text": "YOU HAVE A MINI GUN DUDE",
+      "emoticon": null
+     }
+    ],
+    "user_badges": [
+     {
+      "_id": "moments",
+      "version": "5"
+     }
+    ],
+    "user_color": "#5F9EA0",
+    "emoticons": []
+   }
+  },
+  {
+   "_id": "79b82ab12f7d021c36cd8f4b0e246d8d",
+   "created_at": "2026-10-17T03:56:38.25Z",
+   "channel_id": "100000001",
+   "content_type": "video",
+   "content_id": "1000000001",
+   "content_offset_seconds": 35717,
+   "commenter": {
+    "display_name": "user_70b7de49",
+    "_id": "269523041",
+    "name": "user_70b7de49",
+    "bio": null,
+    "created_at": "2020-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z",
+    "logo": null
+   },
+   "message": {
+    "body": "OMEGALAUGHING",
+    "bits_spent": 0,
+    "fragments": [
+     {
+      "text": "OMEGALAUGHING",
+      "emoticon": null
+     }
+    ],
+    "user_badges": [
+     {
+      "_id": "seegson-synthetics",
+      "version": "1"
+     }
+    ],
+    "user_color": "#D2691E",
+    "emoticons": []
+   }
+  },
+  {
+   "_id": "7db831e4592792047b58e8e0d13a7f87",
+   "created_at": "2026-10-17T03:56:38.47Z",
+   "channel_id": "100000001",
+   "content_type": "video",
+   "content_id": "1000000001",
+   "content_offset_seconds": 35717,
+   "commenter": {
+    "display_name": "user_0cb04587",
+    "_id": "384190741",
+    "name": "user_0cb04587",
+    "bio": null,
+    "created_at": "2020-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z",
+    "logo": null
+   },
+   "message": {
+    "body": "he doesnt want to om",
+    "bits_spent": 0,
+    "fragments": [
+     {
+      "text": "he doesnt want to om",
+      "emoticon": null
+     }
+    ],
+    "user_badges": [
+     {
+      "_id": "subscriber",
+      "version": "6"
+     },
+     {
+      "_id": "ruby-pixel-heart---together-for-good-24",
+      "version": "1"
+     }
+    ],
+    "user_color": "#C50789",
+    "emoticons": []
+   }
+  },
+  {
+   "_id": "55573c214af754600fbfe8931fff9e62",
+   "created_at": "2026-10-17T03:56:38.513Z",
+   "channel_id": "100000001",
+   "content_type": "video",
+   "content_id": "1000000001",
+   "content_offset_seconds": 35717,
+   "commenter": {
+    "display_name": "user_02e5c19f",
+    "_id": "391097332",
+    "name": "user_02e5c19f",
+    "bio": null,
+    "created_at": "2020-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z",
+    "logo": null
+   },
+   "message": {
+    "body": "LOL",
+    "bits_spent": 0,
+    "fragments": [
+     {
+      "text": "LOL",
+      "emoticon": null
+     }
+    ],
+    "user_badges": [
+     {
+      "_id": "subscriber",
+      "version": "6"
+     },
+     {
+      "_id": "nopixel-v-launch",
+      "version": "1"
+     }
+    ],
+    "user_color": "#FF69B4",
+    "emoticons": []
+   }
+  },
+  {
+   "_id": "93989a35ed3796460eb0f52533845d84",
+   "created_at": "2026-10-17T03:56:38.536Z",
+   "channel_id": "100000001",
+   "content_type": "video",
+   "content_id": "1000000001",
+   "content_offset_seconds": 35717,
+   "commenter": {
+    "display_name": "user_79456cbb",
+    "_id": "424645877",
+    "name": "user_79456cbb",
+    "bio": null,
+    "created_at": "2020-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z",
+    "logo": null
+   },
+   "message": {
+    "body": "just run and cloak bro",
+    "bits_spent": 0,
+    "fragments": [
+     {
+      "text": "just run and cloak bro",
+      "emoticon": null
+     }
+    ],
+    "user_badges": [
+     {
+      "_id": "moments",
+      "version": "2"
+     }
+    ],
+    "user_color": "#0000FF",
+    "emoticons": []
+   }
+  },
+  {
+   "_id": "7416e715c9673113b557075d5123af3e",
+   "created_at": "2026-10-17T03:56:38.941Z",
+   "channel_id": "100000001",
+   "content_type": "video",
+   "content_id": "1000000001",
+   "content_offset_seconds": 35718,
+   "commenter": {
+    "display_name": "user_12523b73",
+    "_id": "168881726",
+    "name": "user_12523b73",
+    "bio": null,
+    "created_at": "2020-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z",
+    "logo": null
+   },
+   "message": {
+    "body": "LOL",
+    "bits_spent": 0,
+    "fragments": [
+     {
+      "text": "LOL",
+      "emoticon": null
+     }
+    ],
+    "user_badges": [
+     {
+      "_id": "premium",
+      "version": "1"
+     }
+    ],
+    "user_color": "#0000FF",
+    "emoticons": []
+   }
+  },
+  {
+   "_id": "ae3f171ff50dd8c8021d438ccde7e3ad",
+   "created_at": "2026-10-17T03:56:39.065Z",
+   "channel_id": "100000001",
+   "content_type": "video",
+   "content_id": "1000000001",
+   "content_offset_seconds": 35718,
+   "commenter": {
+    "display_name": "user_6879e86e",
+    "_id": "752387603",
+    "name": "user_6879e86e",
+    "bio": null,
+    "created_at": "2020-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z",
+    "logo": null
+   },
+   "message": {
+    "body": "he about to say \"sorry\" LOL",
+    "bits_spent": 0,
+    "fragments": [
+     {
+      "text": "he about to say \"sorry\" LOL",
+      "emoticon": null
+     }
+    ],
+    "user_badges": [
+     {
+      "_id": "wardog",
+      "version": "1"
+     }
+    ],
+    "user_color": "#FFFE00",
+    "emoticons": []
+   }
+  },
+  {
+   "_id": "0af5a98876961ad13d357693311f899d",
+   "created_at": "2026-10-17T03:56:39.672Z",
+   "channel_id": "100000001",
+   "content_type": "video",
+   "content_id": "1000000001",
+   "content_offset_seconds": 35718,
+   "commenter": {
+    "display_name": "user_de39f00e",
+    "_id": "855436764",
+    "name": "user_de39f00e",
+    "bio": null,
+    "created_at": "2020-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z",
+    "logo": null
+   },
+   "message": {
+    "body": "LOL",
+    "bits_spent": 0,
+    "fragments": [
+     {
+      "text": "LOL",
+      "emoticon": null
+     }
+    ],
+    "user_badges": [],
+    "user_color": "#00FF7F",
+    "emoticons": []
+   }
+  },
+  {
+   "_id": "a91673a27726d3badad03d1eedd8686b",
+   "created_at": "2026-10-17T03:56:39.687Z",
+   "channel_id": "100000001",
+   "content_type": "video",
+   "content_id": "1000000001",
+   "content_offset_seconds": 35718,
+   "commenter": {
+    "display_name": "user_be892fe0",
+    "_id": "993953151",
+    "name": "user_be892fe0",
+    "bio": null,
+    "created_at": "2020-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z",
+    "logo": null
+   },
+   "message": {
+    "body": "he feels bad for your house Sadge",
+    "bits_spent": 0,
+    "fragments": [
+     {
+      "text": "he feels bad for your house Sadge",
+      "emoticon": null
+     }
+    ],
+    "user_badges": [
+     {
+      "_id": "pichu",
+      "version": "1"
+     }
+    ],
+    "user_color": "#B22222",
+    "emoticons": []
+   }
+  },
+  {
+   "_id": "db9fb51be59572606d6912b64d785d14",
+   "created_at": "2026-10-17T03:56:39.756Z",
+   "channel_id": "100000001",
+   "content_type": "video",
+   "content_id": "1000000001",
+   "content_offset_seconds": 35719,
+   "commenter": {
+    "display_name": "user_a8da1e02",
+    "_id": "606263489",
+    "name": "user_a8da1e02",
+    "bio": null,
+    "created_at": "2020-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z",
+    "logo": null
+   },
+   "message": {
+    "body": "terrified cop LOL",
+    "bits_spent": 0,
+    "fragments": [
+     {
+      "text": "terrified cop LOL",
+      "emoticon": null
+     }
+    ],
+    "user_badges": [
+     {
+      "_id": "twitch-recap-2024",
+      "version": "1"
+     }
+    ],
+    "user_color": "#8A2BE2",
+    "emoticons": []
+   }
+  },
+  {
+   "_id": "a6cdff208a77d0818f1421a6b6fdfb83",
+   "created_at": "2026-10-17T03:56:39.972Z",
+   "channel_id": "100000001",
+   "content_type": "video",
+   "content_id": "1000000001",
+   "content_offset_seconds": 35719,
+   "commenter": {
+    "display_name": "user_56592d2b",
+    "_id": "143025323",
+    "name": "user_56592d2b",
+    "bio": null,
+    "created_at": "2020-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z",
+    "logo": null
+   },
+   "message": {
+    "body": "He's Dying",
+    "bits_spent": 0,
+    "fragments": [
+     {
+      "text": "He's Dying",
+      "emoticon": null
+     }
+    ],
+    "user_badges": [
+     {
+      "_id": "moments",
+      "version": "5"
+     }
+    ],
+    "user_color": "#29F0F8",
+    "emoticons": []
+   }
+  },
+  {
+   "_id": "dd058c9b1d57f06308ef960fff341b32",
+   "created_at": "2026-10-17T03:56:40.126Z",
+   "channel_id": "100000001",
+   "content_type": "video",
+   "content_id": "1000000001",
+   "content_offset_seconds": 35719,
+   "commenter": {
+    "display_name": "user_94e91a68",
+    "_id": "795289627",
+    "name": "user_94e91a68",
+    "bio": null,
+    "created_at": "2020-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z",
+    "logo": null
+   },
+   "message": {
+    "body": "out of ammo already",
+    "bits_spent": 0,
+    "fragments": [
+     {
+      "text": "out of ammo already",
+      "emoticon": null
+     }
+    ],
+    "user_badges": [
+     {
+      "_id": "moments",
+      "version": "5"
+     }
+    ],
+    "user_color": null,
+    "emoticons": []
+   }
+  },
+  {
+   "_id": "75b8085452fc1ba06acb6d8644dfbcc0",
+   "created_at": "2026-10-17T03:56:40.291Z",
+   "channel_id": "100000001",
+   "content_type": "video",
+   "content_id": "1000000001",
+   "content_offset_seconds": 35719,
+   "commenter": {
+    "display_name": "user_fbdeb2c1",
+    "_id": "632398984",
+    "name": "user_fbdeb2c1",
+    "bio": null,
+    "created_at": "2020-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z",
+    "logo": null
+   },
+   "message": {
+    "body": "LOL",
+    "bits_spent": 0,
+    "fragments": [
+     {
+      "text": "LOL",
+      "emoticon": null
+     }
+    ],
+    "user_badges": [
+     {
+      "_id": "subscriber",
+      "version": "3"
+     }
+    ],
+    "user_color": "#FF69B4",
+    "emoticons": []
+   }
+  },
+  {
+   "_id": "01b05cc439a5b329d806b3665c235bf9",
+   "created_at": "2026-10-17T03:56:40.436Z",
+   "channel_id": "100000001",
+   "content_type": "video",
+   "content_id": "1000000001",
+   "content_offset_seconds": 35719,
+   "commenter": {
+    "display_name": "user_5cfb140e",
+    "_id": "946116603",
+    "name": "user_5cfb140e",
+    "bio": null,
+    "created_at": "2020-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z",
+    "logo": null
+   },
+   "message": {
+    "body": "what a nice guy",
+    "bits_spent": 0,
+    "fragments": [
+     {
+      "text": "what a nice guy",
+      "emoticon": null
+     }
+    ],
+    "user_badges": [
+     {
+      "_id": "moments",
+      "version": "1"
+     }
+    ],
+    "user_color": "#8A2BE2",
+    "emoticons": []
+   }
+  },
+  {
+   "_id": "19778d36f073c64eec72e137c8f50389",
+   "created_at": "2026-10-17T03:56:40.504Z",
+   "channel_id": "100000001",
+   "content_type": "video",
+   "content_id": "1000000001",
+   "content_offset_seconds": 35719,
+   "commenter": {
+    "display_name": "user_95d5c4cf",
+    "_id": "913010830",
+    "name": "user_95d5c4cf",
+    "bio": null,
+    "created_at": "2020-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z",
+    "logo": null
+   },
+   "message": {
+    "body": "whys he so dull lollll",
+    "bits_spent": 0,
+    "fragments": [
+     {
+      "text": "whys he so dull lollll",
+      "emoticon": null
+     }
+    ],
+    "user_badges": [],
+    "user_color": "#FF69B4",
+    "emoticons": []
+   }
+  },
+  {
+   "_id": "84355eae1ace05a3bd0019c4b9540222",
+   "created_at": "2026-10-17T03:56:40.528Z",
+   "channel_id": "100000001",
+   "content_type": "video",
+   "content_id": "1000000001",
+   "content_offset_seconds": 35719,
+   "commenter": {
+    "display_name": "user_5ddb8116",
+    "_id": "437276362",
+    "name": "user_5ddb8116",
+    "bio": null,
+    "created_at": "2020-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z",
+    "logo": null
+   },
+   "message": {
+    "body": "LOL this script",
+    "bits_spent": 0,
+    "fragments": [
+     {
+      "text": "LOL this script",
+      "emoticon": null
+     }
+    ],
+    "user_badges": [
+     {
+      "_id": "warlord",
+      "version": "1"
+     }
+    ],
+    "user_color": "#1E90FF",
+    "emoticons": []
+   }
+  },
+  {
+   "_id": "498f54539436579539653cd3b8d3a1d6",
+   "created_at": "2026-10-17T03:56:40.865Z",
+   "channel_id": "100000001",
+   "content_type": "video",
+   "content_id": "1000000001",
+   "content_offset_seconds": 35720,
+   "commenter": {
+    "display_name": "user_f7fefbfb",
+    "_id": "448242580",
+    "name": "user_f7fefbfb",
+    "bio": null,
+    "created_at": "2020-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z",
+    "logo": null
+   },
+   "message": {
+    "body": "streamer SHOOT HIM",
+    "bits_spent": 0,
+    "fragments": [
+     {
+      "text": "streamer SHOOT HIM",
+      "emoticon": null
+     }
+    ],
+    "user_badges": [
+     {
+      "_id": "pichu",
+      "version": "1"
+     }
+    ],
+    "user_color": "#00FF7F",
+    "emoticons": []
+   }
+  },
+  {
+   "_id": "c404d2be129e77cdb342c05a13ec8291",
+   "created_at": "2026-10-17T03:56:41.057Z",
+   "channel_id": "100000001",
+   "content_type": "video",
+   "content_id": "1000000001",
+   "content_offset_seconds": 35720,
+   "commenter": {
+    "display_name": "user_2c2463d2",
+    "_id": "891508270",
+    "name": "user_2c2463d2",
+    "bio": null,
+    "created_at": "2020-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z",
+    "logo": null
+   },
+   "message": {
+    "body": "The worst reaction",
+    "bits_spent": 0,
+    "fragments": [
+     {
+      "text": "The worst reaction",
+      "emoticon": null
+     }
+    ],
+    "user_badges": [
+     {
+      "_id": "nopixel-v-launch",
+      "version": "1"
+     }
+    ],
+    "user_color": "#FF69B4",
+    "emoticons": []
+   }
+  },
+  {
+   "_id": "85351aa1ee4436fddcfd73bd3780b72b",
+   "created_at": "2026-10-17T03:56:41.178Z",
+   "channel_id": "100000001",
+   "content_type": "video",
+   "content_id": "1000000001",
+   "content_offset_seconds": 35720,
+   "commenter": {
+    "display_name": "user_cbeac96a",
+    "_id": "976516207",
+    "name": "user_cbeac96a",
+    "bio": null,
+    "created_at": "2020-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z",
+    "logo": null
+   },
+   "message": {
+    "body": "beta cop",
+    "bits_spent": 0,
+    "fragments": [
+     {
+      "text": "beta cop",
+      "emoticon": null
+     }
+    ],
+    "user_badges": [
+     {
+      "_id": "moments",
+      "version": "2"
+     }
+    ],
+    "user_color": "#00FF7F",
+    "emoticons": []
+   }
+  },
+  {
+   "_id": "c7723d5796de794abb627ce026922a82",
+   "created_at": "2026-10-17T03:56:41.305Z",
+   "channel_id": "100000001",
+   "content_type": "video",
+   "content_id": "1000000001",
+   "content_offset_seconds": 35720,
+   "commenter": {
+    "display_name": "user_7516a770",
+    "_id": "861719600",
+    "name": "user_7516a770",
+    "bio": null,
+    "created_at": "2020-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z",
+    "logo": null
+   },
+   "message": {
+    "body": "LOL",
+    "bits_spent": 0,
+    "fragments": [
+     {
+      "text": "LOL",
+      "emoticon": null
+     }
+    ],
+    "user_badges": [
+     {
+      "_id": "nopixel-v-launch",
+      "version": "1"
+     }
+    ],
+    "user_color": "#FF0000",
+    "emoticons": []
+   }
+  },
+  {
+   "_id": "18cd9d237aa3cef38d78ea93687d7611",
+   "created_at": "2026-10-17T03:56:41.47Z",
+   "channel_id": "100000001",
+   "content_type": "video",
+   "content_id": "1000000001",
+   "content_offset_seconds": 35720,
+   "commenter": {
+    "display_name": "user_8dfd5a72",
+    "_id": "597866023",
+    "name": "user_8dfd5a72",
+    "bio": null,
+    "created_at": "2020-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z",
+    "logo": null
+   },
+   "message": {
+    "body": "KEKW",
+    "bits_spent": 0,
+    "fragments": [
+     {
+      "text": "KEKW",
+      "emoticon": null
+     }
+    ],
+    "user_badges": [
+     {
+      "_id": "bits",
+      "version": "1"
+     }
+    ],
+    "user_color": "#1E90FF",
+    "emoticons": []
+   }
+  },
+  {
+   "_id": "50a8109b9c0762a3f82792727536b673",
+   "created_at": "2026-10-17T03:56:41.573Z",
+   "channel_id": "100000001",
+   "content_type": "video",
+   "content_id": "1000000001",
+   "content_offset_seconds": 35720,
+   "commenter": {
+    "display_name": "user_8e3cb81c",
+    "_id": "407195883",
+    "name": "user_8e3cb81c",
+    "bio": null,
+    "created_at": "2020-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z",
+    "logo": null
+   },
+   "message": {
+    "body": "Canadian Cops",
+    "bits_spent": 0,
+    "fragments": [
+     {
+      "text": "Canadian Cops",
+      "emoticon": null
+     }
+    ],
+    "user_badges": [
+     {
+      "_id": "moments",
+      "version": "4"
+     }
+    ],
+    "user_color": "#FF69B4",
+    "emoticons": []
+   }
+  },
+  {
+   "_id": "6821d7259c483c7871c56056f2e8be2f",
+   "created_at": "2026-10-17T03:56:41.665Z",
+   "channel_id": "100000001",
+   "content_type": "video",
+   "content_id": "1000000001",
+   "content_offset_seconds": 35720,
+   "commenter": {
+    "display_name": "user_a713a7cf",
+    "_id": "853452573",
+    "name": "user_a713a7cf",
+    "bio": null,
+    "created_at": "2020-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z",
+    "logo": null
+   },
+   "message": {
+    "body": "he solo LO",
+    "bits_spent": 0,
+    "fragments": [
+     {
+      "text": "he solo LO",
+      "emoticon": null
+     }
+    ],
+    "user_badges": [
+     {
+      "_id": "turbo",
+      "version": "1"
+     }
+    ],
+    "user_color": "#00FF7F",
+    "emoticons": []
+   }
+  },
+  {
+   "_id": "e673ffb54a74f640d3541d09b58963fb",
+   "created_at": "2026-10-17T03:56:41.881Z",
+   "channel_id": "100000001",
+   "content_type": "video",
+   "content_id": "1000000001",
+   "content_offset_seconds": 35721,
+   "commenter": {
+    "display_name": "user_ad01c1cd",
+    "_id": "787608865",
+    "name": "user_ad01c1cd",
+    "bio": null,
+    "created_at": "2020-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z",
+    "logo": null
+   },
+   "message": {
+    "body": "go blow his car",
+    "bits_spent": 0,
+    "fragments": [
+     {
+      "text": "go blow his car",
+      "emoticon": null
+     }
+    ],
+    "user_badges": [
+     {
+      "_id": "subscriber",
+      "version": "0"
+     },
+     {
+      "_id": "pichu",
+      "version": "1"
+     }
+    ],
+    "user_color": "#18453B",
+    "emoticons": []
+   }
+  },
+  {
+   "_id": "8e5ffbb30b5afcd38413b1ac13fc5f04",
+   "created_at": "2026-10-17T03:56:41.917Z",
+   "channel_id": "100000001",
+   "content_type": "video",
+   "content_id": "1000000001",
+   "content_offset_seconds": 35721,
+   "commenter": {
+    "display_name": "user_56592d2b",
+    "_id": "143025323",
+    "name": "user_56592d2b",
+    "bio": null,
+    "created_at": "2020-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z",
+    "logo": null
+   },
+   "message": {
+    "body": "KEKW",
+    "bits_spent": 0,
+    "fragments": [
+     {
+      "text": "KEKW",
+      "emoticon": null
+     }
+    ],
+    "user_badges": [
+     {
+      "_id": "moments",
+      "version": "5"
+     }
+    ],
+    "user_color": "#29F0F8",
+    "emoticons": []
+   }
+  },
+  {
+   "_id": "4828291e2cf9afe4ae12d57172c89ae7",
+   "created_at": "2026-10-17T03:56:42.012Z",
+   "channel_id": "100000001",
+   "content_type": "video",
+   "content_id": "1000000001",
+   "content_offset_seconds": 35721,
+   "commenter": {
+    "display_name": "user_75367bfa",
+    "_id": "467732605",
+    "name": "user_75367bfa",
+    "bio": null,
+    "created_at": "2020-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z",
+    "logo": null
+   },
+   "message": {
+    "body": "omfg brother",
+    "bits_spent": 0,
+    "fragments": [
+     {
+      "text": "omfg brother",
+      "emoticon": null
+     }
+    ],
+    "user_badges": [],
+    "user_color": "#0000FF",
+    "emoticons": []
+   }
+  },
+  {
+   "_id": "337d8ab74a088beb07d22feae5707626",
+   "created_at": "2026-10-17T03:56:42.218Z",
+   "channel_id": "100000001",
+   "content_type": "video",
+   "content_id": "1000000001",
+   "content_offset_seconds": 35721,
+   "commenter": {
+    "display_name": "user_0e29003c",
+    "_id": "739728292",
+    "name": "user_0e29003c",
+    "bio": null,
+    "created_at": "2020-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z",
+    "logo": null
+   },
+   "message": {
+    "body": "go assist in the chase LUL",
+    "bits_spent": 0,
+    "fragments": [
+     {
+      "text": "go assist in the chase LUL",
+      "emoticon": null
+     }
+    ],
+    "user_badges": [
+     {
+      "_id": "premium",
+      "version": "1"
+     }
+    ],
+    "user_color": null,
+    "emoticons": []
+   }
+  },
+  {
+   "_id": "dde0ea6926b9dd2a9b2e03da2b46949a",
+   "created_at": "2026-10-17T03:56:42.234Z",
+   "channel_id": "100000001",
+   "content_type": "video",
+   "content_id": "1000000001",
+   "content_offset_seconds": 35721,
+   "commenter": {
+    "display_name": "user_e963107f",
+    "_id": "704829127",
+    "name": "user_e963107f",
+    "bio": null,
+    "created_at": "2020-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z",
+    "logo": null
+   },
+   "message": {
+    "body": "why would he shoot?",
+    "bits_spent": 0,
+    "fragments": [
+     {
+      "text": "why would he shoot?",
+      "emoticon": null
+     }
+    ],
+    "user_badges": [
+     {
+      "_id": "no_audio",
+      "version": "1"
+     }
+    ],
+    "user_color": "#1E90FF",
+    "emoticons": []
+   }
+  },
+  {
+   "_id": "c10ef8165d9addaf7dfa5f81b7c2d44d",
+   "created_at": "2026-10-17T03:56:42.414Z",
+   "channel_id": "100000001",
+   "content_type": "video",
+   "content_id": "1000000001",
+   "content_offset_seconds": 35721,
+   "commenter": {
+    "display_name": "user_74ff2ed6",
+    "_id": "967442376",
+    "name": "user_74ff2ed6",
+    "bio": null,
+    "created_at": "2020-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z",
+    "logo": null
+   },
+   "message": {
+    "body": "LOL",
+    "bits_spent": 0,
+    "fragments": [
+     {
+      "text": "LOL",
+      "emoticon": null
+     }
+    ],
+    "user_badges": [
+     {
+      "_id": "moments",
+      "version": "5"
+     }
+    ],
+    "user_color": "#005BFF",
+    "emoticons": []
+   }
+  },
+  {
+   "_id": "294239dc0a9009a3a35ffe723dbb20be",
+   "created_at": "2026-10-17T03:56:42.538Z",
+   "channel_id": "100000001",
+   "content_type": "video",
+   "content_id": "1000000001",
+   "content_offset_seconds": 35721,
+   "commenter": {
+    "display_name": "user_c23994b5",
+    "_id": "476540841",
+    "name": "user_c23994b5",
+    "bio": null,
+    "created_at": "2020-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z",
+    "logo": null
+   },
+   "message": {
+    "body": "he cant shot you with a minigun pointed at you LMAO",
+    "bits_spent": 0,
+    "fragments": [
+     {
+      "text": "he cant shot you with a minigun pointed at you LMAO",
+      "emoticon": null
+     }
+    ],
+    "user_badges": [
+     {
+      "_id": "moments",
+      "version": "3"
+     }
+    ],
+    "user_color": "#FF7F50",
+    "emoticons": []
+   }
+  },
+  {
+   "_id": "977749e4c9037730c3474be97bf12300",
+   "created_at": "2026-10-17T03:56:42.589Z",
+   "channel_id": "100000001",
+   "content_type": "video",
+   "content_id": "1000000001",
+   "content_offset_seconds": 35721,
+   "commenter": {
+    "display_name": "user_1b7b2afd",
+    "_id": "803601049",
+    "name": "user_1b7b2afd",
+    "bio": null,
+    "created_at": "2020-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z",
+    "logo": null
+   },
+   "message": {
+    "body": "shoot you? you have a mini gun? LO",
+    "bits_spent": 0,
+    "fragments": [
+     {
+      "text": "shoot you? you have a mini gun? LO",
+      "emoticon": null
+     }
+    ],
+    "user_badges": [
+     {
+      "_id": "share-the-love",
+      "version": "1"
+     }
+    ],
+    "user_color": "#390867",
+    "emoticons": []
+   }
+  },
+  {
+   "_id": "b3e905629757e16362ad8dfae59afb53",
+   "created_at": "2026-10-17T03:56:42.894Z",
+   "channel_id": "100000001",
+   "content_type": "video",
+   "content_id": "1000000001",
+   "content_offset_seconds": 35722,
+   "commenter": {
+    "display_name": "user_288ca280",
+    "_id": "996715749",
+    "name": "user_288ca280",
+    "bio": null,
+    "created_at": "2020-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z",
+    "logo": null
+   },
+   "message": {
+    "body": "lmao mf said help",
+    "bits_spent": 0,
+    "fragments": [
+     {
+      "text": "lmao mf said help",
+      "emoticon": null
+     }
+    ],
+    "user_badges": [
+     {
+      "_id": "moments",
+      "version": "4"
+     }
+    ],
+    "user_color": "#00FF7F",
+    "emoticons": []
+   }
+  },
+  {
+   "_id": "4eaf6e536f316737b357ed3eea58a084",
+   "created_at": "2026-10-17T03:56:43.21Z",
+   "channel_id": "100000001",
+   "content_type": "video",
+   "content_id": "1000000001",
+   "content_offset_seconds": 35722,
+   "commenter": {
+    "display_name": "user_92b718ac",
+    "_id": "485619453",
+    "name": "user_92b718ac",
+    "bio": null,
+    "created_at": "2020-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z",
+    "logo": null
+   },
+   "message": {
+    "body": "Omg lol",
+    "bits_spent": 0,
+    "fragments": [
+     {
+      "text": "Omg lol",
+      "emoticon": null
+     }
+    ],
+    "user_badges": [
+     {
+      "_id": "moments",
+      "version": "1"
+     }
+    ],
+    "user_color": "#E10CDC",
+    "emoticons": []
+   }
+  },
+  {
+   "_id": "69af8724012d586ac939297b761eb7c1",
+   "created_at": "2026-10-17T03:56:43.241Z",
+   "channel_id": "100000001",
+   "content_type": "video",
+   "content_id": "1000000001",
+   "content_offset_seconds": 35722,
+   "commenter": {
+    "display_name": "user_64a1f421",
+    "_id": "926967782",
+    "name": "user_64a1f421",
+    "bio": null,
+    "created_at": "2020-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z",
+    "logo": null
+   },
+   "message": {
+    "body": "useless",
+    "bits_spent": 0,
+    "fragments": [
+     {
+      "text": "useless",
+      "emoticon": null
+     }
+    ],
+    "user_badges": [
+     {
+      "_id": "nopixel-v-launch",
+      "version": "1"
+     }
+    ],
+    "user_color": "#1E90FF",
+    "emoticons": []
+   }
+  },
+  {
+   "_id": "25e984db679e988fcc442e55f644fe7e",
+   "created_at": "2026-10-17T03:56:43.395Z",
+   "channel_id": "100000001",
+   "content_type": "video",
+   "content_id": "1000000001",
+   "content_offset_seconds": 35722,
+   "commenter": {
+    "display_name": "user_6b6e217f",
+    "_id": "662011034",
+    "name": "user_6b6e217f",
+    "bio": null,
+    "created_at": "2020-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z",
+    "logo": null
+   },
+   "message": {
+    "body": "-1 bro",
+    "bits_spent": 0,
+    "fragments": [
+     {
+      "text": "-1 bro",
+      "emoticon": null
+     }
+    ],
+    "user_badges": [
+     {
+      "_id": "subscriber",
+      "version": "6"
+     },
+     {
+      "_id": "moments",
+      "version": "2"
+     }
+    ],
+    "user_color": "#5F9EA0",
+    "emoticons": []
+   }
+  },
+  {
+   "_id": "cd93b92d2b0dacf26dea2b273cd81072",
+   "created_at": "2026-10-17T03:56:43.472Z",
+   "channel_id": "100000001",
+   "content_type": "video",
+   "content_id": "1000000001",
+   "content_offset_seconds": 35722,
+   "commenter": {
+    "display_name": "user_0dd78de4",
+    "_id": "911353195",
+    "name": "user_0dd78de4",
+    "bio": null,
+    "created_at": "2020-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z",
+    "logo": null
+   },
+   "message": {
+    "body": "CHASE THEM IN THE CHOPPER",
+    "bits_spent": 0,
+    "fragments": [
+     {
+      "text": "CHASE THEM IN THE CHOPPER",
+      "emoticon": null
+     }
+    ],
+    "user_badges": [
+     {
+      "_id": "rplace-2023",
+      "version": "1"
+     }
+    ],
+    "user_color": "#FF0000",
+    "emoticons": []
+   }
+  },
+  {
+   "_id": "ea1f7eec0bc3f35a3a0a6c83cb711822",
+   "created_at": "2026-10-17T03:56:43.492Z",
+   "channel_id": "100000001",
+   "content_type": "video",
+   "content_id": "1000000001",
+   "content_offset_seconds": 35722,
+   "commenter": {
+    "display_name": "user_88529fc4",
+    "_id": "548977200",
+    "name": "user_88529fc4",
+    "bio": null,
+    "created_at": "2020-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z",
+    "logo": null
+   },
+   "message": {
+    "body": "LOL",
+    "bits_spent": 0,
+    "fragments": [
+     {
+      "text": "LOL",
+      "emoticon": null
+     }
+    ],
+    "user_badges": [],
+    "user_color": "#8A2BE2",
+    "emoticons": []
+   }
+  },
+  {
+   "_id": "424d71d27c7abbd6a53f72ac6f065184",
+   "created_at": "2026-10-17T03:56:43.781Z",
+   "channel_id": "100000001",
+   "content_type": "video",
+   "content_id": "1000000001",
+   "content_offset_seconds": 35723,
+   "commenter": {
+    "display_name": "user_201107c9",
+    "_id": "699819907",
+    "name": "user_201107c9",
+    "bio": null,
+    "created_at": "2020-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z",
+    "logo": null
+   },
+   "message": {
+    "body": "LMAO",
+    "bits_spent": 0,
+    "fragments": [
+     {
+      "text": "LMAO",
+      "emoticon": null
+     }
+    ],
+    "user_badges": [],
+    "user_color": "#B22222",
+    "emoticons": []
+   }
+  },
+  {
+   "_id": "50539c28d530ab6c190a983f63b8f5a0",
+   "created_at": "2026-10-17T03:56:43.824Z",
+   "channel_id": "100000001",
+   "content_type": "video",
+   "content_id": "1000000001",
+   "content_offset_seconds": 35723,
+   "commenter": {
+    "display_name": "user_415affd1",
+    "_id": "356001675",
+    "name": "user_415affd1",
+    "bio": null,
+    "created_at": "2020-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z",
+    "logo": null
+   },
+   "message": {
+    "body": "LO",
+    "bits_spent": 0,
+    "fragments": [
+     {
+      "text": "LO",
+      "emoticon": null
+     }
+    ],
+    "user_badges": [
+     {
+      "_id": "premium",
+      "version": "1"
+     }
+    ],
+    "user_color": "#B885E7",
+    "emoticons": []
+   }
+  },
+  {
+   "_id": "d391ee4f872505e345c466266c10dab8",
+   "created_at": "2026-10-17T03:56:43.903Z",
+   "channel_id": "100000001",
+   "content_type": "video",
+   "content_id": "1000000001",
+   "content_offset_seconds": 35723,
+   "commenter": {
+    "display_name": "user_8b6c6a98",
+    "_id": "595083784",
+    "name": "user_8b6c6a98",
+    "bio": null,
+    "created_at": "2020-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z",
+    "logo": null
+   },
+   "message": {
+    "body": "KILL DAT BOY",
+    "bits_spent": 0,
+    "fragments": [
+     {
+      "text": "KILL DAT BOY",
+      "emoticon": null
+     }
+    ],
+    "user_badges": [
+     {
+      "_id": "overwatch-league-insider_1",
+      "version": "1"
+     }
+    ],
+    "user_color": "#1E90FF",
+    "emoticons": []
+   }
+  },
+  {
+   "_id": "c85984ce5dfb6db398e88c2a36ae8ca1",
+   "created_at": "2026-10-17T03:56:43.947Z",
+   "channel_id": "100000001",
+   "content_type": "video",
+   "content_id": "1000000001",
+   "content_offset_seconds": 35723,
+   "commenter": {
+    "display_name": "user_c8633d07",
+    "_id": "435615385",
+    "name": "user_c8633d07",
+    "bio": null,
+    "created_at": "2020-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z",
+    "logo": null
+   },
+   "message": {
+    "body": "You outgun him LO",
+    "bits_spent": 0,
+    "fragments": [
+     {
+      "text": "You outgun him LO",
+      "emoticon": null
+     }
+    ],
+    "user_badges": [
+     {
+      "_id": "glitchcon2020",
+      "version": "1"
+     }
+    ],
+    "user_color": "#008000",
+    "emoticons": []
+   }
+  },
+  {
+   "_id": "ee7cea01f7eb1dfdc787984c70257a63",
+   "created_at": "2026-10-17T03:56:43.999Z",
+   "channel_id": "100000001",
+   "content_type": "video",
+   "content_id": "1000000001",
+   "content_offset_seconds": 35723,
+   "commenter": {
+    "display_name": "user_af15db01",
+    "_id": "886557110",
+    "name": "user_af15db01",
+    "bio": null,
+    "created_at": "2020-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z",
+    "logo": null
+   },
+   "message": {
+    "body": "LMAO",
+    "bits_spent": 0,
+    "fragments": [
+     {
+      "text": "LMAO",
+      "emoticon": null
+     }
+    ],
+    "user_badges": [
+     {
+      "_id": "moments",
+      "version": "1"
+     }
+    ],
+    "user_color": "#11E37A",
+    "emoticons": []
+   }
+  },
+  {
+   "_id": "b44f17012df7d728468623917836daf1",
+   "created_at": "2026-10-17T03:56:44.027Z",
+   "channel_id": "100000001",
+   "content_type": "video",
+   "content_id": "1000000001",
+   "content_offset_seconds": 35723,
+   "commenter": {
+    "display_name": "user_ae3a1e53",
+    "_id": "670075975",
+    "name": "user_ae3a1e53",
+    "bio": null,
+    "created_at": "2020-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z",
+    "logo": null
+   },
+   "message": {
+    "body": "LUL",
+    "bits_spent": 0,
+    "fragments": [
+     {
+      "text": "LUL",
+      "emoticon": null
+     }
+    ],
+    "user_badges": [
+     {
+      "_id": "no_audio",
+      "version": "1"
+     }
+    ],
+    "user_color": "#E887B8",
+    "emoticons": []
+   }
+  },
+  {
+   "_id": "c02f882379eca4b159413464a84aa004",
+   "created_at": "2026-10-17T03:56:44.145Z",
+   "channel_id": "100000001",
+   "content_type": "video",
+   "content_id": "1000000001",
+   "content_offset_seconds": 35723,
+   "commenter": {
+    "display_name": "user_6d13c2fa",
+    "_id": "978485255",
+    "name": "user_6d13c2fa",
+    "bio": null,
+    "created_at": "2020-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z",
+    "logo": null
+   },
+   "message": {
+    "body": "SHOOT THE HOSTAGE",
+    "bits_spent": 0,
+    "fragments": [
+     {
+      "text": "SHOOT THE HOSTAGE",
+      "emoticon": null
+     }
+    ],
+    "user_badges": [
+     {
+      "_id": "moments",
+      "version": "2"
+     }
+    ],
+    "user_color": null,
+    "emoticons": []
+   }
+  },
+  {
+   "_id": "4baaf62999f661f3099c4a865a13947b",
+   "created_at": "2026-10-17T03:56:44.941Z",
+   "channel_id": "100000001",
+   "content_type": "video",
+   "content_id": "1000000001",
+   "content_offset_seconds": 35724,
+   "commenter": {
+    "display_name": "user_2650dd66",
+    "_id": "379414817",
+    "name": "user_2650dd66",
+    "bio": null,
+    "created_at": "2020-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z",
+    "logo": null
+   },
+   "message": {
+    "body": "blow up a car",
+    "bits_spent": 0,
+    "fragments": [
+     {
+      "text": "blow up a car",
+      "emoticon": null
+     }
+    ],
+    "user_badges": [],
+    "user_color": "#8A2BE2",
+    "emoticons": []
+   }
+  },
+  {
+   "_id": "8e26ce9e0acff4d134fbe21278c4af75",
+   "created_at": "2026-10-17T03:56:45.073Z",
+   "channel_id": "100000001",
+   "content_type": "video",
+   "content_id": "1000000001",
+   "content_offset_seconds": 35724,
+   "commenter": {
+    "display_name": "user_e5c1f43b",
+    "_id": "934030822",
+    "name": "user_e5c1f43b",
+    "bio": null,
+    "created_at": "2020-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z",
+    "logo": null
+   },
+   "message": {
+    "body": "You're just defending your home brother KKona",
+    "bits_spent": 0,
+    "fragments": [
+     {
+      "text": "You're just defending your home brother KKona",
+      "emoticon": null
+     }
+    ],
+    "user_badges": [
+     {
+      "_id": "wardog",
+      "version": "1"
+     }
+    ],
+    "user_color": "#3AC2F3",
+    "emoticons": []
+   }
+  },
+  {
+   "_id": "1a6e2a68e2fd87ba4faf904b40ff35b3",
+   "created_at": "2026-10-17T03:56:45.117Z",
+   "channel_id": "100000001",
+   "content_type": "video",
+   "content_id": "1000000001",
+   "content_offset_seconds": 35724,
+   "commenter": {
+    "display_name": "user_686746cc",
+    "_id": "539276896",
+    "name": "user_686746cc",
+    "bio": null,
+    "created_at": "2020-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z",
+    "logo": null
+   },
+   "message": {
+    "body": "stfu chat",
+    "bits_spent": 0,
+    "fragments": [
+     {
+      "text": "stfu chat",
+      "emoticon": null
+     }
+    ],
+    "user_badges": [],
+    "user_color": "#2D312D",
+    "emoticons": []
+   }
+  },
+  {
+   "_id": "eeb45006b5901f214834af193a0b79d2",
+   "created_at": "2026-10-17T03:56:45.333Z",
+   "channel_id": "100000001",
+   "content_type": "video",
+   "content_id": "1000000001",
+   "content_offset_seconds": 35724,
+   "commenter": {
+    "display_name": "user_c6121577",
+    "_id": "537822480",
+    "name": "user_c6121577",
+    "bio": null,
+    "created_at": "2020-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z",
+    "logo": null
+   },
+   "message": {
+    "body": "Kill me Sadge",
+    "bits_spent": 0,
+    "fragments": [
+     {
+      "text": "Kill me Sadge",
+      "emoticon": null
+     }
+    ],
+    "user_badges": [
+     {
+      "_id": "moments",
+      "version": "3"
+     }
+    ],
+    "user_color": "#FF9A00",
+    "emoticons": []
+   }
+  },
+  {
+   "_id": "7a15cdcfe1f8f224b69e8950403fc3fb",
+   "created_at": "2026-10-17T03:56:45.712Z",
+   "channel_id": "100000001",
+   "content_type": "video",
+   "content_id": "1000000001",
+   "content_offset_seconds": 35725,
+   "commenter": {
+    "display_name": "StreamElements",
+    "_id": "607023095",
+    "name": "streamelements",
+    "bio": null,
+    "created_at": "2020-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z",
+    "logo": null
+   },
+   "message": {
+    "body": "Please refrain from harassing other roleplayers, streamers and their chats.",
+    "bits_spent": 0,
+    "fragments": [
+     {
+      "text": "Please refrain from harassing other roleplayers, streamers and their chats.",
+      "emoticon": null
+     }
+    ],
+    "user_badges": [
+     {
+      "_id": "moderator",
+      "version": "1"
+     },
+     {
+      "_id": "bot-badge",
+      "version": "1"
+     }
+    ],
+    "user_color": "#5B99FF",
+    "emoticons": []
+   }
+  },
+  {
+   "_id": "b655f7e7654e7937a0198040109fb95a",
+   "created_at": "2026-10-17T03:56:46.018Z",
+   "channel_id": "100000001",
+   "content_type": "video",
+   "content_id": "1000000001",
+   "content_offset_seconds": 35725,
+   "commenter": {
+    "display_name": "user_ead1132f",
+    "_id": "978042139",
+    "name": "user_ead1132f",
+    "bio": null,
+    "created_at": "2020-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z",
+    "logo": null
+   },
+   "message": {
+    "body": "what a nice guy",
+    "bits_spent": 0,
+    "fragments": [
+     {
+      "text": "what a nice guy",
+      "emoticon": null
+     }
+    ],
+    "user_badges": [
+     {
+      "_id": "moments",
+      "version": "5"
+     }
+    ],
+    "user_color": "#07EAFD",
+    "emoticons": []
+   }
+  },
+  {
+   "_id": "eaeed3480749a3c94e9e7ae9d4ce96df",
+   "created_at": "2026-10-17T03:56:46.047Z",
+   "channel_id": "100000001",
+   "content_type": "video",
+   "content_id": "1000000001",
+   "content_offset_seconds": 35725,
+   "commenter": {
+    "display_name": "user_aad182b3",
+    "_id": "469893472",
+    "name": "user_aad182b3",
+    "bio": null,
+    "created_at": "2020-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z",
+    "logo": null
+   },
+   "message": {
+    "body": "no ammo",
+    "bits_spent": 0,
+    "fragments": [
+     {
+      "text": "no ammo",
+      "emoticon": null
+     }
+    ],
+    "user_badges": [],
+    "user_color": "#FF69B4",
+    "emoticons": []
+   }
+  },
+  {
+   "_id": "a0d247f7710654da4e2cbdddb13772ef",
+   "created_at": "2026-10-17T03:56:46.272Z",
+   "channel_id": "100000001",
+   "content_type": "video",
+   "content_id": "1000000001",
+   "content_offset_seconds": 35725,
+   "commenter": {
+    "display_name": "user_bb0dbde5",
+    "_id": "336492621",
+    "name": "user_bb0dbde5",
+    "bio": null,
+    "created_at": "2020-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z",
+    "logo": null
+   },
+   "message": {
+    "body": "he a soft pussy",
+    "bits_spent": 0,
+    "fragments": [
+     {
+      "text": "he a soft pussy",
+      "emoticon": null
+     }
+    ],
+    "user_badges": [
+     {
+      "_id": "nopixel-v-launch",
+      "version": "1"
+     }
+    ],
+    "user_color": "#FF0000",
+    "emoticons": []
+   }
+  },
+  {
+   "_id": "9101a0d15a08e30f8039800f407114cd",
+   "created_at": "2026-10-17T03:56:46.615Z",
+   "channel_id": "100000001",
+   "content_type": "video",
+   "content_id": "1000000001",
+   "content_offset_seconds": 35725,
+   "commenter": {
+    "display_name": "user_2689de49",
+    "_id": "924277873",
+    "name": "user_2689de49",
+    "bio": null,
+    "created_at": "2020-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z",
+    "logo": null
+   },
+   "message": {
+    "body": "Brotha",
+    "bits_spent": 0,
+    "fragments": [
+     {
+      "text": "Brotha",
+      "emoticon": null
+     }
+    ],
+    "user_badges": [
+     {
+      "_id": "moments",
+      "version": "2"
+     }
+    ],
+    "user_color": "#FF0000",
+    "emoticons": []
+   }
+  },
+  {
+   "_id": "fb347f9e41804d6b1b75770d658429e7",
+   "created_at": "2026-10-17T03:56:47.673Z",
+   "channel_id": "100000001",
+   "content_type": "video",
+   "content_id": "1000000001",
+   "content_offset_seconds": 35726,
+   "commenter": {
+    "display_name": "user_6f76f227",
+    "_id": "104841151",
+    "name": "user_6f76f227",
+    "bio": null,
+    "created_at": "2020-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z",
+    "logo": null
+   },
+   "message": {
+    "body": "is this same cop that always apologizes",
+    "bits_spent": 0,
+    "fragments": [
+     {
+      "text": "is this same cop that always apologizes",
+      "emoticon": null
+     }
+    ],
+    "user_badges": [
+     {
+      "_id": "turbo",
+      "version": "1"
+     }
+    ],
+    "user_color": "#1E90FF",
+    "emoticons": []
+   }
+  },
+  {
+   "_id": "38ed8f6f063dff0305f32cb444632e4a",
+   "created_at": "2026-10-17T03:56:47.696Z",
+   "channel_id": "100000001",
+   "content_type": "video",
+   "content_id": "1000000001",
+   "content_offset_seconds": 35726,
+   "commenter": {
+    "display_name": "user_3c712114",
+    "_id": "124078521",
+    "name": "user_3c712114",
+    "bio": null,
+    "created_at": "2020-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z",
+    "logo": null
+   },
+   "message": {
+    "body": "shoot the hostage",
+    "bits_spent": 0,
+    "fragments": [
+     {
+      "text": "shoot the hostage",
+      "emoticon": null
+     }
+    ],
+    "user_badges": [
+     {
+      "_id": "premium",
+      "version": "1"
+     }
+    ],
+    "user_color": "#123568",
+    "emoticons": []
+   }
+  },
+  {
+   "_id": "5bd83fc7f094c66678a2df0c79e2cbb4",
+   "created_at": "2026-10-17T03:56:48.228Z",
+   "channel_id": "100000001",
+   "content_type": "video",
+   "content_id": "1000000001",
+   "content_offset_seconds": 35727,
+   "commenter": {
+    "display_name": "user_2f9670d4",
+    "_id": "463916419",
+    "name": "user_2f9670d4",
+    "bio": null,
+    "created_at": "2020-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z",
+    "logo": null
+   },
+   "message": {
+    "body": "ENTIRE FORCE BREAKS OFF FOR YOU om",
+    "bits_spent": 0,
+    "fragments": [
+     {
+      "text": "ENTIRE FORCE BREAKS OFF FOR YOU om",
+      "emoticon": null
+     }
+    ],
+    "user_badges": [
+     {
+      "_id": "subscriber",
+      "version": "2"
+     },
+     {
+      "_id": "turbo",
+      "version": "1"
+     }
+    ],
+    "user_color": "#00FF7F",
+    "emoticons": []
+   }
+  },
+  {
+   "_id": "989d42801367c048473587753d5526b7",
+   "created_at": "2026-10-17T03:56:48.718Z",
+   "channel_id": "100000001",
+   "content_type": "video",
+   "content_id": "1000000001",
+   "content_offset_seconds": 35728,
+   "commenter": {
+    "display_name": "user_e4516431",
+    "_id": "549123824",
+    "name": "user_e4516431",
+    "bio": null,
+    "created_at": "2020-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z",
+    "logo": null
+   },
+   "message": {
+    "body": "LMAO",
+    "bits_spent": 0,
+    "fragments": [
+     {
+      "text": "LMAO",
+      "emoticon": null
+     }
+    ],
+    "user_badges": [
+     {
+      "_id": "together-for-good-25---gooder-badge",
+      "version": "1"
+     }
+    ],
+    "user_color": "#D6FFB6",
+    "emoticons": []
+   }
+  },
+  {
+   "_id": "41665424a594e4bd72e82e6500e4b73f",
+   "created_at": "2026-10-17T03:56:48.723Z",
+   "channel_id": "100000001",
+   "content_type": "video",
+   "content_id": "1000000001",
+   "content_offset_seconds": 35728,
+   "commenter": {
+    "display_name": "user_1bf66bcd",
+    "_id": "691499149",
+    "name": "user_1bf66bcd",
+    "bio": null,
+    "created_at": "2020-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z",
+    "logo": null
+   },
+   "message": {
+    "body": "he's scared",
+    "bits_spent": 0,
+    "fragments": [
+     {
+      "text": "he's scared",
+      "emoticon": null
+     }
+    ],
+    "user_badges": [
+     {
+      "_id": "subscriber",
+      "version": "2"
+     },
+     {
+      "_id": "nopixel-v-launch",
+      "version": "1"
+     }
+    ],
+    "user_color": "#1E90FF",
+    "emoticons": []
+   }
+  },
+  {
+   "_id": "050df74263b48095fea4afc0957a37b4",
+   "created_at": "2026-10-17T03:56:49.131Z",
+   "channel_id": "100000001",
+   "content_type": "video",
+   "content_id": "1000000001",
+   "content_offset_seconds": 35728,
+   "commenter": {
+    "display_name": "user_288ca280",
+    "_id": "996715749",
+    "name": "user_288ca280",
+    "bio": null,
+    "created_at": "2020-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z",
+    "logo": null
+   },
+   "message": {
+    "body": "hes scared shitless",
+    "bits_spent": 0,
+    "fragments": [
+     {
+      "text": "hes scared shitless",
+      "emoticon": null
+     }
+    ],
+    "user_badges": [
+     {
+      "_id": "moments",
+      "version": "4"
+     }
+    ],
+    "user_color": "#00FF7F",
+    "emoticons": []
+   }
+  },
+  {
+   "_id": "59cc220c4dce50335db1effbd97b3f3b",
+   "created_at": "2026-10-17T03:56:49.305Z",
+   "channel_id": "100000001",
+   "content_type": "video",
+   "content_id": "1000000001",
+   "content_offset_seconds": 35728,
+   "commenter": {
+    "display_name": "user_bc9699b7",
+    "_id": "839996865",
+    "name": "user_bc9699b7",
+    "bio": null,
+    "created_at": "2020-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z",
+    "logo": null
+   },
+   "message": {
+    "body": "HES SCARED",
+    "bits_spent": 0,
+    "fragments": [
+     {
+      "text": "HES SCARED",
+      "emoticon": null
+     }
+    ],
+    "user_badges": [],
+    "user_color": "#FFFD00",
+    "emoticons": []
+   }
+  },
+  {
+   "_id": "b63a5a46a3b5784f3e8cb898248e87de",
+   "created_at": "2026-10-17T03:56:49.671Z",
+   "channel_id": "100000001",
+   "content_type": "video",
+   "content_id": "1000000001",
+   "content_offset_seconds": 35728,
+   "commenter": {
+    "display_name": "user_df3047ea",
+    "_id": "199923583",
+    "name": "user_df3047ea",
+    "bio": null,
+    "created_at": "2020-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z",
+    "logo": null
+   },
+   "message": {
+    "body": "shoot the cars",
+    "bits_spent": 0,
+    "fragments": [
+     {
+      "text": "shoot the cars",
+      "emoticon": null
+     }
+    ],
+    "user_badges": [
+     {
+      "_id": "twitch-recap-2025",
+      "version": "1"
+     }
+    ],
+    "user_color": "#FF4500",
+    "emoticons": []
+   }
+  },
+  {
+   "_id": "c3774727e3d19d5941db80b6a232e734",
+   "created_at": "2026-10-17T03:56:50.383Z",
+   "channel_id": "100000001",
+   "content_type": "video",
+   "content_id": "1000000001",
+   "content_offset_seconds": 35729,
+   "commenter": {
+    "display_name": "user_7352b264",
+    "_id": "753483787",
+    "name": "user_7352b264",
+    "bio": null,
+    "created_at": "2020-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z",
+    "logo": null
+   },
+   "message": {
+    "body": "I mean hes kinda outgunned LUL",
+    "bits_spent": 0,
+    "fragments": [
+     {
+      "text": "I mean hes kinda outgunned LUL",
+      "emoticon": null
+     }
+    ],
+    "user_badges": [
+     {
+      "_id": "zevent-2024",
+      "version": "1"
+     }
+    ],
+    "user_color": "#FF0000",
+    "emoticons": []
+   }
+  },
+  {
+   "_id": "a60479dd7de2a4df2b1300829cb4fa21",
+   "created_at": "2026-10-17T03:56:50.676Z",
+   "channel_id": "100000001",
+   "content_type": "video",
+   "content_id": "1000000001",
+   "content_offset_seconds": 35729,
+   "commenter": {
+    "display_name": "user_8448ef83",
+    "_id": "466703306",
+    "name": "user_8448ef83",
+    "bio": null,
+    "created_at": "2020-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z",
+    "logo": null
+   },
+   "message": {
+    "body": "LOL",
+    "bits_spent": 0,
+    "fragments": [
+     {
+      "text": "LOL",
+      "emoticon": null
+     }
+    ],
+    "user_badges": [
+     {
+      "_id": "moments",
+      "version": "2"
+     }
+    ],
+    "user_color": "#2E8B57",
+    "emoticons": []
+   }
+  },
+  {
+   "_id": "e30c398610d6b679a609a4c602e9c424",
+   "created_at": "2026-10-17T03:56:50.774Z",
+   "channel_id": "100000001",
+   "content_type": "video",
+   "content_id": "1000000001",
+   "content_offset_seconds": 35730,
+   "commenter": {
+    "display_name": "user_724d9f39",
+    "_id": "266273516",
+    "name": "user_724d9f39",
+    "bio": null,
+    "created_at": "2020-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z",
+    "logo": null
+   },
+   "message": {
+    "body": "Hes one dude and you have a mini gun, hes scared",
+    "bits_spent": 0,
+    "fragments": [
+     {
+      "text": "Hes one dude and you have a mini gun, hes scared",
+      "emoticon": null
+     }
+    ],
+    "user_badges": [
+     {
+      "_id": "premium",
+      "version": "1"
+     }
+    ],
+    "user_color": "#008000",
+    "emoticons": []
+   }
+  },
+  {
+   "_id": "31da20ac55ff36e94599ebdd27ffb78a",
+   "created_at": "2026-10-17T03:56:50.845Z",
+   "channel_id": "100000001",
+   "content_type": "video",
+   "content_id": "1000000001",
+   "content_offset_seconds": 35730,
+   "commenter": {
+    "display_name": "user_9090c0c5",
+    "_id": "362035413",
+    "name": "user_9090c0c5",
+    "bio": null,
+    "created_at": "2020-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z",
+    "logo": null
+   },
+   "message": {
+    "body": "gah damn cops are pussy lol",
+    "bits_spent": 0,
+    "fragments": [
+     {
+      "text": "gah damn cops are pussy lol",
+      "emoticon": null
+     }
+    ],
+    "user_badges": [
+     {
+      "_id": "raging-wolf-helm",
+      "version": "1"
+     }
+    ],
+    "user_color": "#FF0000",
+    "emoticons": []
+   }
+  },
+  {
+   "_id": "76edaae83b12da427306166bd13aa309",
+   "created_at": "2026-10-17T03:56:50.873Z",
+   "channel_id": "100000001",
+   "content_type": "video",
+   "content_id": "1000000001",
+   "content_offset_seconds": 35730,
+   "commenter": {
+    "display_name": "user_5dec243c",
+    "_id": "542070723",
+    "name": "user_5dec243c",
+    "bio": null,
+    "created_at": "2020-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z",
+    "logo": null
+   },
+   "message": {
+    "body": "Cop 0 survivor instinct LUL",
+    "bits_spent": 0,
+    "fragments": [
+     {
+      "text": "Cop 0 survivor instinct LUL",
+      "emoticon": null
+     }
+    ],
+    "user_badges": [
+     {
+      "_id": "subscriber",
+      "version": "3"
+     },
+     {
+      "_id": "nopixel-v-launch",
+      "version": "1"
+     }
+    ],
+    "user_color": "#FF0000",
+    "emoticons": []
+   }
+  },
+  {
+   "_id": "c0f7a4bae6426e0e04c91adb0e262c7c",
+   "created_at": "2026-10-17T03:56:50.919Z",
+   "channel_id": "100000001",
+   "content_type": "video",
+   "content_id": "1000000001",
+   "content_offset_seconds": 35730,
+   "commenter": {
+    "display_name": "user_2c2463d2",
+    "_id": "891508270",
+    "name": "user_2c2463d2",
+    "bio": null,
+    "created_at": "2020-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z",
+    "logo": null
+   },
+   "message": {
+    "body": "Not even scared",
+    "bits_spent": 0,
+    "fragments": [
+     {
+      "text": "Not even scared",
+      "emoticon": null
+     }
+    ],
+    "user_badges": [
+     {
+      "_id": "nopixel-v-launch",
+      "version": "1"
+     }
+    ],
+    "user_color": "#FF69B4",
+    "emoticons": []
+   }
+  },
+  {
+   "_id": "3c45be64acddd48712ca6e041941c05d",
+   "created_at": "2026-10-17T03:56:51.07Z",
+   "channel_id": "100000001",
+   "content_type": "video",
+   "content_id": "1000000001",
+   "content_offset_seconds": 35730,
+   "commenter": {
+    "display_name": "user_12523b73",
+    "_id": "168881726",
+    "name": "user_12523b73",
+    "bio": null,
+    "created_at": "2020-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z",
+    "logo": null
+   },
+   "message": {
+    "body": "WW cop",
+    "bits_spent": 0,
+    "fragments": [
+     {
+      "text": "WW cop",
+      "emoticon": null
+     }
+    ],
+    "user_badges": [
+     {
+      "_id": "premium",
+      "version": "1"
+     }
+    ],
+    "user_color": "#0000FF",
+    "emoticons": []
+   }
+  },
+  {
+   "_id": "e6fc0e7d8e031bf3083bbad1e8ef00fb",
+   "created_at": "2026-10-17T03:56:51.13Z",
+   "channel_id": "100000001",
+   "content_type": "video",
+   "content_id": "1000000001",
+   "content_offset_seconds": 35730,
+   "commenter": {
+    "display_name": "user_80fc789d",
+    "_id": "558499452",
+    "name": "user_80fc789d",
+    "bio": null,
+    "created_at": "2020-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z",
+    "logo": null
+   },
+   "message": {
+    "body": "RPG time",
+    "bits_spent": 0,
+    "fragments": [
+     {
+      "text": "RPG time",
+      "emoticon": null
+     }
+    ],
+    "user_badges": [
+     {
+      "_id": "twitch-dj",
+      "version": "1"
+     }
+    ],
+    "user_color": "#FF0000",
+    "emoticons": []
+   }
+  },
+  {
+   "_id": "9d2385694a8674730afe0a54466a9ef6",
+   "created_at": "2026-10-17T03:56:51.219Z",
+   "channel_id": "100000001",
+   "content_type": "video",
+   "content_id": "1000000001",
+   "content_offset_seconds": 35730,
+   "commenter": {
+    "display_name": "user_61c7ea8b",
+    "_id": "408852059",
+    "name": "user_61c7ea8b",
+    "bio": null,
+    "created_at": "2020-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z",
+    "logo": null
+   },
+   "message": {
+    "body": "This is cooked",
+    "bits_spent": 0,
+    "fragments": [
+     {
+      "text": "This is cooked",
+      "emoticon": null
+     }
+    ],
+    "user_badges": [
+     {
+      "_id": "moments",
+      "version": "5"
+     }
+    ],
+    "user_color": "#5F9EA0",
+    "emoticons": []
+   }
+  },
+  {
+   "_id": "c5a5917fe5ed6318dff6b98d975cbb1b",
+   "created_at": "2026-10-17T03:56:51.31Z",
+   "channel_id": "100000001",
+   "content_type": "video",
+   "content_id": "1000000001",
+   "content_offset_seconds": 35730,
+   "commenter": {
+    "display_name": "user_3e6f249f",
+    "_id": "285825848",
+    "name": "user_3e6f249f",
+    "bio": null,
+    "created_at": "2020-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z",
+    "logo": null
+   },
+   "message": {
+    "body": "Nvl if he doesn’t",
+    "bits_spent": 0,
+    "fragments": [
+     {
+      "text": "Nvl if he doesn’t",
+      "emoticon": null
+     }
+    ],
+    "user_badges": [
+     {
+      "_id": "marathon-reveal-runner",
+      "version": "1"
+     }
+    ],
+    "user_color": "#8A2BE2",
+    "emoticons": []
+   }
+  },
+  {
+   "_id": "2a660dd3b80f724c56a673c8c88ad2f8",
+   "created_at": "2026-10-17T03:56:51.404Z",
+   "channel_id": "100000001",
+   "content_type": "video",
+   "content_id": "1000000001",
+   "content_offset_seconds": 35730,
+   "commenter": {
+    "display_name": "user_3ff2b637",
+    "_id": "774332518",
+    "name": "user_3ff2b637",
+    "bio": null,
+    "created_at": "2020-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z",
+    "logo": null
+   },
+   "message": {
+    "body": "Owner Aura",
+    "bits_spent": 0,
+    "fragments": [
+     {
+      "text": "Owner Aura",
+      "emoticon": null
+     }
+    ],
+    "user_badges": [
+     {
+      "_id": "moments",
+      "version": "3"
+     }
+    ],
+    "user_color": null,
+    "emoticons": []
+   }
+  },
+  {
+   "_id": "a602ae08655993cbda73399dd289e116",
+   "created_at": "2026-10-17T03:56:51.619Z",
+   "channel_id": "100000001",
+   "content_type": "video",
+   "content_id": "1000000001",
+   "content_offset_seconds": 35730,
+   "commenter": {
+    "display_name": "user_718aa14c",
+    "_id": "771815578",
+    "name": "user_718aa14c",
+    "bio": null,
+    "created_at": "2020-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z",
+    "logo": null
+   },
+   "message": {
+    "body": "Canadian cops Classic",
+    "bits_spent": 0,
+    "fragments": [
+     {
+      "text": "Canadian cops Classic",
+      "emoticon": null
+     }
+    ],
+    "user_badges": [
+     {
+      "_id": "squirtle",
+      "version": "1"
+     }
+    ],
+    "user_color": "#7300FF",
+    "emoticons": []
+   }
+  },
+  {
+   "_id": "6b955c08e5647087d34173861ce6bf79",
+   "created_at": "2026-10-17T03:56:51.797Z",
+   "channel_id": "100000001",
+   "content_type": "video",
+   "content_id": "1000000001",
+   "content_offset_seconds": 35731,
+   "commenter": {
+    "display_name": "user_2110c123",
+    "_id": "325955656",
+    "name": "user_2110c123",
+    "bio": null,
+    "created_at": "2020-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z",
+    "logo": null
+   },
+   "message": {
+    "body": "world's least bothered cop KEKW",
+    "bits_spent": 0,
+    "fragments": [
+     {
+      "text": "world's least bothered cop KEKW",
+      "emoticon": null
+     }
+    ],
+    "user_badges": [
+     {
+      "_id": "nopixel-v-launch",
+      "version": "1"
+     }
+    ],
+    "user_color": "#FF69B4",
+    "emoticons": []
+   }
+  },
+  {
+   "_id": "f989cd9fc160311aa68382880b040510",
+   "created_at": "2026-10-17T03:56:52.068Z",
+   "channel_id": "100000001",
+   "content_type": "video",
+   "content_id": "1000000001",
+   "content_offset_seconds": 35731,
+   "commenter": {
+    "display_name": "user_0dd78de4",
+    "_id": "911353195",
+    "name": "user_0dd78de4",
+    "bio": null,
+    "created_at": "2020-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z",
+    "logo": null
+   },
+   "message": {
+    "body": "CHASE THEM  IN THE CHOPPER INSTEAD",
+    "bits_spent": 0,
+    "fragments": [
+     {
+      "text": "CHASE THEM  IN THE CHOPPER INSTEAD",
+      "emoticon": null
+     }
+    ],
+    "user_badges": [
+     {
+      "_id": "rplace-2023",
+      "version": "1"
+     }
+    ],
+    "user_color": "#FF0000",
+    "emoticons": []
+   }
+  },
+  {
+   "_id": "238ca3d6c5b48b2e10988cd4849622b3",
+   "created_at": "2026-10-17T03:56:52.106Z",
+   "channel_id": "100000001",
+   "content_type": "video",
+   "content_id": "1000000001",
+   "content_offset_seconds": 35731,
+   "commenter": {
+    "display_name": "user_c8633d07",
+    "_id": "435615385",
+    "name": "user_c8633d07",
+    "bio": null,
+    "created_at": "2020-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z",
+    "logo": null
+   },
+   "message": {
+    "body": "Pistol vs minigun is kinda crazy though LO",
+    "bits_spent": 0,
+    "fragments": [
+     {
+      "text": "Pistol vs minigun is kinda crazy though LO",
+      "emoticon": null
+     }
+    ],
+    "user_badges": [
+     {
+      "_id": "glitchcon2020",
+      "version": "1"
+     }
+    ],
+    "user_color": "#008000",
+    "emoticons": []
+   }
+  },
+  {
+   "_id": "160e9fdf29716f5ac403de3c56b0e956",
+   "created_at": "2026-10-17T03:56:52.786Z",
+   "channel_id": "100000001",
+   "content_type": "video",
+   "content_id": "1000000001",
+   "content_offset_seconds": 35732,
+   "commenter": {
+    "display_name": "user_5fefa00f",
+    "_id": "447192659",
+    "name": "user_5fefa00f",
+    "bio": null,
+    "created_at": "2020-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z",
+    "logo": null
+   },
+   "message": {
+    "body": "canada cop",
+    "bits_spent": 0,
+    "fragments": [
+     {
+      "text": "canada cop",
+      "emoticon": null
+     }
+    ],
+    "user_badges": [
+     {
+      "_id": "moments",
+      "version": "6"
+     }
+    ],
+    "user_color": "#1E90FF",
+    "emoticons": []
+   }
+  },
+  {
+   "_id": "d74bbd6bd0214db1471e3c7498c8dc2a",
+   "created_at": "2026-10-17T03:56:53.963Z",
+   "channel_id": "100000001",
+   "content_type": "video",
+   "content_id": "1000000001",
+   "content_offset_seconds": 35733,
+   "commenter": {
+    "display_name": "user_7856ac5b",
+    "_id": "347775432",
+    "name": "user_7856ac5b",
+    "bio": null,
+    "created_at": "2020-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z",
+    "logo": null
+   },
+   "message": {
+    "body": "get in the adder and chase them @user_fc8e97f5",
+    "bits_spent": 0,
+    "fragments": [
+     {
+      "text": "get in the adder and chase them @user_fc8e97f5",
+      "emoticon": null
+     }
+    ],
+    "user_badges": [],
+    "user_color": "#E2B22B",
+    "emoticons": []
+   }
+  },
+  {
+   "_id": "0ad887ed544ee274bab00f29b84781e5",
+   "created_at": "2026-10-17T03:56:54.289Z",
+   "channel_id": "100000001",
+   "content_type": "video",
+   "content_id": "1000000001",
+   "content_offset_seconds": 35733,
+   "commenter": {
+    "display_name": "user_ec9cbf07",
+    "_id": "362851792",
+    "name": "user_ec9cbf07",
+    "bio": null,
+    "created_at": "2020-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z",
+    "logo": null
+   },
+   "message": {
+    "body": "UR HOLDING HIM UP WITH A MINIGUN ome44",
+    "bits_spent": 0,
+    "fragments": [
+     {
+      "text": "UR HOLDING HIM UP WITH A MINIGUN ome44",
+      "emoticon": null
+     }
+    ],
+    "user_badges": [
+     {
+      "_id": "moments",
+      "version": "7"
+     }
+    ],
+    "user_color": "#89DEFF",
+    "emoticons": []
+   }
+  },
+  {
+   "_id": "79062dc109371bd7bb265a2a2dbaec36",
+   "created_at": "2026-10-17T03:56:54.552Z",
+   "channel_id": "100000001",
+   "content_type": "video",
+   "content_id": "1000000001",
+   "content_offset_seconds": 35733,
+   "commenter": {
+    "display_name": "user_2fab367f",
+    "_id": "212972558",
+    "name": "user_2fab367f",
+    "bio": null,
+    "created_at": "2020-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z",
+    "logo": null
+   },
+   "message": {
+    "body": "el jefe",
+    "bits_spent": 0,
+    "fragments": [
+     {
+      "text": "el jefe",
+      "emoticon": null
+     }
+    ],
+    "user_badges": [
+     {
+      "_id": "turbo",
+      "version": "1"
+     }
+    ],
+    "user_color": "#0000FF",
+    "emoticons": []
+   }
+  },
+  {
+   "_id": "17826e00f7ccc8f488f432be1653c18f",
+   "created_at": "2026-10-17T03:56:55.034Z",
+   "channel_id": "100000001",
+   "content_type": "video",
+   "content_id": "1000000001",
+   "content_offset_seconds": 35734,
+   "commenter": {
+    "display_name": "user_e2be2822",
+    "_id": "450337285",
+    "name": "user_e2be2822",
+    "bio": null,
+    "created_at": "2020-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z",
+    "logo": null
+   },
+   "message": {
+    "body": "lowwkey annoying ass gun",
+    "bits_spent": 0,
+    "fragments": [
+     {
+      "text": "lowwkey annoying ass gun",
+      "emoticon": null
+     }
+    ],
+    "user_badges": [
+     {
+      "_id": "moments",
+      "version": "3"
+     }
+    ],
+    "user_color": "#1E90FF",
+    "emoticons": []
+   }
+  },
+  {
+   "_id": "25e2b564a5feed1b918fd3edaa4b6a07",
+   "created_at": "2026-10-17T03:56:55.465Z",
+   "channel_id": "100000001",
+   "content_type": "video",
+   "content_id": "1000000001",
+   "content_offset_seconds": 35734,
+   "commenter": {
+    "display_name": "user_e86bbc6e",
+    "_id": "268225818",
+    "name": "user_e86bbc6e",
+    "bio": null,
+    "created_at": "2020-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z",
+    "logo": null
+   },
+   "message": {
+    "body": "Canadian cop",
+    "bits_spent": 0,
+    "fragments": [
+     {
+      "text": "Canadian cop",
+      "emoticon": null
+     }
+    ],
+    "user_badges": [
+     {
+      "_id": "moments",
+      "version": "2"
+     }
+    ],
+    "user_color": "#8A2BE2",
+    "emoticons": []
+   }
+  },
+  {
+   "_id": "3bc2d605ebd66611d4e28e98258da132",
+   "created_at": "2026-10-17T03:56:55.523Z",
+   "channel_id": "100000001",
+   "content_type": "video",
+   "content_id": "1000000001",
+   "content_offset_seconds": 35734,
+   "commenter": {
+    "display_name": "user_e4516431",
+    "_id": "549123824",
+    "name": "user_e4516431",
+    "bio": null,
+    "created_at": "2020-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z",
+    "logo": null
+   },
+   "message": {
+    "body": "you got him scared af LOL",
+    "bits_spent": 0,
+    "fragments": [
+     {
+      "text": "you got him scared af LOL",
+      "emoticon": null
+     }
+    ],
+    "user_badges": [
+     {
+      "_id": "together-for-good-25---gooder-badge",
+      "version": "1"
+     }
+    ],
+    "user_color": "#D6FFB6",
+    "emoticons": []
+   }
+  },
+  {
+   "_id": "ab73887cea827a7d08755a155b9934f0",
+   "created_at": "2026-10-17T03:56:55.966Z",
+   "channel_id": "100000001",
+   "content_type": "video",
+   "content_id": "1000000001",
+   "content_offset_seconds": 35735,
+   "commenter": {
+    "display_name": "user_6d13c2fa",
+    "_id": "978485255",
+    "name": "user_6d13c2fa",
+    "bio": null,
+    "created_at": "2020-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z",
+    "logo": null
+   },
+   "message": {
+    "body": "Shoot the hostage bro",
+    "bits_spent": 0,
+    "fragments": [
+     {
+      "text": "Shoot the hostage bro",
+      "emoticon": null
+     }
+    ],
+    "user_badges": [
+     {
+      "_id": "moments",
+      "version": "2"
+     }
+    ],
+    "user_color": null,
+    "emoticons": []
+   }
+  },
+  {
+   "_id": "6a1c4b4e18345adaca5d4e4700de0e4f",
+   "created_at": "2026-10-17T03:56:56.444Z",
+   "channel_id": "100000001",
+   "content_type": "video",
+   "content_id": "1000000001",
+   "content_offset_seconds": 35735,
+   "commenter": {
+    "display_name": "user_1b7b2afd",
+    "_id": "803601049",
+    "name": "user_1b7b2afd",
+    "bio": null,
+    "created_at": "2020-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z",
+    "logo": null
+   },
+   "message": {
+    "body": "peashooter vs minigun LO LO LO",
+    "bits_spent": 0,
+    "fragments": [
+     {
+      "text": "peashooter vs minigun LO LO LO",
+      "emoticon": null
+     }
+    ],
+    "user_badges": [
+     {
+      "_id": "share-the-love",
+      "version": "1"
+     }
+    ],
+    "user_color": "#390867",
+    "emoticons": []
+   }
+  },
+  {
+   "_id": "73b5d6480d3f455955b38bf2691d2795",
+   "created_at": "2026-10-17T03:56:57.462Z",
+   "channel_id": "100000001",
+   "content_type": "video",
+   "content_id": "1000000001",
+   "content_offset_seconds": 35736,
+   "commenter": {
+    "display_name": "user_d76ec14b",
+    "_id": "822975010",
+    "name": "user_d76ec14b",
+    "bio": null,
+    "created_at": "2020-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z",
+    "logo": null
+   },
+   "message": {
+    "body": "The cops asking for help",
+    "bits_spent": 0,
+    "fragments": [
+     {
+      "text": "The cops asking for help",
+      "emoticon": null
+     }
+    ],
+    "user_badges": [
+     {
+      "_id": "vip",
+      "version": "1"
+     },
+     {
+      "_id": "raging-wolf-helm",
+      "version": "1"
+     }
+    ],
+    "user_color": "#008000",
+    "emoticons": []
+   }
+  },
+  {
+   "_id": "e3944b125051b23f38c3e4f825522147",
+   "created_at": "2026-10-17T03:56:57.563Z",
+   "channel_id": "100000001",
+   "content_type": "video",
+   "content_id": "1000000001",
+   "content_offset_seconds": 35736,
+   "commenter": {
+    "display_name": "user_8b4c4174",
+    "_id": "335625770",
+    "name": "user_8b4c4174",
+    "bio": null,
+    "created_at": "2020-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z",
+    "logo": null
+   },
+   "message": {
+    "body": "pistol vs minigun yeah i aint shooting either W cop",
+    "bits_spent": 0,
+    "fragments": [
+     {
+      "text": "pistol vs minigun yeah i aint shooting either W cop",
+      "emoticon": null
+     }
+    ],
+    "user_badges": [
+     {
+      "_id": "moments",
+      "version": "1"
+     }
+    ],
+    "user_color": "#9ACD32",
+    "emoticons": []
+   }
+  },
+  {
+   "_id": "749c927a0c7fa143e28c9c9c3fba7cfa",
+   "created_at": "2026-10-17T03:56:57.671Z",
+   "channel_id": "100000001",
+   "content_type": "video",
+   "content_id": "1000000001",
+   "content_offset_seconds": 35736,
+   "commenter": {
+    "display_name": "user_6eedd16e",
+    "_id": "233801710",
+    "name": "user_6eedd16e",
+    "bio": null,
+    "created_at": "2020-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z",
+    "logo": null
+   },
+   "message": {
+    "body": "YOU LITERALLY HAVE A HUGE GUN",
+    "bits_spent": 0,
+    "fragments": [
+     {
+      "text": "YOU LITERALLY HAVE A HUGE GUN",
+      "emoticon": null
+     }
+    ],
+    "user_badges": [
+     {
+      "_id": "moments",
+      "version": "5"
+     }
+    ],
+    "user_color": "#5F9EA0",
+    "emoticons": []
+   }
+  },
+  {
+   "_id": "7ef53d34647617582ae96c19a780089a",
+   "created_at": "2026-10-17T03:56:57.828Z",
+   "channel_id": "100000001",
+   "content_type": "video",
+   "content_id": "1000000001",
+   "content_offset_seconds": 35737,
+   "commenter": {
+    "display_name": "user_d2ae3e74",
+    "_id": "887580848",
+    "name": "user_d2ae3e74",
+    "bio": null,
+    "created_at": "2020-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z",
+    "logo": null
+   },
+   "message": {
+    "body": "you got a minigun in your hands LUL",
+    "bits_spent": 0,
+    "fragments": [
+     {
+      "text": "you got a minigun in your hands LUL",
+      "emoticon": null
+     }
+    ],
+    "user_badges": [],
+    "user_color": "#1E90FF",
+    "emoticons": []
+   }
+  },
+  {
+   "_id": "f41850bb9cdea59cc7549b6e9feb0458",
+   "created_at": "2026-10-17T03:56:57.853Z",
+   "channel_id": "100000001",
+   "content_type": "video",
+   "content_id": "1000000001",
+   "content_offset_seconds": 35737,
+   "commenter": {
+    "display_name": "user_81d08086",
+    "_id": "136125040",
+    "name": "user_81d08086",
+    "bio": null,
+    "created_at": "2020-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z",
+    "logo": null
+   },
+   "message": {
+    "body": "NO ONE GOING TO SHOOT SOMEONE WITH MINIGUN",
+    "bits_spent": 0,
+    "fragments": [
+     {
+      "text": "NO ONE GOING TO SHOOT SOMEONE WITH MINIGUN",
+      "emoticon": null
+     }
+    ],
+    "user_badges": [
+     {
+      "_id": "marathon-silkworm",
+      "version": "1"
+     }
+    ],
+    "user_color": "#B22222",
+    "emoticons": []
+   }
+  },
+  {
+   "_id": "8f3e7ff35c1fdae6d23e1818cdcf0630",
+   "created_at": "2026-10-17T03:56:58.133Z",
+   "channel_id": "100000001",
+   "content_type": "video",
+   "content_id": "1000000001",
+   "content_offset_seconds": 35737,
+   "commenter": {
+    "display_name": "user_201107c9",
+    "_id": "699819907",
+    "name": "user_201107c9",
+    "bio": null,
+    "created_at": "2020-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z",
+    "logo": null
+   },
+   "message": {
+    "body": "LMAO LMAO",
+    "bits_spent": 0,
+    "fragments": [
+     {
+      "text": "LMAO LMAO",
+      "emoticon": null
+     }
+    ],
+    "user_badges": [],
+    "user_color": "#B22222",
+    "emoticons": []
+   }
+  },
+  {
+   "_id": "241d01650520fb818404ad80c95abafc",
+   "created_at": "2026-10-17T03:56:58.938Z",
+   "channel_id": "100000001",
+   "content_type": "video",
+   "content_id": "1000000001",
+   "content_offset_seconds": 35738,
+   "commenter": {
+    "display_name": "user_161ac71b",
+    "_id": "747001725",
+    "name": "user_161ac71b",
+    "bio": null,
+    "created_at": "2020-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z",
+    "logo": null
+   },
+   "message": {
+    "body": "Grab the id you left on the ground",
+    "bits_spent": 0,
+    "fragments": [
+     {
+      "text": "Grab the id you left on the ground",
+      "emoticon": null
+     }
+    ],
+    "user_badges": [
+     {
+      "_id": "nopixel-v-launch",
+      "version": "1"
+     }
+    ],
+    "user_color": "#3A48FF",
+    "emoticons": []
+   }
+  },
+  {
+   "_id": "8ca06fc759534093785ef447411daaa7",
+   "created_at": "2026-10-17T03:57:00.282Z",
+   "channel_id": "100000001",
+   "content_type": "video",
+   "content_id": "1000000001",
+   "content_offset_seconds": 35739,
+   "commenter": {
+    "display_name": "user_5c3b1ef6",
+    "_id": "268983795",
+    "name": "user_5c3b1ef6",
+    "bio": null,
+    "created_at": "2020-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z",
+    "logo": null
+   },
+   "message": {
+    "body": "you got a minigun in his face man",
+    "bits_spent": 0,
+    "fragments": [
+     {
+      "text": "you got a minigun in his face man",
+      "emoticon": null
+     }
+    ],
+    "user_badges": [
+     {
+      "_id": "subscriber",
+      "version": "3"
+     },
+     {
+      "_id": "moments",
+      "version": "2"
+     }
+    ],
+    "user_color": "#FF69B4",
+    "emoticons": []
+   }
+  },
+  {
+   "_id": "0ffde027f2a2ce4e3a855cb8d305971a",
+   "created_at": "2026-10-17T03:57:00.546Z",
+   "channel_id": "100000001",
+   "content_type": "video",
+   "content_id": "1000000001",
+   "content_offset_seconds": 35739,
+   "commenter": {
+    "display_name": "user_72339943",
+    "_id": "754037697",
+    "name": "user_72339943",
+    "bio": null,
+    "created_at": "2020-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z",
+    "logo": null
+   },
+   "message": {
+    "body": "you have a mini gun pointed at him, he isnt going to ads at you",
+    "bits_spent": 0,
+    "fragments": [
+     {
+      "text": "you have a mini gun pointed at him, he isnt going to ads at you",
+      "emoticon": null
+     }
+    ],
+    "user_badges": [],
+    "user_color": "#00FF7F",
+    "emoticons": []
+   }
+  },
+  {
+   "_id": "b4db43e3430e16d139a988a7a8a8d337",
+   "created_at": "2026-10-17T03:57:00.613Z",
+   "channel_id": "100000001",
+   "content_type": "video",
+   "content_id": "1000000001",
+   "content_offset_seconds": 35739,
+   "commenter": {
+    "display_name": "user_8448ef83",
+    "_id": "466703306",
+    "name": "user_8448ef83",
+    "bio": null,
+    "created_at": "2020-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z",
+    "logo": null
+   },
+   "message": {
+    "body": "Cop about to say sorry",
+    "bits_spent": 0,
+    "fragments": [
+     {
+      "text": "Cop about to say sorry",
+      "emoticon": null
+     }
+    ],
+    "user_badges": [
+     {
+      "_id": "moments",
+      "version": "2"
+     }
+    ],
+    "user_color": "#2E8B57",
+    "emoticons": []
+   }
+  },
+  {
+   "_id": "054059de601ed8f1119540513f374f41",
+   "created_at": "2026-10-17T03:57:00.705Z",
+   "channel_id": "100000001",
+   "content_type": "video",
+   "content_id": "1000000001",
+   "content_offset_seconds": 35740,
+   "commenter": {
+    "display_name": "user_90371d7a",
+    "_id": "775069453",
+    "name": "user_90371d7a",
+    "bio": null,
+    "created_at": "2020-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z",
+    "logo": null
+   },
+   "message": {
+    "body": "stab him",
+    "bits_spent": 0,
+    "fragments": [
+     {
+      "text": "stab him",
+      "emoticon": null
+     }
+    ],
+    "user_badges": [
+     {
+      "_id": "2026-worlds-costumed-pikachu",
+      "version": "1"
+     }
+    ],
+    "user_color": "#FF69B4",
+    "emoticons": []
+   }
+  },
+  {
+   "_id": "6007aa6b2a060e193b2c8b3ed6f4265d",
+   "created_at": "2026-10-17T03:57:01.044Z",
+   "channel_id": "100000001",
+   "content_type": "video",
+   "content_id": "1000000001",
+   "content_offset_seconds": 35740,
+   "commenter": {
+    "display_name": "user_6206004a",
+    "_id": "675052778",
+    "name": "user_6206004a",
+    "bio": null,
+    "created_at": "2020-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z",
+    "logo": null
+   },
+   "message": {
+    "body": "Why tf would he shoot when you’re got the bigger gun rn lmaooo",
+    "bits_spent": 0,
+    "fragments": [
+     {
+      "text": "Why tf would he shoot when you’re got the bigger gun rn lmaooo",
+      "emoticon": null
+     }
+    ],
+    "user_badges": [
+     {
+      "_id": "twitchconNA2022",
+      "version": "1"
+     }
+    ],
+    "user_color": "#DAA520",
+    "emoticons": []
+   }
+  },
+  {
+   "_id": "c4ab088f56bce1063f4e77f035e1b5ed",
+   "created_at": "2026-10-17T03:57:01.237Z",
+   "channel_id": "100000001",
+   "content_type": "video",
+   "content_id": "1000000001",
+   "content_offset_seconds": 35740,
+   "commenter": {
+    "display_name": "user_7e9be1f5",
+    "_id": "596653685",
+    "name": "user_7e9be1f5",
+    "bio": null,
+    "created_at": "2020-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z",
+    "logo": null
+   },
+   "message": {
+    "body": "you have a minigun what's his pistol gonna do om",
+    "bits_spent": 0,
+    "fragments": [
+     {
+      "text": "you have a minigun what's his pistol gonna do om",
+      "emoticon": null
+     }
+    ],
+    "user_badges": [
+     {
+      "_id": "turbo",
+      "version": "1"
+     }
+    ],
+    "user_color": "#FF7F00",
+    "emoticons": []
+   }
+  },
+  {
+   "_id": "0e09f7f06c0a706d8e9642247d2bc710",
+   "created_at": "2026-10-17T03:57:02.076Z",
+   "channel_id": "100000001",
+   "content_type": "video",
+   "content_id": "1000000001",
+   "content_offset_seconds": 35741,
+   "commenter": {
+    "display_name": "user_6cceac90",
+    "_id": "589788728",
+    "name": "user_6cceac90",
+    "bio": null,
+    "created_at": "2020-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z",
+    "logo": null
+   },
+   "message": {
+    "body": "U did this 2 pd",
+    "bits_spent": 0,
+    "fragments": [
+     {
+      "text": "U did this 2 pd",
+      "emoticon": null
+     }
+    ],
+    "user_badges": [
+     {
+      "_id": "path-of-exile-2-badge",
+      "version": "1"
+     }
+    ],
+    "user_color": "#D2691E",
+    "emoticons": []
+   }
+  },
+  {
+   "_id": "51be54fbf9f0ec9f82af5f6d753a5126",
+   "created_at": "2026-10-17T03:57:02.132Z",
+   "channel_id": "100000001",
+   "content_type": "video",
+   "content_id": "1000000001",
+   "content_offset_seconds": 35741,
+   "commenter": {
+    "display_name": "user_7c75a445",
+    "_id": "515364259",
+    "name": "user_7c75a445",
+    "bio": null,
+    "created_at": "2020-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z",
+    "logo": null
+   },
+   "message": {
+    "body": "WOuld you shoot someone that is Aiming a minigun at you?",
+    "bits_spent": 0,
+    "fragments": [
+     {
+      "text": "WOuld you shoot someone that is Aiming a minigun at you?",
+      "emoticon": null
+     }
+    ],
+    "user_badges": [
+     {
+      "_id": "moments",
+      "version": "5"
+     }
+    ],
+    "user_color": "#FF69B4",
+    "emoticons": []
+   }
+  },
+  {
+   "_id": "665f24b8d21a24bc95508001eadcbd59",
+   "created_at": "2026-10-17T03:57:02.535Z",
+   "channel_id": "100000001",
+   "content_type": "video",
+   "content_id": "1000000001",
+   "content_offset_seconds": 35741,
+   "commenter": {
+    "display_name": "user_8fa25a0a",
+    "_id": "288215311",
+    "name": "user_8fa25a0a",
+    "bio": null,
+    "created_at": "2020-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z",
+    "logo": null
+   },
+   "message": {
+    "body": "bruh you hold a significantly superior weapon LUL",
+    "bits_spent": 0,
+    "fragments": [
+     {
+      "text": "bruh you hold a significantly superior weapon LUL",
+      "emoticon": null
+     }
+    ],
+    "user_badges": [],
+    "user_color": "#008000",
+    "emoticons": []
+   }
+  },
+  {
+   "_id": "92565c120a5b4a4b167d32b993f49972",
+   "created_at": "2026-10-17T03:57:05.921Z",
+   "channel_id": "100000001",
+   "content_type": "video",
+   "content_id": "1000000001",
+   "content_offset_seconds": 35745,
+   "commenter": {
+    "display_name": "user_3dff982a",
+    "_id": "860674051",
+    "name": "user_3dff982a",
+    "bio": null,
+    "created_at": "2020-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z",
+    "logo": null
+   },
+   "message": {
+    "body": "Cinema",
+    "bits_spent": 0,
+    "fragments": [
+     {
+      "text": "Cinema",
+      "emoticon": null
+     }
+    ],
+    "user_badges": [
+     {
+      "_id": "no_audio",
+      "version": "1"
+     }
+    ],
+    "user_color": "#FF69B4",
+    "emoticons": []
+   }
+  },
+  {
+   "_id": "717bb8ff540e714410eb3bf5f9b5dd85",
+   "created_at": "2026-10-17T03:57:06.355Z",
+   "channel_id": "100000001",
+   "content_type": "video",
+   "content_id": "1000000001",
+   "content_offset_seconds": 35745,
+   "commenter": {
+    "display_name": "user_f5dad38b",
+    "_id": "743567262",
+    "name": "user_f5dad38b",
+    "bio": null,
+    "created_at": "2020-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z",
+    "logo": null
+   },
+   "message": {
+    "body": "blast his car",
+    "bits_spent": 0,
+    "fragments": [
+     {
+      "text": "blast his car",
+      "emoticon": null
+     }
+    ],
+    "user_badges": [
+     {
+      "_id": "premium",
+      "version": "1"
+     }
+    ],
+    "user_color": null,
+    "emoticons": []
+   }
+  },
+  {
+   "_id": "56c7906a3c0d5abc63ecaa6b84701868",
+   "created_at": "2026-10-17T03:57:06.444Z",
+   "channel_id": "100000001",
+   "content_type": "video",
+   "content_id": "1000000001",
+   "content_offset_seconds": 35745,
+   "commenter": {
+    "display_name": "user_9440605e",
+    "_id": "655144957",
+    "name": "user_9440605e",
+    "bio": null,
+    "created_at": "2020-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z",
+    "logo": null
+   },
+   "message": {
+    "body": "shoot their cars LOL",
+    "bits_spent": 0,
+    "fragments": [
+     {
+      "text": "shoot their cars LOL",
+      "emoticon": null
+     }
+    ],
+    "user_badges": [
+     {
+      "_id": "moments",
+      "version": "1"
+     }
+    ],
+    "user_color": "#DAA520",
+    "emoticons": []
+   }
+  },
+  {
+   "_id": "482e0b525cd13b1dd2338e52b85949c9",
+   "created_at": "2026-10-17T03:57:06.6Z",
+   "channel_id": "100000001",
+   "content_type": "video",
+   "content_id": "1000000001",
+   "content_offset_seconds": 35745,
+   "commenter": {
+    "display_name": "user_de39f00e",
+    "_id": "855436764",
+    "name": "user_de39f00e",
+    "bio": null,
+    "created_at": "2020-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z",
+    "logo": null
+   },
+   "message": {
+    "body": "LOL LOL",
+    "bits_spent": 0,
+    "fragments": [
+     {
+      "text": "LOL LOL",
+      "emoticon": null
+     }
+    ],
+    "user_badges": [],
+    "user_color": "#00FF7F",
+    "emoticons": []
+   }
+  },
+  {
+   "_id": "7c13f4b11fd333343661333aba392cff",
+   "created_at": "2026-10-17T03:57:07.024Z",
+   "channel_id": "100000001",
+   "content_type": "video",
+   "content_id": "1000000001",
+   "content_offset_seconds": 35746,
+   "commenter": {
+    "display_name": "user_a3293a27",
+    "_id": "121206585",
+    "name": "user_a3293a27",
+    "bio": null,
+    "created_at": "2020-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z",
+    "logo": null
+   },
+   "message": {
+    "body": "fly away in the chopper ya",
+    "bits_spent": 0,
+    "fragments": [
+     {
+      "text": "fly away in the chopper ya",
+      "emoticon": null
+     }
+    ],
+    "user_badges": [
+     {
+      "_id": "bulbasaur",
+      "version": "1"
+     }
+    ],
+    "user_color": "#008000",
+    "emoticons": []
+   }
+  },
+  {
+   "_id": "ac21648a46b31d363bb2295a8a7aa5a7",
+   "created_at": "2026-10-17T03:57:07.154Z",
+   "channel_id": "100000001",
+   "content_type": "video",
+   "content_id": "1000000001",
+   "content_offset_seconds": 35746,
+   "commenter": {
+    "display_name": "user_046582b3",
+    "_id": "508450732",
+    "name": "user_046582b3",
+    "bio": null,
+    "created_at": "2020-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z",
+    "logo": null
+   },
+   "message": {
+    "body": "LOL",
+    "bits_spent": 0,
+    "fragments": [
+     {
+      "text": "LOL",
+      "emoticon": null
+     }
+    ],
+    "user_badges": [
+     {
+      "_id": "bits",
+      "version": "5000"
+     }
+    ],
+    "user_color": "#FFFFFF",
+    "emoticons": []
+   }
+  },
+  {
+   "_id": "4956a25f1e9849d811450311f15cc26d",
+   "created_at": "2026-10-17T03:57:07.541Z",
+   "channel_id": "100000001",
+   "content_type": "video",
+   "content_id": "1000000001",
+   "content_offset_seconds": 35746,
+   "commenter": {
+    "display_name": "user_5ddb8116",
+    "_id": "437276362",
+    "name": "user_5ddb8116",
+    "bio": null,
+    "created_at": "2020-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z",
+    "logo": null
+   },
+   "message": {
+    "body": "CINEMA",
+    "bits_spent": 0,
+    "fragments": [
+     {
+      "text": "CINEMA",
+      "emoticon": null
+     }
+    ],
+    "user_badges": [
+     {
+      "_id": "warlord",
+      "version": "1"
+     }
+    ],
+    "user_color": "#1E90FF",
+    "emoticons": []
+   }
+  },
+  {
+   "_id": "c86ba03801388c04e588f76f4eb16607",
+   "created_at": "2026-10-17T03:57:07.635Z",
+   "channel_id": "100000001",
+   "content_type": "video",
+   "content_id": "1000000001",
+   "content_offset_seconds": 35746,
+   "commenter": {
+    "display_name": "user_c6121577",
+    "_id": "537822480",
+    "name": "user_c6121577",
+    "bio": null,
+    "created_at": "2020-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z",
+    "logo": null
+   },
+   "message": {
+    "body": "Pilot license LO",
+    "bits_spent": 0,
+    "fragments": [
+     {
+      "text": "Pilot license LO",
+      "emoticon": null
+     }
+    ],
+    "user_badges": [
+     {
+      "_id": "moments",
+      "version": "3"
+     }
+    ],
+    "user_color": "#FF9A00",
+    "emoticons": []
+   }
+  },
+  {
+   "_id": "e0c4099421158668c6f3a0211b45e7a7",
+   "created_at": "2026-10-17T03:57:07.657Z",
+   "channel_id": "100000001",
+   "content_type": "video",
+   "content_id": "1000000001",
+   "content_offset_seconds": 35746,
+   "commenter": {
+    "display_name": "user_00c0cf16",
+    "_id": "995894453",
+    "name": "user_00c0cf16",
+    "bio": null,
+    "created_at": "2020-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z",
+    "logo": null
+   },
+   "message": {
+    "body": "cop so stupid LO , but it’s fine",
+    "bits_spent": 0,
+    "fragments": [
+     {
+      "text": "cop so stupid LO , but it’s fine",
+      "emoticon": null
+     }
+    ],
+    "user_badges": [
+     {
+      "_id": "twitch-recap-2023",
+      "version": "1"
+     }
+    ],
+    "user_color": "#FF69B4",
+    "emoticons": []
+   }
+  },
+  {
+   "_id": "41b2f30384e2d06074e5b1bd45312529",
+   "created_at": "2026-10-17T03:57:07.664Z",
+   "channel_id": "100000001",
+   "content_type": "video",
+   "content_id": "1000000001",
+   "content_offset_seconds": 35746,
+   "commenter": {
+    "display_name": "user_0dd78de4",
+    "_id": "911353195",
+    "name": "user_0dd78de4",
+    "bio": null,
+    "created_at": "2020-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z",
+    "logo": null
+   },
+   "message": {
+    "body": "YESSSSS",
+    "bits_spent": 0,
+    "fragments": [
+     {
+      "text": "YESSSSS",
+      "emoticon": null
+     }
+    ],
+    "user_badges": [
+     {
+      "_id": "rplace-2023",
+      "version": "1"
+     }
+    ],
+    "user_color": "#FF0000",
+    "emoticons": []
+   }
+  },
+  {
+   "_id": "19669fce74c54b70872347eae0815965",
+   "created_at": "2026-10-17T03:57:07.827Z",
+   "channel_id": "100000001",
+   "content_type": "video",
+   "content_id": "1000000001",
+   "content_offset_seconds": 35747,
+   "commenter": {
+    "display_name": "user_e2be2822",
+    "_id": "450337285",
+    "name": "user_e2be2822",
+    "bio": null,
+    "created_at": "2020-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z",
+    "logo": null
+   },
+   "message": {
+    "body": "chase them down",
+    "bits_spent": 0,
+    "fragments": [
+     {
+      "text": "chase them down",
+      "emoticon": null
+     }
+    ],
+    "user_badges": [
+     {
+      "_id": "moments",
+      "version": "3"
+     }
+    ],
+    "user_color": "#1E90FF",
+    "emoticons": []
+   }
+  },
+  {
+   "_id": "84bba7a12bb810929bf2a34fae2813a6",
+   "created_at": "2026-10-17T03:57:08.444Z",
+   "channel_id": "100000001",
+   "content_type": "video",
+   "content_id": "1000000001",
+   "content_offset_seconds": 35747,
+   "commenter": {
+    "display_name": "user_0bcebc64",
+    "_id": "776985693",
+    "name": "user_0bcebc64",
+    "bio": null,
+    "created_at": "2020-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z",
+    "logo": null
+   },
+   "message": {
+    "body": "LOL ͏",
+    "bits_spent": 0,
+    "fragments": [
+     {
+      "text": "LOL ͏",
+      "emoticon": null
+     }
+    ],
+    "user_badges": [
+     {
+      "_id": "twitch-recap-2023",
+      "version": "1"
+     }
+    ],
+    "user_color": "#FF69B4",
+    "emoticons": []
+   }
+  },
+  {
+   "_id": "ea1890ae992e6d66b14790eea1dc522e",
+   "created_at": "2026-10-17T03:57:09.259Z",
+   "channel_id": "100000001",
+   "content_type": "video",
+   "content_id": "1000000001",
+   "content_offset_seconds": 35748,
+   "commenter": {
+    "display_name": "user_e2be2822",
+    "_id": "450337285",
+    "name": "user_e2be2822",
+    "bio": null,
+    "created_at": "2020-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z",
+    "logo": null
+   },
+   "message": {
+    "body": "LOL",
+    "bits_spent": 0,
+    "fragments": [
+     {
+      "text": "LOL",
+      "emoticon": null
+     }
+    ],
+    "user_badges": [
+     {
+      "_id": "moments",
+      "version": "3"
+     }
+    ],
+    "user_color": "#1E90FF",
+    "emoticons": []
+   }
+  },
+  {
+   "_id": "f17dc24066853ce585c2a09a553baa78",
+   "created_at": "2026-10-17T03:57:09.494Z",
+   "channel_id": "100000001",
+   "content_type": "video",
+   "content_id": "1000000001",
+   "content_offset_seconds": 35748,
+   "commenter": {
+    "display_name": "user_cdd6c3d5",
+    "_id": "396772198",
+    "name": "user_cdd6c3d5",
+    "bio": null,
+    "created_at": "2020-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z",
+    "logo": null
+   },
+   "message": {
+    "body": "LMAO BRO its a fucking mini gun mf knows he aint survivng that lmfao",
+    "bits_spent": 0,
+    "fragments": [
+     {
+      "text": "LMAO BRO its a fucking mini gun mf knows he aint survivng that lmfao",
+      "emoticon": null
+     }
+    ],
+    "user_badges": [
+     {
+      "_id": "moments",
+      "version": "2"
+     }
+    ],
+    "user_color": "#8A2BE2",
+    "emoticons": []
+   }
+  },
+  {
+   "_id": "786e3924cbd2501adc6e3dc20c491c37",
+   "created_at": "2026-10-17T03:57:09.518Z",
+   "channel_id": "100000001",
+   "content_type": "video",
+   "content_id": "1000000001",
+   "content_offset_seconds": 35748,
+   "commenter": {
+    "display_name": "user_0d6329fe",
+    "_id": "687181410",
+    "name": "user_0d6329fe",
+    "bio": null,
+    "created_at": "2020-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z",
+    "logo": null
+   },
+   "message": {
+    "body": "not too bad so far",
+    "bits_spent": 0,
+    "fragments": [
+     {
+      "text": "not too bad so far",
+      "emoticon": null
+     }
+    ],
+    "user_badges": [
+     {
+      "_id": "runescape-dragonwilds-eye",
+      "version": "1"
+     }
+    ],
+    "user_color": "#0000FF",
+    "emoticons": []
+   }
+  },
+  {
+   "_id": "2c95f0e9f021ebd5b0bd6ec9e2189f4d",
+   "created_at": "2026-10-17T03:57:09.797Z",
+   "channel_id": "100000001",
+   "content_type": "video",
+   "content_id": "1000000001",
+   "content_offset_seconds": 35749,
+   "commenter": {
+    "display_name": "user_de39f00e",
+    "_id": "855436764",
+    "name": "user_de39f00e",
+    "bio": null,
+    "created_at": "2020-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z",
+    "logo": null
+   },
+   "message": {
+    "body": "YES",
+    "bits_spent": 0,
+    "fragments": [
+     {
+      "text": "YES",
+      "emoticon": null
+     }
+    ],
+    "user_badges": [],
+    "user_color": "#00FF7F",
+    "emoticons": []
+   }
+  },
+  {
+   "_id": "78b1bfd06058400fc0ffca1e9e613831",
+   "created_at": "2026-10-17T03:57:10.525Z",
+   "channel_id": "100000001",
+   "content_type": "video",
+   "content_id": "1000000001",
+   "content_offset_seconds": 35749,
+   "commenter": {
+    "display_name": "user_56ff3b71",
+    "_id": "241668028",
+    "name": "user_56ff3b71",
+    "bio": null,
+    "created_at": "2020-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z",
+    "logo": null
+   },
+   "message": {
+    "body": "LOL OMG",
+    "bits_spent": 0,
+    "fragments": [
+     {
+      "text": "LOL OMG",
+      "emoticon": null
+     }
+    ],
+    "user_badges": [
+     {
+      "_id": "nopixel-v-launch",
+      "version": "1"
+     }
+    ],
+    "user_color": "#FF69B4",
+    "emoticons": []
+   }
+  },
+  {
+   "_id": "ab95425c88b217e11723a424e3864042",
+   "created_at": "2026-10-17T03:57:10.63Z",
+   "channel_id": "100000001",
+   "content_type": "video",
+   "content_id": "1000000001",
+   "content_offset_seconds": 35749,
+   "commenter": {
+    "display_name": "user_4962a918",
+    "_id": "926759660",
+    "name": "user_4962a918",
+    "bio": null,
+    "created_at": "2020-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z",
+    "logo": null
+   },
+   "message": {
+    "body": "died for it",
+    "bits_spent": 0,
+    "fragments": [
+     {
+      "text": "died for it",
+      "emoticon": null
+     }
+    ],
+    "user_badges": [
+     {
+      "_id": "moments",
+      "version": "2"
+     }
+    ],
+    "user_color": "#FF69B4",
+    "emoticons": []
+   }
+  },
+  {
+   "_id": "141b2835e54cb5aa0bd19c911941fead",
+   "created_at": "2026-10-17T03:57:10.636Z",
+   "channel_id": "100000001",
+   "content_type": "video",
+   "content_id": "1000000001",
+   "content_offset_seconds": 35749,
+   "commenter": {
+    "display_name": "user_fadbe08c",
+    "_id": "518468568",
+    "name": "user_fadbe08c",
+    "bio": null,
+    "created_at": "2020-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z",
+    "logo": null
+   },
+   "message": {
+    "body": "YES",
+    "bits_spent": 0,
+    "fragments": [
+     {
+      "text": "YES",
+      "emoticon": null
+     }
+    ],
+    "user_badges": [
+     {
+      "_id": "moments",
+      "version": "4"
+     }
+    ],
+    "user_color": null,
+    "emoticons": []
+   }
+  },
+  {
+   "_id": "ec8fa9e8f7c34c312fcd333d8b786862",
+   "created_at": "2026-10-17T03:57:11.146Z",
+   "channel_id": "100000001",
+   "content_type": "video",
+   "content_id": "1000000001",
+   "content_offset_seconds": 35750,
+   "commenter": {
+    "display_name": "user_046582b3",
+    "_id": "508450732",
+    "name": "user_046582b3",
+    "bio": null,
+    "created_at": "2020-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z",
+    "logo": null
+   },
+   "message": {
+    "body": "LOL HE CRAZY",
+    "bits_spent": 0,
+    "fragments": [
+     {
+      "text": "LOL HE CRAZY",
+      "emoticon": null
+     }
+    ],
+    "user_badges": [
+     {
+      "_id": "bits",
+      "version": "5000"
+     }
+    ],
+    "user_color": "#FFFFFF",
+    "emoticons": []
+   }
+  },
+  {
+   "_id": "22ebb56451c8890bfd95953697b31630",
+   "created_at": "2026-10-17T03:57:11.587Z",
+   "channel_id": "100000001",
+   "content_type": "video",
+   "content_id": "1000000001",
+   "content_offset_seconds": 35750,
+   "commenter": {
+    "display_name": "user_5621a362",
+    "_id": "844663282",
+    "name": "user_5621a362",
+    "bio": null,
+    "created_at": "2020-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z",
+    "logo": null
+   },
+   "message": {
+    "body": "om",
+    "bits_spent": 0,
+    "fragments": [
+     {
+      "text": "om",
+      "emoticon": null
+     }
+    ],
+    "user_badges": [
+     {
+      "_id": "subscriber",
+      "version": "6"
+     },
+     {
+      "_id": "moments",
+      "version": "5"
+     }
+    ],
+    "user_color": null,
+    "emoticons": []
+   }
+  },
+  {
+   "_id": "e9d6e6b1df4e9595ad8d70d4d6a86294",
+   "created_at": "2026-10-17T03:57:12.648Z",
+   "channel_id": "100000001",
+   "content_type": "video",
+   "content_id": "1000000001",
+   "content_offset_seconds": 35751,
+   "commenter": {
+    "display_name": "user_8dfd5a72",
+    "_id": "597866023",
+    "name": "user_8dfd5a72",
+    "bio": null,
+    "created_at": "2020-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z",
+    "logo": null
+   },
+   "message": {
+    "body": "Oh no LOL",
+    "bits_spent": 0,
+    "fragments": [
+     {
+      "text": "Oh no LOL",
+      "emoticon": null
+     }
+    ],
+    "user_badges": [
+     {
+      "_id": "bits",
+      "version": "1"
+     }
+    ],
+    "user_color": "#1E90FF",
+    "emoticons": []
+   }
+  },
+  {
+   "_id": "8142fa1d69cce6ad2e8a5faa25aeafe7",
+   "created_at": "2026-10-17T03:57:12.718Z",
+   "channel_id": "100000001",
+   "content_type": "video",
+   "content_id": "1000000001",
+   "content_offset_seconds": 35752,
+   "commenter": {
+    "display_name": "user_85f6b715",
+    "_id": "350050741",
+    "name": "user_85f6b715",
+    "bio": null,
+    "created_at": "2020-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z",
+    "logo": null
+   },
+   "message": {
+    "body": "blow up yourself",
+    "bits_spent": 0,
+    "fragments": [
+     {
+      "text": "blow up yourself",
+      "emoticon": null
+     }
+    ],
+    "user_badges": [
+     {
+      "_id": "premium",
+      "version": "1"
+     }
+    ],
+    "user_color": "#00FF7F",
+    "emoticons": []
+   }
+  },
+  {
+   "_id": "0901732f18fbd95beeb8f10c4f274bb4",
+   "created_at": "2026-10-17T03:57:12.727Z",
+   "channel_id": "100000001",
+   "content_type": "video",
+   "content_id": "1000000001",
+   "content_offset_seconds": 35752,
+   "commenter": {
+    "display_name": "user_fdea2b76",
+    "_id": "843418957",
+    "name": "user_fdea2b76",
+    "bio": null,
+    "created_at": "2020-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z",
+    "logo": null
+   },
+   "message": {
+    "body": "blow a cop car",
+    "bits_spent": 0,
+    "fragments": [
+     {
+      "text": "blow a cop car",
+      "emoticon": null
+     }
+    ],
+    "user_badges": [
+     {
+      "_id": "glitchcon2020",
+      "version": "1"
+     }
+    ],
+    "user_color": "#00F0FF",
+    "emoticons": []
+   }
+  },
+  {
+   "_id": "ea8de906033ce84a44f66b8c09e8fa54",
+   "created_at": "2026-10-17T03:57:12.876Z",
+   "channel_id": "100000001",
+   "content_type": "video",
+   "content_id": "1000000001",
+   "content_offset_seconds": 35752,
+   "commenter": {
+    "display_name": "user_e6184466",
+    "_id": "702534871",
+    "name": "user_e6184466",
+    "bio": null,
+    "created_at": "2020-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z",
+    "logo": null
+   },
+   "message": {
+    "body": "“sorry” LO",
+    "bits_spent": 0,
+    "fragments": [
+     {
+      "text": "“sorry” LO",
+      "emoticon": null
+     }
+    ],
+    "user_badges": [
+     {
+      "_id": "destiny-2-final-shape-raid-race",
+      "version": "1"
+     }
+    ],
+    "user_color": "#FF0000",
+    "emoticons": []
+   }
+  },
+  {
+   "_id": "82fc0d73f195b188d31298143c5843ce",
+   "created_at": "2026-10-17T03:57:12.879Z",
+   "channel_id": "100000001",
+   "content_type": "video",
+   "content_id": "1000000001",
+   "content_offset_seconds": 35752,
+   "commenter": {
+    "display_name": "user_131ffa5d",
+    "_id": "187264630",
+    "name": "user_131ffa5d",
+    "bio": null,
+    "created_at": "2020-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z",
+    "logo": null
+   },
+   "message": {
+    "body": "chase down air 1, it's x Pffttt",
+    "bits_spent": 0,
+    "fragments": [
+     {
+      "text": "chase down air 1, it's x Pffttt",
+      "emoticon": null
+     }
+    ],
+    "user_badges": [
+     {
+      "_id": "moments",
+      "version": "5"
+     }
+    ],
+    "user_color": "#00FF7F",
+    "emoticons": []
+   }
+  },
+  {
+   "_id": "3c986ac7ac54bb6b2dbd4da93332dfea",
+   "created_at": "2026-10-17T03:57:13.444Z",
+   "channel_id": "100000001",
+   "content_type": "video",
+   "content_id": "1000000001",
+   "content_offset_seconds": 35752,
+   "commenter": {
+    "display_name": "user_aad182b3",
+    "_id": "469893472",
+    "name": "user_aad182b3",
+    "bio": null,
+    "created_at": "2020-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z",
+    "logo": null
+   },
+   "message": {
+    "body": "nice",
+    "bits_spent": 0,
+    "fragments": [
+     {
+      "text": "nice",
+      "emoticon": null
+     }
+    ],
+    "user_badges": [],
+    "user_color": "#FF69B4",
+    "emoticons": []
+   }
+  },
+  {
+   "_id": "5d4291cba2a87f166d065fffdcca46a8",
+   "created_at": "2026-10-17T03:57:13.567Z",
+   "channel_id": "100000001",
+   "content_type": "video",
+   "content_id": "1000000001",
+   "content_offset_seconds": 35752,
+   "commenter": {
+    "display_name": "user_e2be2822",
+    "_id": "450337285",
+    "name": "user_e2be2822",
+    "bio": null,
+    "created_at": "2020-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z",
+    "logo": null
+   },
+   "message": {
+    "body": "o7",
+    "bits_spent": 0,
+    "fragments": [
+     {
+      "text": "o7",
+      "emoticon": null
+     }
+    ],
+    "user_badges": [
+     {
+      "_id": "moments",
+      "version": "3"
+     }
+    ],
+    "user_color": "#1E90FF",
+    "emoticons": []
+   }
+  }
+ ],
+ "embeddedData": null
+}
