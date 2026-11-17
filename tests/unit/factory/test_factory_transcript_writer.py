@@ -435,6 +435,14 @@ def test_keyword_times_one_pop_per_keyword_thinned() -> None:
     assert writer.keyword_times(lines, {}) == ()
 
 
+def test_outside_spans_drops_pops_under_a_bleep() -> None:
+    from sixstars.factory.bleep import Span
+
+    spans = [Span(14.21, 14.83), Span(20.0, 20.5)]
+    assert writer.outside_spans((5.18, 14.26, 14.83, 17.32, 20.6), spans) == (5.18, 17.32, 20.6)
+    assert writer.outside_spans((1.0,), []) == (1.0,)
+
+
 def test_clip_columns_maps_every_p2_output() -> None:
     columns = writer.clip_columns(writing(13.0, 35.0, commentary=None, spoiler=True))
     assert columns["hook"] == "He did NOT expect that" and columns["title"] == "A title"

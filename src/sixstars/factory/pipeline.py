@@ -271,6 +271,22 @@ def _measurer(assets: FactoryAssets) -> TextMeasurer:
     return pillow_measurer(assets.font_file) if assets.font_file is not None else estimate_text_width
 
 
+def _move_into_place(finished: Path, destination: Path) -> None:
+    """Move a finished file to its final path so that the path never holds a partial file.
+
+    A rename is atomic on one file system. Across file systems the file is first copied next to the
+    destination under a temporary name, then renamed.
+    """
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        os.replace(finished, destination)
+    except OSError:
+        partial = destination.with_name(destination.name + ".part")
+        shutil.copyfile(finished, partial)
+        os.replace(partial, destination)
+        finished.unlink(missing_ok=True)
+
+
 def render_file(job: RenderJob, *, ffmpeg: str = "ffmpeg", ffprobe: str = "ffprobe") -> RenderOutcome:
     """Write the subtitle file and render the clip with ffmpeg.
 
@@ -301,7 +317,9 @@ def render_file(job: RenderJob, *, ffmpeg: str = "ffmpeg", ffprobe: str = "ffpro
     )
     duration = spec.clip_duration_s
     bleeps = tuple(bleep_spans(words, profane, duration)) if params.bleep else ()
-    sfx_times = writer.keyword_times(job.lines, job.keywords) if job.assets.sfx_pop is not None else ()
+    sfx_times: tuple[float, ...] = ()
+    if job.assets.sfx_pop is not None:
+        sfx_times = writer.outside_spans(writer.keyword_times(job.lines, job.keywords), bleeps)
     nvenc = params.use_nvenc and job.mode == "express" and tools.nvenc_available(ffmpeg)
     spec = replace(spec, bleeps=bleeps, sfx_times_s=sfx_times, nvenc_available=nvenc)
     ass = build_ass(
@@ -344,8 +362,7 @@ def render_file(job: RenderJob, *, ffmpeg: str = "ffmpeg", ffprobe: str = "ffpro
         raise tools.FfmpegError(f"rendered file is {media.width}x{media.height}")
     if abs(media.duration_s - expected) > DURATION_TOLERANCE_S:
         raise tools.FfmpegError(f"rendered file is {media.duration_s:.2f} s long, expected {expected:.2f} s")
-    job.output_path.parent.mkdir(parents=True, exist_ok=True)
-    os.replace(scratch_output, job.output_path)
+    _move_into_place(scratch_output, job.output_path)
     size = job.output_path.stat().st_size
     log.info(
         "clip_render_done",

@@ -15,7 +15,7 @@ from sixstars.ai import calls
 from sixstars.ai.calls import ChatLine, ClipContext
 from sixstars.ai.schemas import ClipWriting, SpikeVerdict
 from sixstars.clients.anthropic_client import AnthropicClient, BudgetKind
-from sixstars.factory.bleep import ProfanityMatcher, normalize_word
+from sixstars.factory.bleep import ProfanityMatcher, Span, normalize_word
 from sixstars.factory.lines import Line, Word
 from sixstars.factory.subtitles import keyword_flags
 from sixstars.factory.window import ClipWindow, resolve_trim
@@ -153,6 +153,11 @@ def keyword_times(lines: Sequence[Line], keywords: Mapping[int, Sequence[str]]) 
         if not kept or time_s - kept[-1] >= SFX_MIN_GAP_S:
             kept.append(round(time_s, 3))
     return tuple(kept)
+
+
+def outside_spans(times_s: Sequence[float], spans: Sequence[Span]) -> tuple[float, ...]:
+    """The times that fall in none of the spans (a keyword that is bleeped gets no pop on top of the bleep)."""
+    return tuple(t for t in times_s if not any(span.start_s <= t <= span.end_s for span in spans))
 
 
 def clip_columns(writing: ClipWriting) -> dict[str, object]:

@@ -540,3 +540,27 @@ def test_clip_commands_report_usage_errors(tmp_path: Path) -> None:
     assert bad_lane.exit_code == 2 and "lane must be one of" in bad_lane.output
     bad_set = runner.invoke(app, [*base[:2], str(video), *base[3:], "--set", "factory.crf"])
     assert bad_set.exit_code == 2 and "key=json" in bad_set.output
+
+
+def test_move_into_place_also_works_across_file_systems(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    finished = tmp_path / "scratch" / "render.mp4"
+    finished.parent.mkdir()
+    finished.write_bytes(b"clip")
+    target = tmp_path / "ready dir" / "c1.mp4"
+    pipeline._move_into_place(finished, target)
+    assert target.read_bytes() == b"clip" and not finished.exists()
+
+    finished.write_bytes(b"clip 2")
+    real_replace = pipeline.os.replace
+
+    def replace_on_one_file_system(source: Path, destination: Path) -> None:
+        if Path(source).parent != Path(destination).parent:
+            raise OSError(18, "Invalid cross-device link")
+        real_replace(source, destination)
+
+    monkeypatch.setattr(pipeline.os, "replace", replace_on_one_file_system)
+    pipeline._move_into_place(finished, target)
+    assert target.read_bytes() == b"clip 2" and not finished.exists()
+    assert list(target.parent.iterdir()) == [target], "no partial file is left behind"

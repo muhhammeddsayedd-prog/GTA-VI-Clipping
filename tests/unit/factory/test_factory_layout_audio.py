@@ -117,8 +117,8 @@ def test_layout_b_chains() -> None:
     assert chains == [
         "[0:v]fps=fps=30,split=2[v_bg_in][v_game_in]",
         "[v_bg_in]scale=w=270:h=480:force_original_aspect_ratio=increase,crop=w=270:h=480,"
-        "boxblur=luma_radius=8:luma_power=3,scale=w=1080:h=1920:flags=bilinear,"
-        "drawbox=color=black@0.3:thickness=fill,setsar=1[v_bg]",
+        "boxblur=luma_radius=8:luma_power=3,drawbox=color=black@0.3:thickness=fill,"
+        "scale=w=1080:h=1920:flags=bilinear,setsar=1[v_bg]",
         "[v_game_in]crop=w=864:h=1080:x=528:y=0,scale=w=1080:h=1350,setsar=1[v_game]",
         "[v_bg][v_game]overlay=x=0:y=285[v_layout]",
     ]
