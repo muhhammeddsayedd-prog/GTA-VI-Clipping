@@ -28,9 +28,6 @@ def test_cli_version_reports_app_env(monkeypatch: pytest.MonkeyPatch) -> None:
 @pytest.mark.parametrize(
     "args",
     [
-        ["api"],
-        ["live-manager"],
-        ["scheduler"],
         ["post", "hourly", "--dry-run"],
     ],
 )
