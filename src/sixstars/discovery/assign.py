@@ -5,7 +5,7 @@ Everything here is a pure function from the current state and the ranked candida
 applies the plan to the database. Rules: `docs/06-discovery.md` sections 4 and 5.
 """
 
-from collections.abc import Callable, Collection, Sequence
+from collections.abc import Callable, Collection, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime
 
@@ -46,6 +46,7 @@ class SlotPlan:
     keep: list[Keep] = field(default_factory=list)
     release: list[Release] = field(default_factory=list)
     assign: list[Scored] = field(default_factory=list)
+    held: dict[str, int] = field(default_factory=dict)  # streams passed over per limited platform
 
 
 def identity(creator: Creator) -> str:
@@ -70,6 +71,7 @@ def plan_slots(
     min_viewers: int,
     now: datetime,
     allowed: Callable[[Creator], bool],
+    platform_limit: Mapping[str, int] | None = None,
 ) -> SlotPlan:
     """Decide which sessions stay, which are released and which streams get the free slots.
 
@@ -77,7 +79,13 @@ def plan_slots(
     longer seen) `below_cutoff_since` is set; it is released once that is `release_after_s` old. A session
     of a creator who became forbidden is released at once. Free slots up to `max_slots` go to the best
     streams at or above the cutoff, one per creator, that `allowed` accepts.
+
+    `platform_limit` caps the new slots of a platform in this plan (0 for a platform the live lane cannot
+    record from now, 1 for one it should probe); a platform that is not named has no cap. Streams passed
+    over for that reason (whatever their creator's permission state) are counted in `SlotPlan.held`
+    and leave their slot to the next best stream.
     """
+    limits = dict(platform_limit or {})
     by_source = {item.key: item for item in live}
     plan = SlotPlan()
     busy: set[str] = set()
@@ -104,9 +112,15 @@ def plan_slots(
         viewers = item.candidate.viewers
         if item.score < cutoff or item.key in taken or viewers is None or viewers < min_viewers:
             continue
+        platform = item.candidate.platform
+        if limits.get(platform, 1) <= 0:
+            plan.held[platform] = plan.held.get(platform, 0) + 1
+            continue
         who = identity(item.creator)
         if who in busy or not allowed(item.creator):
             continue
+        if platform in limits:
+            limits[platform] -= 1
         plan.assign.append(item)
         busy.add(who)
         free -= 1
@@ -131,19 +145,36 @@ def pick_videos(
     max_per_creator: int,
     known: Collection[tuple[str, str]],
     allowed: Callable[[Creator], bool],
+    platform_limit: Mapping[str, int] | None = None,
+    held: dict[str, int] | None = None,
 ) -> list[Scored]:
     """The videos to queue for the VOD lane: best first, at or above the cutoff, not already in `videos`
-    (`known` holds their `(platform, source_id)`), from allowed creators, capped per creator and in total."""
+    (`known` holds their `(platform, source_id)`), from allowed creators, capped per creator and in total.
+
+    `platform_limit` caps the videos of a platform in this pick (0 while its downloads are blocked, 1 for
+    a probe); a platform that is not named has no cap. A video passed over for that reason takes nothing
+    from the total, so the next best video of another platform is picked instead; when `held` is given,
+    those videos are counted in it per platform."""
+    limits = dict(platform_limit or {})
     picked: list[Scored] = []
     per_creator: dict[str, int] = {}
     for item in rank(videos):
         if len(picked) >= max_total:
             break
-        if item.score < cutoff or item.key in known or not allowed(item.creator):
+        if item.score < cutoff or item.key in known:
+            continue
+        platform = item.candidate.platform
+        if limits.get(platform, 1) <= 0:
+            if held is not None:
+                held[platform] = held.get(platform, 0) + 1
+            continue
+        if not allowed(item.creator):
             continue
         count = per_creator.get(item.creator.id, 0)
         if count >= max_per_creator:
             continue
+        if platform in limits:
+            limits[platform] -= 1
         per_creator[item.creator.id] = count + 1
         picked.append(item)
     return picked

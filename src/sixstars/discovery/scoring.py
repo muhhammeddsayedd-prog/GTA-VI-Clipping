@@ -40,7 +40,7 @@ is still taken as English: only the transcript could tell, and discovery does no
 
 import math
 import unicodedata
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from typing import Any, Final
 
 from sixstars.discovery.config import ScoreConfig
@@ -372,3 +372,16 @@ def score_vod(
     detail["chat_messages_est"] = None if chat_messages is None else round(chat_messages)
     detail["chat_measured"] = measured_chat_mpm is not None
     return score, detail, None if vph is None else round(vph, 2)
+
+
+def apply_platform_weight(
+    score: float, parts: dict[str, Any], platform: str, weights: Mapping[str, float]
+) -> float:
+    """Multiply a finished score by the operator's factor for its platform (`discovery.platform_weight`;
+    a platform that is not named has factor 1). The result stays inside 0 to 100; a factor other than 1
+    is noted in `parts`."""
+    weight = weights.get(platform, 1.0)
+    if weight == 1.0:
+        return score
+    parts["platform_weight"] = weight
+    return round(clamp(score * weight, 0.0, 100.0), 2)

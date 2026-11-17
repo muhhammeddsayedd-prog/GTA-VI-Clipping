@@ -47,7 +47,7 @@ from sixstars.factory.pipeline import next_budget_reset
 from sixstars.logging import get_logger
 from sixstars.spikes import DetectedSpike, SpikeConfig, analyse_replay, persist_spike
 from sixstars.spikes.buckets import tokenise
-from sixstars.vod import captions, fallback, sections, store, ytdlp
+from sixstars.vod import captions, fallback, health, sections, store, ytdlp
 from sixstars.vod.captions import Track
 from sixstars.vod.common import DeferredError, Deps, VideoGoneError
 from sixstars.vod.config import VodConfig
@@ -236,6 +236,7 @@ def blocked_message(platform: str, waiting: int, backoff_s: float, access: Acces
 def _blocked(video: Video, cfg: VodConfig, access: Access, detail: str, deps: Deps) -> NoReturn:
     """The platform refused a download: remember it, tell the owner at most once per interval, defer."""
     store.note_block(video, detail, access.described)
+    health.record_blocked(video.platform, deps.now(), detail, access.described)  # read by discovery
     if store.claim_block_notification(video.platform, cfg.blocked_notify_interval_s):
         notify.send(
             "warn",
@@ -738,6 +739,8 @@ def _process(video_id: str, deps: Deps, *, final_attempt: bool, force: bool) -> 
             )
             _remove_scratch(video.id)
         raise
+    if stats.downloaded:
+        health.record_ok(video.platform)  # a window came through: the platform is not blocked
     outcome = stats.outcome("done")
     store.set_status(video.id, "done", "video.done", data=outcome.to_dict())
     _remove_scratch(video.id)

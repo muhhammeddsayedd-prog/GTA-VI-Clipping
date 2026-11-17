@@ -17,7 +17,7 @@ Discovery never posts anything, so `control.emergency_stop` and `launch.dry_run`
 """
 
 import time
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import asdict, dataclass, field, replace
 from datetime import UTC, datetime, timedelta
 from typing import Any, Final
@@ -29,13 +29,17 @@ from sixstars.clients.anthropic_client import AnthropicClient
 from sixstars.clients.apify import ApifyClient
 from sixstars.clients.twitch import TwitchClient
 from sixstars.clients.youtube import YouTubeClient
-from sixstars.discovery import assign, health, scoring, sources, store, tiers
+from sixstars.discovery import assign, blocked, health, scoring, sources, store, tiers
+from sixstars.discovery.blocked import Queue
 from sixstars.discovery.config import DiscoveryConfig
 from sixstars.discovery.models import Candidate, Creator, Scored
 from sixstars.discovery.sources import Gathered, SourceReport
 from sixstars.discovery.tiers import ChannelInfo
 from sixstars.discovery.ytsearch import YtDlpSearch
+from sixstars.live import health as live_health
 from sixstars.logging import get_logger
+from sixstars.vod import health as vod_health
+from sixstars.vod.ytdlp import access_for
 
 HEARTBEAT: Final = "trigger:discovery"
 TOP_N: Final = 10
@@ -187,6 +191,7 @@ def score_candidate(
         parts["origin"] = candidate.origin
         if candidate.language_signal:
             parts["language_signal"] = candidate.language_signal
+        score = scoring.apply_platform_weight(score, parts, candidate.platform, config.platform_weight)
         return Scored(candidate, creator, score, parts)
     began = candidate.started_at or candidate.published_at
     age_hours = float(config.vod_lookback_h) if began is None else (now - began).total_seconds() / 3600.0
@@ -210,6 +215,7 @@ def score_candidate(
     parts["origin"] = candidate.origin
     if candidate.language_signal:
         parts["language_signal"] = candidate.language_signal
+    score = scoring.apply_platform_weight(score, parts, candidate.platform, config.platform_weight)
     return Scored(candidate, creator, score, parts, vph)
 
 
@@ -305,6 +311,47 @@ def track_source_health(
     gathered.notes.extend(notice.title for notice in notices)
 
 
+def vod_blocks(config: DiscoveryConfig, now: datetime) -> dict[str, datetime]:
+    """The platforms whose downloads the VOD lane reports as blocked, with the start of each block.
+    Never raises: an unreadable state row must not stop discovery."""
+    try:
+        return vod_health.blocked(vod_health.load(), now, config.blocked_platform_stale_s)
+    except Exception as exc:
+        _log.warning("discovery_blocked_state_failed", lane="vod", error=type(exc).__name__)
+        return {}
+
+
+def live_blocks(now: datetime) -> dict[str, int]:
+    """New live slots per platform the live lane reports as blocked (`blocked.live_limits`). Never raises."""
+    try:
+        return blocked.live_limits(live_health.load(), now, lambda platform: access_for(platform).described)
+    except Exception as exc:
+        _log.warning("discovery_blocked_state_failed", lane="live", error=type(exc).__name__)
+        return {}
+
+
+def trim_blocked_waiting(
+    vod_blocked: Mapping[str, datetime], config: DiscoveryConfig, gathered: Gathered
+) -> int:
+    """Keep at most `discovery.max_blocked_waiting` videos per blocked platform waiting out the block;
+    the oldest beyond that are closed as skipped, so they do not retry for ever. Returns how many."""
+    if not vod_blocked:
+        return 0
+    keep = config.max_blocked_waiting
+    extra = blocked.overflow(store.blocked_waiting(set(vod_blocked)), set(vod_blocked), keep)
+    reason = (
+        f"gave up waiting: downloads stayed blocked and more than {keep} videos of the platform were "
+        "waiting (discovery.max_blocked_waiting)"
+    )
+    closed = store.give_up_blocked([video.id for video in extra], reason)
+    if closed:
+        gathered.notes.append(
+            f"{len(closed)} video(s) that waited out a download block were skipped "
+            f"(more than {keep} waiting per platform)"
+        )
+    return len(closed)
+
+
 def fill_followers(
     creators: dict[tuple[str, str], Creator],
     candidates: Sequence[Candidate],
@@ -379,9 +426,16 @@ def check_permissions(
     info: dict[tuple[str, str], ChannelInfo],
     vod_cutoff: float,
     vod_max: int,
+    vod_limits: Mapping[str, int] | None = None,
+    live_limits: Mapping[str, int] | None = None,
 ) -> tuple[dict[str, Creator], int]:
     """Check the creators about to be picked inside the pass and queue jobs for the other creators that
-    need a check. Returns the creators whose row changed (by id) and the number of jobs queued."""
+    need a check. Returns the creators whose row changed (by id) and the number of jobs queued.
+
+    Candidates of a platform that gets nothing in this pass (`vod_limits` / `live_limits` of 0) are not
+    "about to be picked": they must not use up the in-pass checks the working platform needs."""
+    no_vod = {platform for platform, limit in (vod_limits or {}).items() if limit <= 0}
+    no_live = {platform for platform, limit in (live_limits or {}).items() if limit <= 0}
     due: dict[str, Creator] = {}
     for item in assign.rank(scored):
         if tiers.needs_check(item.creator, now, config.permission_recheck_days):
@@ -391,9 +445,15 @@ def check_permissions(
     live = [
         i
         for i in assign.rank(scored)
-        if i.candidate.source_type == "live" and i.score >= config.live_score_cutoff
+        if i.candidate.source_type == "live"
+        and i.score >= config.live_score_cutoff
+        and i.candidate.platform not in no_live
     ]
-    vods = [i for i in assign.rank(scored) if i.candidate.source_type == "vod" and i.score >= vod_cutoff]
+    vods = [
+        i
+        for i in assign.rank(scored)
+        if i.candidate.source_type == "vod" and i.score >= vod_cutoff and i.candidate.platform not in no_vod
+    ]
     near = live[: config.live_max_slots * PRELIMINARY_FACTOR] + vods[: vod_max * PRELIMINARY_FACTOR]
     urgent: dict[str, Creator] = {}
     for item in near:  # live first: a slot is worth more the sooner it is taken
@@ -425,9 +485,16 @@ def check_permissions(
 
 
 def assign_live(
-    scored: Sequence[Scored], config: DiscoveryConfig, now: datetime, summary: DiscoverySummary
+    scored: Sequence[Scored],
+    config: DiscoveryConfig,
+    now: datetime,
+    summary: DiscoverySummary,
+    limits: Mapping[str, int] | None = None,
+    gathered: Gathered | None = None,
 ) -> set[tuple[str, str]]:
-    """Plan and write the live slots; one event per assignment and release. Returns the assigned sources."""
+    """Plan and write the live slots; one event per assignment and release. Returns the assigned sources.
+    `limits` caps the new slots of platforms the live lane cannot record from (`blocked.live_limits`);
+    what was held back is said once in `gathered` (skip reason and note)."""
     live = [item for item in scored if item.candidate.source_type == "live"]
     sessions = store.active_sessions()
     plan = assign.plan_slots(
@@ -439,7 +506,12 @@ def assign_live(
         min_viewers=config.min_live_viewers,
         now=now,
         allowed=lambda creator: tiers.clip_allowed(creator, config.require_permission_check),
+        platform_limit=limits,
     )
+    if gathered is not None and limits:
+        gathered.skip(blocked.SKIP_LIVE, sum(plan.held.values()))
+        seen = {item.candidate.platform for item in live}
+        gathered.notes.extend(blocked.live_notes(limits, plan.held, seen))
     assigned, released = store.apply_slot_plan(plan, now)
     reasons = {release.session_id: release.reason for release in plan.release}
     for session_id in released:
@@ -474,8 +546,12 @@ def queue_videos(
     vod_cutoff: float,
     vod_max: int,
     summary: DiscoverySummary,
+    limits: Mapping[str, int] | None = None,
+    held: dict[str, int] | None = None,
 ) -> set[tuple[str, str]]:
-    """Insert `videos` rows and `vod.process` jobs for the best new videos. Returns the queued sources."""
+    """Insert `videos` rows and `vod.process` jobs for the best new videos. Returns the queued sources.
+    `limits` caps the videos of platforms whose downloads are blocked (`blocked.vod_limits`); the videos
+    passed over for that are counted per platform in `held`."""
     vods = [item for item in scored if item.candidate.source_type == "vod"]
     keys = [item.key for item in vods]
     known = store.known_videos(keys) | store.live_lane_owned(keys)
@@ -486,6 +562,8 @@ def queue_videos(
         max_per_creator=config.max_vod_per_creator_per_run,
         known=known,
         allowed=lambda creator: tiers.clip_allowed(creator, config.require_permission_check),
+        platform_limit=limits,
+        held=held,
     )
     queued: set[tuple[str, str]] = set()
     for item in picks:
@@ -553,8 +631,16 @@ def _run(clients: DiscoveryClients | None, now: datetime) -> DiscoverySummary:
         config.queue_low_watermark,
     )
     # Never pile up more work than the VOD lane can take: stop at `discovery.max_vod_backlog` waiting.
-    vod_max = max(0, min(vod_max, config.max_vod_backlog - store.videos_waiting()))
-    checked, jobs_queued = check_permissions(scored, clients, config, now, info, vod_cutoff, vod_max)
+    # Videos waiting out a download block are not counted, and their platform gets no new ones.
+    vod_blocked = vod_blocks(config, now)
+    trim_blocked_waiting(vod_blocked, config, gathered)
+    queues = store.video_queues()
+    vod_max = blocked.vod_room(vod_max, config.max_vod_backlog, queues)
+    vod_limits = blocked.vod_limits(vod_blocked, queues)
+    live_limits = live_blocks(now)
+    checked, jobs_queued = check_permissions(
+        scored, clients, config, now, info, vod_cutoff, vod_max, vod_limits, live_limits
+    )
     if checked:
         rescored = []
         for item in scored:
@@ -570,9 +656,17 @@ def _run(clients: DiscoveryClients | None, now: datetime) -> DiscoverySummary:
 
     with db.transaction():  # one connection, and a pass is stored whole or not at all
         summary.candidates_stored = store.record_candidates(scored, now, config.min_observation_gap_s)
-        picked = assign_live(scored, config, now, summary)
-        picked |= queue_videos(scored, config, vod_cutoff, vod_max, summary)
+        picked = assign_live(scored, config, now, summary, live_limits, gathered)
+        held: dict[str, int] = {}
+        queued = queue_videos(scored, config, vod_cutoff, vod_max, summary, vod_limits, held)
+        picked |= queued
         store.mark_picked(picked, now)
+    gathered.skip(blocked.SKIP_VOD, sum(held.values()))
+    for platform, since in sorted(vod_blocked.items()):
+        probes = sum(1 for queued_platform, _ in queued if queued_platform == platform)
+        gathered.notes.append(
+            blocked.vod_note(platform, since, held.get(platform, 0), probes, queues.get(platform, Queue()))
+        )
     timed("store_and_assign")
 
     live = [item for item in scored if item.candidate.source_type == "live"]
