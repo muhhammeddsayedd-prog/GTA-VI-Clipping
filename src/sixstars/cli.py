@@ -689,7 +689,8 @@ def live_probe(
 ) -> None:
     """Record a stream for a few seconds the way the live lane does and report what happened.
 
-    Writes nothing to the database. Exit code 0: recorded; 3: the platform refused this machine; 1: other.
+    Writes nothing to the database. Exit code 0: recorded; 3: the platform refused or throttled this
+    machine (use --seconds 90 or more to see throttling, and read "lag_s"); 1: other.
     """
     from sixstars.live import commands
 

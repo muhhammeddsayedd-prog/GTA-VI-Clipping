@@ -1,9 +1,10 @@
 """Health of the live sources (the platforms streams are recorded from), in the style of
 `discovery/health.py`: a platform that refuses this machine is reported once, not once per stream.
 
-From a data-centre address YouTube answers stream requests with a bot check. When a session start is
-classified `blocked`, the platform goes into a quiet degraded state, kept in the settings key
-`live.source_health` (written by code):
+From a data-centre address YouTube answers stream requests with a bot check, and it can throttle a
+stream to a fraction of real time. When a recorder run is classified `blocked` or `throttled`, the
+platform goes into a quiet degraded state, kept in the settings key `live.source_health` (written by
+code):
 
 - sessions of that platform are not started while it backs off; their slots are released;
 - the first block backs off for a sixth of `live.blocked_backoff_s`, every later one for the whole of it;
@@ -31,7 +32,8 @@ ERROR_CHARS: Final = 300
 FIRST_BACKOFF_SHARE: Final = 6  # the first block waits a sixth of the full back-off
 FIXES: Final[dict[str, str]] = {
     "youtube": (
-        "YouTube refuses live stream requests from this machine (usual for a data-centre address). Set "
+        "YouTube refuses or throttles live stream requests from this machine (usual for a data-centre "
+        "address, and seen on a home connection after many starts). Set "
         "PROXY_URL (a residential proxy) or mount YOUTUBE_COOKIES_FILE in the server's .env and restart "
         "the containers. Until then the live lane releases YouTube slots and probes again by itself; the "
         "VOD lane is not affected by this message."

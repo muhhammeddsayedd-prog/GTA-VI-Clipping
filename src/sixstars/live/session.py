@@ -10,7 +10,8 @@ Threads of a session (the manager polls it from its own loop):
   budget lane, the cut from the buffer, and the render job.
 
 **Reconnect policy** (`after_failure`, pure). A run that was refused by the platform (`blocked`) is never
-retried by the session: the manager puts the platform into its back-off. Any other end of a run is
+retried by the session: the manager puts the platform into its back-off. The same happens when runs that
+arrive slower than real time (`throttled`) use up the reconnects. Any other end of a run is
 retried after `live.reconnect_backoff_s`, up to `live.max_reconnects` times in a row; a run that then
 records for `live.reconnect_reset_s` clears the count. When the retries are used up, a session that
 recorded anything ends as `ended` (its replay is scanned), one that never recorded as `failed`.
@@ -126,11 +127,15 @@ def after_failure(
 ) -> Outcome | None:
     """What to do after a recorder run ended. `failures` counts the failed runs in a row including this
     one. Returns None to try again after the back-off, or the outcome that closes the session."""
+    status: OutcomeStatus = "ended" if ever_recorded else "released"
     if failure.kind == "blocked":
-        status: OutcomeStatus = "ended" if ever_recorded else "released"
         return Outcome(status, f"the platform refused this machine: {failure.detail}", failure.kind, True)
     if failures <= max_reconnects:
         return None
+    if failure.kind == "throttled":
+        # A slow spell can pass (seen: three minutes); only one that outlasts the reconnects is treated
+        # as the platform throttling this machine.
+        return Outcome(status, f"the platform throttles this machine: {failure.detail}", failure.kind, True)
     if ever_recorded:
         what = "the stream ended" if failure.kind in ENDED_KINDS else "recording could not be resumed"
         return Outcome("ended", f"{what} ({failure.kind}: {failure.detail})", failure.kind)
@@ -296,6 +301,7 @@ class LiveSession:
             start_timeout_s=cfg.start_timeout_s,
             stall_timeout_s=cfg.stall_timeout_s,
             ad_break_max_s=cfg.ad_break_max_s,
+            max_lag_s=cfg.max_lag_s,
             proxy=proxy_for(self._platform),
             cookies_file=cookies_file() if row.platform == "youtube" else None,
             ffmpeg=self.deps.ffmpeg,

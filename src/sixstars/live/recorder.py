@@ -12,6 +12,12 @@ A run that ends is classified from what streamlink printed (`classify_failure`):
 refuses this machine: bot check, rate limit), `ended` / `not_live` (nothing is live at the URL any more),
 `network`, or `error`. The session decides what to do with that; this module only reports it.
 
+A platform can also serve a stream without refusing it and still be unusable: YouTube sometimes throttles
+the segment downloads, so the stream arrives at a fraction of real time. The run looks alive, but the
+buffer falls further behind the wall clock every minute and a window cut from it would show the wrong
+moment. `Recorder.poll` therefore compares, per closed segment, the wall clock with the stream's own
+timestamps (`delivery_lag`) and ends a run that is more than `live.max_lag_s` behind as `throttled`.
+
 Every run is bounded: streamlink's own HTTP and stream timeouts, a start timeout and a stall timeout
 watched by `Recorder.poll`, and bounded waits when stopping.
 """
@@ -32,7 +38,9 @@ from sixstars.live import buffer
 from sixstars.logging import get_logger
 from sixstars.vod.ytdlp import BLOCKED_MARKERS, normalise
 
-FailureKind = Literal["blocked", "ended", "not_live", "network", "error", "stalled", "start_timeout"]
+FailureKind = Literal[
+    "blocked", "throttled", "ended", "not_live", "network", "error", "stalled", "start_timeout"
+]
 
 STDERR_KEEP_LINES: Final = 40
 DETAIL_CHARS: Final = 300
@@ -40,6 +48,7 @@ HTTP_TIMEOUT_S: Final = 20
 STREAM_TIMEOUT_S: Final = 30
 RETRY_OPEN: Final = 2
 KILL_WAIT_S: Final = 3.0
+ARRIVALS_KEEP: Final = 64  # closed segments whose first timestamp is remembered for the lag watch
 
 # Matched against streamlink's lower-cased output. The bot check is tested first.
 LIVE_BLOCKED_MARKERS: Final[tuple[str, ...]] = (
@@ -133,6 +142,30 @@ def classify_failure(output: str, *, had_data: bool) -> Failure:
     if had_data:
         return Failure("ended", detail or "the stream ended")
     return Failure("error", detail or "the recorder stopped without output")
+
+
+def delivery_lag(arrivals: Sequence[tuple[float, float]], jump_slack_s: float = 5.0) -> float:
+    """How far the newest segment of a run is behind real time, in seconds. Pure.
+
+    `arrivals` holds, per segment in order, the wall-clock second it was opened and the first stream
+    timestamp in it. `wall - timestamp` is constant while the stream arrives in real time and grows when
+    it arrives more slowly (a platform throttling the downloads). The lag is the newest value minus the
+    smallest one seen. Delivery can fall behind by at most the wall time that passed, so a larger step
+    between two segments is a jump of the stream's clock, not a delay: the comparison starts again there.
+    """
+    best: float | None = None
+    previous: tuple[float, float] | None = None
+    lag = 0.0
+    for wall, stamp in arrivals:
+        offset = wall - stamp
+        if previous is not None:
+            step = offset - (previous[0] - previous[1])
+            if abs(step) > (wall - previous[0]) + jump_slack_s:
+                best = None  # the stream's timestamps jumped
+        best = offset if best is None else min(best, offset)
+        lag = offset - best
+        previous = (wall, stamp)
+    return lag
 
 
 def stream_url(platform: str, channel_login: str, source_id: str, url: str) -> str:
@@ -349,6 +382,8 @@ class Recorder:
         start_timeout_s: float,
         stall_timeout_s: float,
         ad_break_max_s: float = 300.0,
+        max_lag_s: float = 0.0,
+        probe: Callable[[Path], float | None] | None = None,
         proxy: str | None = None,
         cookies_file: Path | None = None,
         ffmpeg: str = "ffmpeg",
@@ -363,6 +398,10 @@ class Recorder:
         self.start_timeout_s = start_timeout_s
         self.stall_timeout_s = stall_timeout_s
         self.ad_break_max_s = ad_break_max_s
+        self.max_lag_s = max_lag_s  # 0 = do not watch the delivery lag
+        self._probe = probe or buffer.probe_start
+        self._arrivals: dict[str, tuple[float, float]] = {}
+        self._lag_from = 0.0  # wall time before which segments do not count for the lag
         self._proxy = proxy
         self._cookies_file = cookies_file
         self._ffmpeg = ffmpeg
@@ -404,6 +443,8 @@ class Recorder:
         self._handle = self._spawn(source, sink, env)
         self._started_at = self._last_growth = self._clock()
         self._newest = None
+        self._arrivals = {}
+        self._lag_from = 0.0
         self._log.info("recorder_started", run=self._run, platform=self.platform)
         return self._run
 
@@ -412,7 +453,28 @@ class Recorder:
         newest segment alone: the total shrinks whenever the janitor deletes an old segment."""
         segments = [segment for segment in buffer.scan(self.directory) if segment.run == self._run]
         newest = (segments[-1].name, segments[-1].size) if segments else None
+        if self.max_lag_s > 0:
+            self._note_arrivals(segments[:-1])
         return sum(segment.size for segment in segments), newest
+
+    def _note_arrivals(self, closed: Sequence[buffer.Segment]) -> None:
+        """Read the first timestamp of every newly closed segment, once (for `delivery_lag`). Only the
+        newest `ARRIVALS_KEEP` closed segments count, and none from before the last ad break (the
+        comparison starts again after a break)."""
+        recent = [segment for segment in closed[-ARRIVALS_KEEP:] if segment.start >= self._lag_from]
+        names = {segment.name for segment in recent}
+        self._arrivals = {name: value for name, value in self._arrivals.items() if name in names}
+        for segment in recent:
+            if segment.name in self._arrivals or segment.size == 0:
+                continue
+            stamp = self._probe(segment.path)
+            # A segment that cannot be probed is remembered as such, so it is not probed every second.
+            self._arrivals[segment.name] = (segment.start, stamp if stamp is not None else float("nan"))
+
+    def lag_s(self) -> float:
+        """Seconds the stream is behind real time in this run (0 when it is not watched or unknown)."""
+        known = [value for _, value in sorted(self._arrivals.items()) if value[1] == value[1]]
+        return delivery_lag(known) if len(known) >= 2 else 0.0
 
     def poll(self) -> RecorderStatus:
         """Look at the current run. A run that ended, never started or stalled is stopped and its
@@ -426,8 +488,10 @@ class Recorder:
             self._newest, self._last_growth = newest, now
         has_data = self._newest is not None and (size > 0 or self._newest[1] > 0)
         if handle.alive() and handle.filtering() and now - self._ad_since(now) <= self.ad_break_max_s:
-            # An ad break: no data is expected. The start and stall timers wait for its end.
+            # An ad break: no data is expected. The start and stall timers wait for its end, and the
+            # lag watch starts again with the segments after it.
             self._last_growth = now
+            self._lag_from = time.time()
             if not has_data:
                 self._started_at = now
             return RecorderStatus(running=True, has_data=has_data, bytes_written=size)
@@ -447,6 +511,14 @@ class Recorder:
         elif has_data and now - self._last_growth > self.stall_timeout_s:
             handle.stop(KILL_WAIT_S)
             failure = Failure("stalled", f"no new stream data for {self.stall_timeout_s:g} s")
+        elif self.max_lag_s > 0 and self.lag_s() > self.max_lag_s:
+            lag = self.lag_s()
+            handle.stop(KILL_WAIT_S)
+            failure = Failure(
+                "throttled",
+                f"the stream arrives slower than real time: {lag:.0f} s behind after "
+                f"{now - self._started_at:.0f} s of recording",
+            )
         if failure is None:
             return RecorderStatus(running=True, has_data=has_data, bytes_written=size)
         self._handle = None

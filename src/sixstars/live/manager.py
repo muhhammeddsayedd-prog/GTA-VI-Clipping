@@ -216,11 +216,11 @@ class LiveManager:
         # 2. resume, 3. start
         state = health.load()
         low_disk = self._free_bytes() < cfg.min_free_bytes
-        if low_disk:
-            self._warn_disk(cfg)
         waiting = [row for row in rows if row.status == "recording"] + [
             row for row in rows if row.status == "assigned"
         ]
+        if low_disk and any(row.id not in self.sessions for row in waiting):
+            self._warn_disk(cfg)  # only when a session is actually kept from starting
         for row in waiting:
             if row.id in self.sessions:
                 continue

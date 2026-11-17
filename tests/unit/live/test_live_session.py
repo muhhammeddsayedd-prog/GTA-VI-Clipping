@@ -80,7 +80,9 @@ def row(**changes: object) -> SessionRow:
 # ── reconnect policy ─────────────────────────────────────────
 
 
-@pytest.mark.parametrize("kind", ["ended", "not_live", "network", "error", "stalled", "start_timeout"])
+@pytest.mark.parametrize(
+    "kind", ["ended", "not_live", "network", "error", "stalled", "start_timeout", "throttled"]
+)
 def test_a_run_that_ended_is_retried_while_reconnects_are_left(kind: str) -> None:
     failure = Failure(kind, "detail")  # type: ignore[arg-type]
     for failures in (1, 2, 3):
@@ -108,6 +110,15 @@ def test_a_platform_block_is_never_retried_by_the_session() -> None:
     assert first is not None and first.blocked and first.status == "released"  # the slot is given back
     later = after_failure(blocked, ever_recorded=True, failures=1, max_reconnects=3)
     assert later is not None and later.blocked and later.status == "ended"  # what was recorded is kept
+
+
+def test_a_stream_throttled_beyond_the_reconnects_is_a_platform_problem_like_a_block() -> None:
+    slow = Failure("throttled", "the stream arrives slower than real time: 42 s behind")
+    # a slow spell can pass: the recorder is restarted first
+    assert after_failure(slow, ever_recorded=True, failures=3, max_reconnects=3) is None
+    outcome = after_failure(slow, ever_recorded=True, failures=4, max_reconnects=3)
+    assert outcome is not None and outcome.blocked and outcome.status == "ended"
+    assert "throttles this machine" in outcome.reason and "42 s behind" in outcome.reason
 
 
 def test_with_no_reconnects_allowed_the_first_failure_closes_the_session() -> None:

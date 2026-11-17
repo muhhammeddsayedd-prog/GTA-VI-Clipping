@@ -64,7 +64,9 @@ async def _count_chat(platform: Platform, channel: str, seconds: float) -> tuple
 def probe(source: str, seconds: float, *, keep: bool = False, with_chat: bool = True) -> int:
     """Record `source` for `seconds`, read its chat, cut a window and print a JSON report.
 
-    Exit code 0 when stream data was recorded, 3 when the platform refused this machine, 1 otherwise.
+    Exit code 0 when stream data was recorded, 3 when the platform refused or throttled this machine, 1
+    otherwise. Throttling shows only after `live.max_lag_s` of delay has built up: probe for 90 s or more
+    and read `lag_s`.
     """
     platform = platform_of(source)
     login = twitch_login(source) if platform == "twitch" else ""
@@ -79,6 +81,7 @@ def probe(source: str, seconds: float, *, keep: bool = False, with_chat: bool = 
         max_height=cfg.max_height,
         start_timeout_s=cfg.start_timeout_s,
         stall_timeout_s=cfg.stall_timeout_s,
+        max_lag_s=cfg.max_lag_s,
         proxy=proxy_for(platform),
         cookies_file=cookies_file() if platform == "youtube" else None,
     )
@@ -96,6 +99,7 @@ def probe(source: str, seconds: float, *, keep: bool = False, with_chat: bool = 
         channel = (login if platform == "twitch" else source) if with_chat else None
         chat_result = asyncio.run(_poll(recorder, platform, channel, started + seconds, report))
         _describe_buffer(directory, report)
+        report["lag_s"] = round(recorder.lag_s(), 1)  # seconds the stream arrived behind real time
     finally:
         recorder.stop(cfg.stop_timeout_s)
         if not keep:
@@ -103,14 +107,16 @@ def probe(source: str, seconds: float, *, keep: bool = False, with_chat: bool = 
     report["chat_messages"], report["chat_error"] = chat_result
     report["kept"] = str(directory) if keep else None
     failure_info = report.get("failure")
-    if report.get("bytes"):
+    if isinstance(failure_info, dict) and failure_info["kind"] in ("blocked", "throttled"):
+        report["result"] = str(failure_info["kind"])
+    elif report.get("bytes"):
         report["result"] = "recorded"
     elif isinstance(failure_info, dict):
         report["result"] = str(failure_info["kind"])
     typer.echo(json.dumps(report, indent=2, ensure_ascii=True))
     if report["result"] == "recorded":
         return 0
-    return 3 if report["result"] == "blocked" else 1
+    return 3 if report["result"] in ("blocked", "throttled") else 1
 
 
 async def _poll(

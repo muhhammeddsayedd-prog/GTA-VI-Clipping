@@ -13,6 +13,7 @@ from sixstars.live.recorder import (
     RunHandle,
     ad_state,
     classify_failure,
+    delivery_lag,
     ffmpeg_command,
     scrub,
     stream_url,
@@ -316,3 +317,86 @@ def test_an_ad_break_that_never_ends_is_treated_as_a_stall(tmp_path: Path) -> No
     assert recorder.poll().running
     clock.now += 301  # live.ad_break_max_s
     assert recorder.poll().running is False
+
+
+# ── a stream that arrives slower than real time ──────────────
+
+
+def test_a_stream_in_real_time_has_no_lag_whatever_its_start_looked_like() -> None:
+    # (wall second the segment was opened, first timestamp in it); the first chunks arrive in a burst
+    assert delivery_lag([(100.0, 1.4), (105.0, 11.4), (115.0, 21.4), (125.0, 31.4)]) == 0.0
+    assert delivery_lag([(100.0, 0.0), (111.0, 10.0), (120.0, 20.0)]) == 0.0  # one late chunk, caught up
+    assert delivery_lag([]) == 0.0
+
+
+def test_a_throttled_stream_falls_behind_by_what_it_did_not_deliver() -> None:
+    # 10 s of stream per 50 s of wall clock, as YouTube served it in the real check
+    arrivals = [(100.0, 0.0), (110.0, 10.0), (160.0, 20.0), (210.0, 30.0)]
+    assert delivery_lag(arrivals) == 80.0
+    assert delivery_lag(arrivals[:3]) == 40.0
+
+
+def test_a_jump_of_the_stream_clock_is_not_a_delay() -> None:
+    # the timestamps jump back by an hour between two segments: no delivery can be that late that fast
+    assert delivery_lag([(100.0, 5000.0), (110.0, 5010.0), (120.0, 1420.0), (130.0, 1430.0)]) == 0.0
+    # and a real delay after the jump is still seen
+    assert delivery_lag([(100.0, 5000.0), (110.0, 1410.0), (150.0, 1420.0)]) == 30.0
+
+
+def lagging(tmp_path: Path, max_lag_s: float) -> tuple[Recorder, list[FakeHandle], Clock, dict[str, float]]:
+    recorder, handles, clock = make(tmp_path)
+    stamps: dict[str, float] = {}
+    recorder.max_lag_s = max_lag_s
+    recorder._probe = lambda path: stamps.get(path.name)
+    return recorder, handles, clock, stamps
+
+
+def add_segment(recorder: Recorder, stamps: dict[str, float], wall_s: int, stamp: float) -> None:
+    name = buffer.segment_name(recorder.run, T0.replace(minute=wall_s // 60, second=wall_s % 60))
+    (recorder.directory / name).write_bytes(b"x" * 100)
+    stamps[name] = stamp
+
+
+def test_a_run_that_falls_behind_real_time_is_ended_as_throttled(tmp_path: Path) -> None:
+    recorder, handles, clock, stamps = lagging(tmp_path, max_lag_s=30)
+    recorder.start()
+    # healthy: 10 s of stream every 10 s
+    for index in range(4):
+        add_segment(recorder, stamps, index * 10, index * 10.0)
+        clock.now += 10
+        assert recorder.poll().running
+    assert recorder.lag_s() == 0.0
+    # throttled: the next segments of 10 s each take 30 s to arrive
+    for index in range(4, 10):
+        add_segment(recorder, stamps, 40 + (index - 4) * 30, index * 10.0)
+        clock.now += 30
+        status = recorder.poll()
+        if status.failure is not None:
+            break
+    assert status.failure is not None and status.failure.kind == "throttled"
+    assert "behind" in status.failure.detail and handles[0].stopped == 1
+
+
+def test_the_lag_watch_is_off_at_zero_and_starts_again_after_an_ad_break(tmp_path: Path) -> None:
+    recorder, handles, clock, stamps = lagging(tmp_path, max_lag_s=0)
+    recorder.start()
+    for index, wall in enumerate((0, 10, 100, 190)):
+        add_segment(recorder, stamps, wall, index * 10.0)
+        clock.now += 10
+        assert recorder.poll().running  # not watched: nothing is probed
+    assert recorder.lag_s() == 0.0
+
+    recorder, handles, clock, stamps = lagging(tmp_path / "other", max_lag_s=30)
+    recorder.start()
+    add_segment(recorder, stamps, 0, 0.0)
+    add_segment(recorder, stamps, 10, 10.0)
+    assert recorder.poll().running
+    handles[0].ads = True  # a break: whatever the timestamps do across it is not a delay
+    assert recorder.poll().running
+    handles[0].ads = False
+    recorder._lag_from = T0.replace(second=15).timestamp()  # the break ended at 09:00:15
+    add_segment(recorder, stamps, 200, 20.0)
+    add_segment(recorder, stamps, 210, 30.0)
+    add_segment(recorder, stamps, 220, 40.0)
+    clock.now += 1
+    assert recorder.poll().running and recorder.lag_s() == 0.0
