@@ -61,15 +61,24 @@ def version() -> None:
 
 
 @app.command()
-def api() -> None:
+def api(
+    host: str = typer.Option("0.0.0.0", "--host", help="Address to listen on."),
+    port: int = typer.Option(8080, "--port", help="Port to listen on."),
+) -> None:
     """Run the FastAPI control API."""
-    _not_implemented()
+    from sixstars.api import main as api_main
+
+    with _database():
+        api_main.run(host=host, port=port)
 
 
 @app.command("live-manager")
 def live_manager() -> None:
-    """Run live recorders, chat readers and live spike detection."""
-    _not_implemented()
+    """Run live recorders, chat readers and live spike detection (a heartbeat-only stub until M14)."""
+    from sixstars.services import live_manager as live_manager_service
+
+    with _database():
+        live_manager_service.run()
 
 
 @app.command()
@@ -86,8 +95,11 @@ def worker(queue: str = typer.Option(..., "--queue", help="Queue to work: expres
 
 @app.command()
 def scheduler() -> None:
-    """Run heartbeats, failover and cleanup."""
-    _not_implemented()
+    """Run heartbeats, the ranking refresh, notification retries and stale-job recovery."""
+    from sixstars.services import scheduler as scheduler_service
+
+    with _database():
+        scheduler_service.run()
 
 
 @discovery_app.command("run-once")
