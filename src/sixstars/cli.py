@@ -1,13 +1,17 @@
 """Command line entry point (`sixstars <command>`). Declares every process entry point and testing
-command from `docs/03-repo-and-stack.md` section 3 as a typer command. In M00 only `version` is real;
-every other command is a placeholder that prints "not implemented yet" and exits with code 1, and is
-filled in by the milestone that owns it.
+command from `docs/03-repo-and-stack.md` section 3 as a typer command. Real so far: `version` (M00),
+`worker`, `settings get/set` and `db ping` (M01). Every other command is a placeholder that prints
+"not implemented yet" and exits with code 1, and is filled in by the milestone that owns it.
 """
+
+import json
+from collections.abc import Iterator
+from contextlib import contextmanager
 
 import typer
 
-from sixstars import __version__
-from sixstars.config import env
+from sixstars import __version__, db, settings
+from sixstars.config import MissingConfigError, env
 
 NOT_IMPLEMENTED = "not implemented yet"
 
@@ -18,6 +22,7 @@ spikes_app = typer.Typer(help="Chat spike engine.", no_args_is_help=True)
 clip_app = typer.Typer(help="Clip factory.", no_args_is_help=True)
 post_app = typer.Typer(help="Posting engine.", no_args_is_help=True)
 settings_app = typer.Typer(help="Runtime settings.", no_args_is_help=True)
+db_app = typer.Typer(help="Database.", no_args_is_help=True)
 
 app.add_typer(discovery_app, name="discovery")
 app.add_typer(vod_app, name="vod")
@@ -25,12 +30,25 @@ app.add_typer(spikes_app, name="spikes")
 app.add_typer(clip_app, name="clip")
 app.add_typer(post_app, name="post")
 app.add_typer(settings_app, name="settings")
+app.add_typer(db_app, name="db")
 
 
 def _not_implemented() -> None:
     """Print the placeholder message and exit non-zero so a stub is never mistaken for success."""
     typer.echo(NOT_IMPLEMENTED)
     raise typer.Exit(code=1)
+
+
+@contextmanager
+def _database() -> Iterator[None]:
+    """Run a command that uses the database: report missing configuration cleanly and close the pool."""
+    try:
+        yield
+    except MissingConfigError as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(code=2) from exc
+    finally:
+        db.close_pool()
 
 
 @app.command()
@@ -54,7 +72,13 @@ def live_manager() -> None:
 @app.command()
 def worker(queue: str = typer.Option(..., "--queue", help="Queue to work: express or normal.")) -> None:
     """Run a job queue worker."""
-    _not_implemented()
+    from sixstars.services import worker as worker_service
+
+    if queue not in ("express", "normal"):
+        typer.echo("--queue must be express or normal", err=True)
+        raise typer.Exit(code=2)
+    with _database():
+        worker_service.run(queue)
 
 
 @app.command()
@@ -97,17 +121,47 @@ def post_hourly(
 
 @settings_app.command("get")
 def settings_get(key: str = typer.Argument(..., help="Setting key.")) -> None:
-    """Read a runtime setting."""
-    _not_implemented()
+    """Print a runtime setting as JSON."""
+    with _database():
+        try:
+            value = settings.get(key)
+        except KeyError as exc:
+            typer.echo(f"unknown setting: {key}", err=True)
+            raise typer.Exit(code=1) from exc
+        typer.echo(json.dumps(value, ensure_ascii=False))
 
 
 @settings_app.command("set")
 def settings_set(
     key: str = typer.Argument(..., help="Setting key."),
-    value: str = typer.Argument(..., help="New value."),
+    value: str = typer.Argument(..., help="New value as JSON, for example 20, true or '\"text\"'."),
 ) -> None:
-    """Change a runtime setting."""
-    _not_implemented()
+    """Change a runtime setting. The value must be valid JSON."""
+    try:
+        parsed = json.loads(value)
+    except json.JSONDecodeError as exc:
+        typer.echo(f"value is not valid JSON: {exc.msg}", err=True)
+        raise typer.Exit(code=2) from exc
+    with _database():
+        settings.set(key, parsed)
+        typer.echo(f"{key} = {json.dumps(parsed, ensure_ascii=False)}")
+
+
+@db_app.command("ping")
+def db_ping() -> None:
+    """Check that the database answers."""
+    with _database():
+        try:
+            ok = db.ping()
+        except MissingConfigError:
+            raise
+        except Exception as exc:
+            typer.echo(f"database ping failed: {type(exc).__name__}", err=True)
+            raise typer.Exit(code=1) from exc
+        if not ok:
+            typer.echo("database ping failed", err=True)
+            raise typer.Exit(code=1)
+        typer.echo(f"ok (env={env().APP_ENV})")
 
 
 if __name__ == "__main__":
