@@ -91,9 +91,42 @@ def scheduler() -> None:
 
 
 @discovery_app.command("run-once")
-def discovery_run_once() -> None:
-    """Run one discovery pass."""
-    _not_implemented()
+def discovery_run_once(
+    as_json: bool = typer.Option(False, "--json", help="Print the full summary as JSON."),
+) -> None:
+    """Run one discovery pass and print the summary with the top live streams and videos."""
+    from sixstars.discovery import commands
+
+    with _database():
+        code = commands.run_once(as_json=as_json)
+    raise typer.Exit(code=code)
+
+
+@discovery_app.command("permissions")
+def discovery_permissions(
+    limit: int = typer.Option(5, "--limit", help="How many creators to check."),
+) -> None:
+    """Run the permission check (prompt P6) now for creators that are due."""
+    from sixstars.discovery import commands
+
+    with _database():
+        code = commands.permissions(limit)
+    raise typer.Exit(code=code)
+
+
+@discovery_app.command("set-tier")
+def discovery_set_tier(
+    platform: str = typer.Argument(..., help="youtube or twitch."),
+    channel: str = typer.Argument(..., help="Channel id or handle of a known creator."),
+    tier: str = typer.Argument(..., help="preferred, auto, restricted or blocked."),
+    reason: str = typer.Option("set by the owner", "--reason", help="Why (stored on the creator)."),
+) -> None:
+    """Set a creator's tier by hand, for example `blocked` so they are never clipped."""
+    from sixstars.discovery import commands
+
+    with _database():
+        code = commands.set_tier(platform, channel, tier, reason)
+    raise typer.Exit(code=code)
 
 
 @vod_app.command("process")
