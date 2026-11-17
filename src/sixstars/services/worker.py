@@ -36,6 +36,7 @@ HANDLER_MODULES: tuple[str, ...] = (
     "sixstars.live.handlers",  # M14
     "sixstars.guardian.handlers",  # M13
     "sixstars.stats.handlers",  # M13
+    "sixstars.viewer_clips:register_handlers",  # D110: viewer_clip.process
 )
 SHUTDOWN_GRACE_S = 45.0  # below the 60 s `stop_grace_period` of docker compose
 JOIN_POLL_S = 0.5
