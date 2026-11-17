@@ -84,6 +84,11 @@ class RenderInput:
     `source_offset_s` is where the file starts in the original video or stream, so `clips.start_s` /
     `clips.end_s` are positions in the original. `chat` times are seconds in the file. `clip_id` (a uuid
     chosen by the caller) or `spike_id` makes the render idempotent: a second call finds the same row.
+
+    `moment_chosen` is for a clip whose moment people who watched picked themselves (a viewer-made Twitch
+    clip, decision D110): the clip writer saying "there is no moment here" from the transcript alone then
+    does not stop the render, and the gate judges the rendered clip. A reject for a safety flag or a
+    spoiler always stands (`reject_stands`).
     """
 
     source_path: Path
@@ -107,6 +112,7 @@ class RenderInput:
     verdict: SpikeVerdict | None = None
     chat: tuple[ChatLine, ...] = ()
     upload: bool = False
+    moment_chosen: bool = False
 
     def __post_init__(self) -> None:
         if self.lane not in LANES:
@@ -144,6 +150,7 @@ class RenderInput:
             "verdict": self.verdict.model_dump() if self.verdict is not None else None,
             "chat": [{"t_s": line.t_s, "text": line.text, "user": line.user} for line in self.chat],
             "upload": self.upload,
+            "moment_chosen": self.moment_chosen,
         }
 
     @classmethod
@@ -193,6 +200,7 @@ class RenderInput:
                 if isinstance(line, Mapping) and "t_s" in line and "text" in line
             ),
             upload=bool(payload.get("upload", False)),
+            moment_chosen=payload.get("moment_chosen") is True,
         )
 
 
@@ -389,6 +397,18 @@ def render_file(job: RenderJob, *, ffmpeg: str = "ffmpeg", ffprobe: str = "ffpro
     )
 
 
+def reject_stands(writing: ClipWriting, *, moment_chosen: bool) -> bool:
+    """Does the clip writer's reject stop the render? Always, except for a clip whose moment viewers
+    chose (`RenderInput.moment_chosen`) when nothing but the writer's own "no moment here" is against it:
+    no safety flag and no story spoiler. Such a clip is rendered and the gate judges it (its score, and
+    again its safety flags, rejected topics and spoiler rules). Pure."""
+    if not writing.reject:
+        return False
+    if not moment_chosen:
+        return True
+    return bool(writing.safety.flagged()) or writing.spoiler
+
+
 def transcription_modes(mode: str) -> tuple[Mode, ...]:
     """Local first for a normal render, hosted first for an express one; the other is the fallback."""
     return ("hosted", "local") if mode == "express" else ("local", "hosted")
@@ -488,8 +508,10 @@ def produce(
     timed("write", started)
     if on_writing is not None:
         on_writing(writing, transcript)
-    if writing.reject:
+    if reject_stands(writing, moment_chosen=item.moment_chosen):
         raise ClipSkippedError(f"writer: {writing.reject_reason or 'rejected'}")
+    if writing.reject:
+        get_logger("factory").info("clip_writer_reject_overruled", reason=writing.reject_reason)
 
     window_w = writer.final_window(writing, writer_input)
     window = ClipWindow(window_w.start_s + offset, window_w.end_s + offset)
@@ -748,6 +770,7 @@ def _finish(clip_id: str, item: RenderInput, cfg: FactoryConfig, produced: Produ
                 "file_size_bytes": outcome.file_size_bytes,
                 "transcriber": f"{produced.transcript.provider}:{produced.transcript.model}",
                 "translated": produced.transcript.translated,
+                "writer_reject": produced.writing.reject_reason if produced.writing.reject else None,
                 "music": analysis.as_json() if analysis is not None else None,
                 "bleeps": [[round(span.start_s, 3), round(span.end_s, 3)] for span in outcome.bleeps],
                 "sfx_times_s": list(outcome.sfx_times_s),
