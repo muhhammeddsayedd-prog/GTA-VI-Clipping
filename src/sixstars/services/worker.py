@@ -106,6 +106,12 @@ def _report_broken(module_name: str, exc: Exception) -> None:
     )
 
 
+class _ReleasedJob(BaseException):  # noqa: N818
+    """Raised in the worker loop when the handler of a released job returns. It is not an `Exception`, so
+    the queue code neither completes nor fails the job (it may belong to another worker by now) and the
+    loop ends."""
+
+
 class _CurrentJob:
     """Remembers the job the worker is running, so a shutdown that cannot wait can give it back."""
 
@@ -113,7 +119,6 @@ class _CurrentJob:
         self._lock = threading.Lock()
         self._job: jobs.Job | None = None
         self._released: set[int] = set()
-        self._never = threading.Event()
 
     def wrap(self, handler: jobs.Handler) -> jobs.Handler:
         def tracked(job: jobs.Job) -> None:
@@ -126,9 +131,7 @@ class _CurrentJob:
                     self._job = None
                     released = job.id in self._released
                 if released:
-                    # The job belongs to the queue again (maybe to another worker by now), so this
-                    # thread must not complete or fail it. The process is exiting: park here.
-                    self._never.wait()
+                    raise _ReleasedJob
 
         return tracked
 
@@ -161,6 +164,8 @@ def run(queue: str, stop_event: threading.Event | None = None, grace_s: float = 
     def loop() -> None:
         try:
             jobs.run_worker(cast(jobs.Queue, queue), handlers, stop)
+        except _ReleasedJob:
+            pass
         except BaseException as exc:
             crashed.append(exc)
 
