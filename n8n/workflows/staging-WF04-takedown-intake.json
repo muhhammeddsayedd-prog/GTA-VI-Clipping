@@ -1,0 +1,279 @@
+{
+  "name": "[STG] WF04 Takedown Intake",
+  "description": "Polls the takedown inbox every 5 minutes, forwards each mail to the control API (which decides whether it is a takedown) and labels it 6stars-processed.",
+  "active": false,
+  "nodes": [
+    {
+      "id": "71058f02-7f27-45c0-b1f5-f0e69876b53a",
+      "name": "Gmail Trigger",
+      "type": "n8n-nodes-base.gmailTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {
+        "pollTimes": {
+          "item": [
+            {
+              "mode": "everyX",
+              "value": 5,
+              "unit": "minutes"
+            }
+          ]
+        },
+        "simple": false,
+        "filters": {
+          "labelIds": [
+            "INBOX"
+          ]
+        },
+        "options": {}
+      },
+      "credentials": {
+        "gmailOAuth2": {
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "id": "5062e8be-84fe-4540-bf04-3829820bed0e",
+      "name": "Config",
+      "notes": "The only node that differs between staging and production (besides the credentials).",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        220,
+        0
+      ],
+      "parameters": {
+        "mode": "manual",
+        "assignments": {
+          "assignments": [
+            {
+              "id": "14ff0ac0-9ade-567f-a0b0-d5ea356a9bc4",
+              "name": "API_BASE",
+              "value": "https://api-staging.46.224.14.255.sslip.io",
+              "type": "string"
+            },
+            {
+              "id": "bc4519a9-9d44-5f27-96a9-c6b105fda5dc",
+              "name": "TELEGRAM_CHAT_ID",
+              "value": "<TELEGRAM_CHAT_ID>",
+              "type": "string"
+            },
+            {
+              "id": "b815debe-00de-5a07-9638-3b2edae920c6",
+              "name": "ENV_PREFIX",
+              "value": "[STG]",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": false,
+        "options": {}
+      }
+    },
+    {
+      "id": "351841b8-b6a7-4454-8a2f-b1c413e4cdca",
+      "name": "Map message",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        440,
+        0
+      ],
+      "parameters": {
+        "mode": "manual",
+        "assignments": {
+          "assignments": [
+            {
+              "id": "05213c5e-1167-59ea-8240-15d9dc2eb189",
+              "name": "from",
+              "value": "={{ $('Gmail Trigger').item.json.from?.text ?? $('Gmail Trigger').item.json.headers?.from ?? '' }}",
+              "type": "string"
+            },
+            {
+              "id": "24e8109c-37c4-5786-b5c0-753905515b73",
+              "name": "subject",
+              "value": "={{ $('Gmail Trigger').item.json.subject ?? '' }}",
+              "type": "string"
+            },
+            {
+              "id": "2522557f-666d-58c0-8831-ff43b23ab5fe",
+              "name": "body_text",
+              "value": "={{ $('Gmail Trigger').item.json.text || ($('Gmail Trigger').item.json.html ?? '').replace(/<[^>]+>/g, ' ') }}",
+              "type": "string"
+            },
+            {
+              "id": "bffe1ae4-a941-5d59-9a45-9358f691829c",
+              "name": "received_at",
+              "value": "={{ $('Gmail Trigger').item.json.date ? DateTime.fromISO($('Gmail Trigger').item.json.date).toUTC().toISO() : $now.toUTC().toISO() }}",
+              "type": "string"
+            },
+            {
+              "id": "c9e58a7a-6a93-5b24-b17c-fafe08b9926c",
+              "name": "message_id",
+              "value": "={{ $('Gmail Trigger').item.json.id }}",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": false,
+        "options": {}
+      }
+    },
+    {
+      "id": "a2e92f3a-a337-4abd-bae8-c24634257cbd",
+      "name": "Post takedown",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "position": [
+        660,
+        0
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Config').first().json.API_BASE }}/v1/guardian/takedown",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {
+          "timeout": 30000
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json) }}"
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "name": "6stars API staging"
+        }
+      }
+    },
+    {
+      "id": "8998e427-5953-4b10-8a4b-16ea69fa775e",
+      "name": "Find processed label",
+      "notes": "The Gmail node needs the label id; this looks up the id of the label 6stars-processed. The label must exist in the inbox, otherwise the next node fails and WF09 alerts.",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "position": [
+        880,
+        0
+      ],
+      "parameters": {
+        "method": "GET",
+        "url": "https://gmail.googleapis.com/gmail/v1/users/me/labels",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "gmailOAuth2",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "credentials": {
+        "gmailOAuth2": {
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "id": "d0e1b044-dbb3-4df3-a949-8d1b30a5cfcd",
+      "name": "Add processed label",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "position": [
+        1100,
+        0
+      ],
+      "parameters": {
+        "resource": "message",
+        "operation": "addLabels",
+        "messageId": "={{ $('Map message').item.json.message_id }}",
+        "labelIds": "={{ [$json.labels.find((l) => l.name === '6stars-processed').id] }}"
+      },
+      "credentials": {
+        "gmailOAuth2": {
+          "name": "Gmail account"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Gmail Trigger": {
+      "main": [
+        [
+          {
+            "node": "Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Config": {
+      "main": [
+        [
+          {
+            "node": "Map message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Map message": {
+      "main": [
+        [
+          {
+            "node": "Post takedown",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Post takedown": {
+      "main": [
+        [
+          {
+            "node": "Find processed label",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Find processed label": {
+      "main": [
+        [
+          {
+            "node": "Add processed label",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "saveExecutionProgress": false,
+    "saveManualExecutions": true,
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "none",
+    "errorWorkflow": "<id of [STG] WF09 Error Alert>",
+    "timezone": "UTC",
+    "executionOrder": "v1"
+  },
+  "tags": [
+    "6stars",
+    "staging"
+  ]
+}

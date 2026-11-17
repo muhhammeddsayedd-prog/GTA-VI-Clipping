@@ -21,7 +21,7 @@ Defaults below are the production values from `supabase/migrations/0002_seed_set
 
 | Key | Default | Meaning |
 |---|---|---|
-| `discovery.apify_last_run` | `null` | Written by code: id of the last Apify run (read on the next pass). |
+| `discovery.apify_last_run` | `null` | Written by code: the last Apify run as `{run_id, started_at, mode, collected, status, cost_usd}` (read on a later pass). |
 | `discovery.interval_s` | `600` | Expected interval between discovery runs (failover uses this). |
 | `discovery.vod_lookback_h` | `48` | How far back to look for finished videos. |
 | `discovery.min_vod_duration_s` | `480` | Skip videos shorter than this. |
@@ -34,6 +34,37 @@ Defaults below are the production values from `supabase/migrations/0002_seed_set
 | `discovery.non_english_penalty` | `0.85` | Multiplier on trend score for non-English sources. |
 | `discovery.preferred_bonus` | `15` | Points added for preferred creators. |
 | `discovery.title_blocklist` | `["sponsored", "#ad", "music only", "lofi", "radio", "casino", "gambling", "slots"]` | Titles containing these are skipped. |
+| `discovery.youtube_search_results` | `40` | Results read per yt-dlp YouTube search (one search per term for live, one per term and sort for recent videos). (M09) |
+| `discovery.youtube_recent_sorts` | `["relevance", "views"]` | Sort orders of the recent-video searches: relevance, views, date or rating. (M09) |
+| `discovery.ytdlp_workers` | `6` | yt-dlp searches and RSS reads that run at the same time. (M09) |
+| `discovery.ytdlp_timeout_s` | `25` | Seconds before one yt-dlp search is killed. (M09) |
+| `discovery.youtube_quota_daily_units` | `3000` | YouTube Data API quota units discovery may use per UTC day (the project has 10,000). Over it, discovery scores from the search listing alone. (M09) |
+| `discovery.rss_max_channels_per_run` | `25` | Known YouTube creators whose RSS feed is read per run (rotating). (M09) |
+| `discovery.rss_cursor` | `null` | Written by code: where the RSS rotation continues. (M09) |
+| `discovery.apify_interval_s` | `21600` | Minimum seconds between Apify YouTube searches (they alternate live and recent). 0 switches Apify off. (M09) |
+| `discovery.apify_max_results` | `5` | Results per search term of one Apify run. (M09) |
+| `discovery.apify_price_per_result_usd` | `0.003` | Apify price per video written, used to project the cost of a run. (M09) |
+| `discovery.apify_daily_budget_usd` | `0.4` | Apify spend allowed per UTC day. A run that would pass it is not started. (M09) |
+| `discovery.apify_monthly_budget_usd` | `12` | Apify spend allowed per calendar month (UTC). A run that would pass it is not started. (M09) |
+| `discovery.twitch_max_streams` | `300` | Live Twitch streams read per run. (M09) |
+| `discovery.twitch_max_videos` | `50` | Twitch archives read per run. (M09) |
+| `discovery.twitch_follower_lookups_per_run` | `20` | Twitch follower counts fetched per run for creators that have none. (M09) |
+| `discovery.twitch_game_cache` | `null` | Written by code: Twitch game id of env.target_game, cached 24 h. (M09) |
+| `discovery.growth_window_s` | `1800` | Live growth compares viewers now with viewers this long ago. (M09) |
+| `discovery.min_observation_gap_s` | `120` | A source observed again within this time updates its last candidates row instead of adding one. (M09) |
+| `discovery.min_live_viewers` | `50` | Live streams with fewer viewers are recorded as candidates but never get a live slot. (M09) |
+| `discovery.chat_mpm_per_viewer` | `0.01` | Estimated chat messages per minute per live viewer, used when no chat of the creator was measured yet. (M09) |
+| `discovery.chat_msgs_per_view` | `0.02` | Estimated chat messages per view of a finished stream, used when nothing better is known. (M09) |
+| `discovery.chat_min_messages` | `1500` | Chat replay size at which a finished stream gets the full chat-replay bonus (the spike engine finds nothing on thinner chats). (M09) |
+| `discovery.chat_replay_bonus` | `5` | Points added to a video with a chat replay, scaled by its estimated chat size. (M09) |
+| `discovery.passive_views_engagement` | `0.005` | A video whose (likes + 2 x comments) / views is below this was viewed passively (Shorts feed): its views-per-hour score and chat estimate are scaled down in proportion. 0 switches this off. (M09) |
+| `discovery.max_vod_per_creator_per_run` | `1` | Max new videos of one creator queued per discovery run. (M09) |
+| `discovery.max_vod_backlog` | `24` | Discovery queues no more videos while this many are waiting for the VOD lane (videos.status = new). (M09) |
+| `discovery.permission_recheck_days` | `14` | Days after which a creator's channel description is read again (prompt P6). (M09) |
+| `discovery.require_permission_check` | `true` | When true a creator gets no live slot and no video job before the first permission check (P6) has run. (M09) |
+| `discovery.permission_checks_per_run` | `12` | Permission checks made inside one discovery run for creators about to be picked. (M09) |
+| `discovery.permission_jobs_per_run` | `25` | creator.permission jobs queued per discovery run for other new or stale creators. (M09) |
+| `discovery.excluded_channels` | `[]` | Creators that are never clipped: channel ids or handles, optionally prefixed with "youtube:" or "twitch:". (M09) |
 
 ## Live lane
 
@@ -147,6 +178,8 @@ Defaults below are the production values from `supabase/migrations/0002_seed_set
 | `posting.first_comment` | `"Follow @6starsclipping for the best GTA 6 moments every hour 🎮⭐"` | First comment text. |
 | `posting.base_hashtags` | `["#GTA6", "#GTAVI", "#GTA6Clips", "#Gaming"]` | Hashtags added to every caption. |
 | `posting.youtube_extra_hashtags` | `["#Shorts"]` | Extra hashtags for YouTube. |
+| `posting.platform_max_24h` | `{"tiktok": 15, "instagram": 50, "youtube": 30}` | Hard ceiling of posts per account per rolling 24 h set by Upload-Post. An account cap above it is ignored. |
+| `posting.staging_allow_instagram` | `false` | Staging only: allow a real Instagram post (Instagram cannot post privately). Set true only for the single M15 test post. |
 
 ## Guardian
 

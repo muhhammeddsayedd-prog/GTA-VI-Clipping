@@ -31,7 +31,6 @@ def test_cli_version_reports_app_env(monkeypatch: pytest.MonkeyPatch) -> None:
         ["api"],
         ["live-manager"],
         ["scheduler"],
-        ["discovery", "run-once"],
         ["vod", "process", "https://example.com/v"],
         ["post", "hourly", "--dry-run"],
     ],

@@ -91,9 +91,42 @@ def scheduler() -> None:
 
 
 @discovery_app.command("run-once")
-def discovery_run_once() -> None:
-    """Run one discovery pass."""
-    _not_implemented()
+def discovery_run_once(
+    as_json: bool = typer.Option(False, "--json", help="Print the full summary as JSON."),
+) -> None:
+    """Run one discovery pass and print the summary with the top live streams and videos."""
+    from sixstars.discovery import commands
+
+    with _database():
+        code = commands.run_once(as_json=as_json)
+    raise typer.Exit(code=code)
+
+
+@discovery_app.command("permissions")
+def discovery_permissions(
+    limit: int = typer.Option(5, "--limit", help="How many creators to check."),
+) -> None:
+    """Run the permission check (prompt P6) now for creators that are due."""
+    from sixstars.discovery import commands
+
+    with _database():
+        code = commands.permissions(limit)
+    raise typer.Exit(code=code)
+
+
+@discovery_app.command("set-tier")
+def discovery_set_tier(
+    platform: str = typer.Argument(..., help="youtube or twitch."),
+    channel: str = typer.Argument(..., help="Channel id or handle of a known creator."),
+    tier: str = typer.Argument(..., help="preferred, auto, restricted or blocked."),
+    reason: str = typer.Option("set by the owner", "--reason", help="Why (stored on the creator)."),
+) -> None:
+    """Set a creator's tier by hand, for example `blocked` so they are never clipped."""
+    from sixstars.discovery import commands
+
+    with _database():
+        code = commands.set_tier(platform, channel, tier, reason)
+    raise typer.Exit(code=code)
 
 
 @vod_app.command("process")
@@ -377,6 +410,74 @@ def chat_replay(
     from sixstars.chat import commands
 
     raise typer.Exit(code=commands.replay(source, Path(output)))
+
+
+# Posting engine (M10). Kept as one block so other milestones' edits to this file do not collide with it.
+posting_app = typer.Typer(help="Posting engine (M10): plan, run and test posts.", no_args_is_help=True)
+app.add_typer(posting_app, name="posting")
+
+
+@posting_app.command("plan")
+def posting_plan(
+    slot: str = typer.Option("", "--slot", help="Slot to plan as an ISO hour (default: the current hour)."),
+) -> None:
+    """Print what the hourly slot would do. Writes and sends nothing."""
+    from sixstars.posting import commands
+
+    with _database():
+        code = commands.plan(slot)
+    raise typer.Exit(code=code)
+
+
+@posting_app.command("hourly")
+def posting_hourly(
+    dry_run: bool = typer.Option(False, "--dry-run", help="Only print the plan: write and send nothing."),
+) -> None:
+    """Run the current hourly slot now, without jitter. Respects dry run and the emergency stop."""
+    from sixstars.posting import commands
+
+    with _database():
+        code = commands.plan() if dry_run else commands.hourly()
+    raise typer.Exit(code=code)
+
+
+@posting_app.command("trigger")
+def posting_trigger() -> None:
+    """Do what the hourly trigger does: heartbeat and one post.hourly job at the jittered time."""
+    from sixstars.posting import commands
+
+    with _database():
+        code = commands.trigger()
+    raise typer.Exit(code=code)
+
+
+@posting_app.command("clip")
+def posting_clip(
+    clip_id: str = typer.Argument(..., help="Approved clip to post."),
+    account: str = typer.Option(..., "--account", help="Account id, for example youtube_main."),
+) -> None:
+    """Staging only: post one approved clip to one account (privately, through every posting rule)."""
+    from sixstars.posting import commands
+
+    with _database():
+        code = commands.clip(clip_id, account)
+    raise typer.Exit(code=code)
+
+
+# Notifications (M12). Kept as one block so other milestones' edits to this file do not collide with it.
+notify_app = typer.Typer(help="Telegram notifications through the n8n notify webhook.", no_args_is_help=True)
+app.add_typer(notify_app, name="notify")
+
+
+@notify_app.command("test")
+def notify_test() -> None:
+    """Send the info notification "Test" through the notify webhook, to check the path to Telegram."""
+    from sixstars import notify
+
+    with _database():
+        delivered = notify.send("info", "Test")
+    typer.echo("Test notification delivered." if delivered else "Test notification was NOT delivered.")
+    raise typer.Exit(code=0 if delivered else 1)
 
 
 if __name__ == "__main__":

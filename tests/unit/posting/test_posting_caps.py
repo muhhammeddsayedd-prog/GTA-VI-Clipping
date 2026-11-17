@@ -118,7 +118,7 @@ def test_posts_of_other_accounts_do_not_count() -> None:
 @pytest.mark.parametrize(
     ("account_id", "cap_24h", "expected"),
     [
-        ("youtube_main", 40, 30),  # the seeded 40 is above Upload-Post's 30
+        ("youtube_main", 40, 30),  # the cap seeded before migration 0005 is above Upload-Post's 30
         ("youtube_main", 30, 30),
         ("youtube_main", 28, 28),
         ("tiktok_main", 14, 14),
@@ -132,8 +132,8 @@ def test_the_cap_never_exceeds_the_platform_limit(account_id: str, cap_24h: int,
     assert effective_cap(acct(account_id, cap_24h=cap_24h), make_params()) == expected
 
 
-def test_the_seeded_youtube_cap_of_40_stops_at_30() -> None:
-    youtube = production_accounts()["youtube_main"]
+def test_a_youtube_cap_of_40_stops_at_30() -> None:
+    youtube = acct("youtube_main", cap_24h=40, spike_reserve=8)  # the values seeded before migration 0005
     params = make_params()
 
     assert cap_state(youtube, spread("youtube_main", 29, T0 - HOUR), T0, params).free == 1

@@ -464,7 +464,7 @@ def test_two_days_on_the_production_seed_keep_every_rule(seed: int) -> None:
     assert per_account["tiktok_live"] == 0
     assert all(p.lane is Lane.HOURLY for p in posts if p.account_id == "tiktok_main")
     youtube_times = [p.at for p in posts if p.account_id == "youtube_main"]
-    assert max_in_any_window(youtube_times, DAY) <= 30  # Upload-Post's limit, although the seed says 40
+    assert max_in_any_window(youtube_times, DAY) <= 30  # Upload-Post's limit (the seeded cap is 28)
     assert (
         per_account["instagram_main"] > 30
         and per_account["youtube_main"] > 30
