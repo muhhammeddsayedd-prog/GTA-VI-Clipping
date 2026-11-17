@@ -1,6 +1,7 @@
 """Command line entry point (`sixstars <command>`). Declares every process entry point and testing
 command from `docs/03-repo-and-stack.md` section 3 as a typer command. Real so far: `version` (M00),
-`worker`, `settings get/set` and `db ping` (M01). Every other command is a placeholder that prints
+`worker`, `settings get/set` and `db ping` (M01), `youtube auth` and `youtube whoami` (M02). Every other
+command is a placeholder that prints
 "not implemented yet" and exits with code 1, and is filled in by the milestone that owns it.
 """
 
@@ -23,6 +24,7 @@ clip_app = typer.Typer(help="Clip factory.", no_args_is_help=True)
 post_app = typer.Typer(help="Posting engine.", no_args_is_help=True)
 settings_app = typer.Typer(help="Runtime settings.", no_args_is_help=True)
 db_app = typer.Typer(help="Database.", no_args_is_help=True)
+youtube_app = typer.Typer(help="YouTube owner channel (OAuth).", no_args_is_help=True)
 
 app.add_typer(discovery_app, name="discovery")
 app.add_typer(vod_app, name="vod")
@@ -31,6 +33,7 @@ app.add_typer(clip_app, name="clip")
 app.add_typer(post_app, name="post")
 app.add_typer(settings_app, name="settings")
 app.add_typer(db_app, name="db")
+app.add_typer(youtube_app, name="youtube")
 
 
 def _not_implemented() -> None:
@@ -162,6 +165,73 @@ def db_ping() -> None:
             typer.echo("database ping failed", err=True)
             raise typer.Exit(code=1)
         typer.echo(f"ok (env={env().APP_ENV})")
+
+
+@youtube_app.command("auth")
+def youtube_auth(
+    port: int = typer.Option(0, "--port", help="Local port for the sign-in redirect (0 picks a free one)."),
+    no_browser: bool = typer.Option(False, "--no-browser", help="Print the sign-in URL without opening it."),
+    timeout_s: int = typer.Option(300, "--timeout", help="Seconds to wait for the sign-in to finish."),
+) -> None:
+    """Sign in to the owner's YouTube channel once and print the refresh token for `.env`.
+
+    Run it on a machine with a browser. It needs YOUTUBE_OAUTH_CLIENT_ID and YOUTUBE_OAUTH_CLIENT_SECRET
+    of a "Desktop app" OAuth client.
+    """
+    from sixstars.clients import youtube_oauth
+    from sixstars.clients._http import ClientError
+
+    settings_env = env()
+    try:
+        client_id = settings_env.require("YOUTUBE_OAUTH_CLIENT_ID")
+        client_secret = settings_env.require("YOUTUBE_OAUTH_CLIENT_SECRET")
+    except MissingConfigError as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(code=2) from exc
+    try:
+        tokens = youtube_oauth.run_local_flow(
+            client_id,
+            client_secret,
+            port=port,
+            open_browser=not no_browser,
+            timeout_s=timeout_s,
+            echo=typer.echo,
+        )
+    except ClientError as exc:
+        typer.echo(f"sign-in failed: {exc}", err=True)
+        raise typer.Exit(code=1) from exc
+    refresh_token = tokens.get("refresh_token")
+    if not refresh_token:
+        typer.echo(
+            "Google returned no refresh token: remove this app from the Google account and retry", err=True
+        )
+        raise typer.Exit(code=1)
+    typer.echo("Add this line to .env (keep it secret):")
+    typer.echo(f"YOUTUBE_OAUTH_REFRESH_TOKEN={refresh_token}")
+
+
+@youtube_app.command("whoami")
+def youtube_whoami() -> None:
+    """Print the channel that YOUTUBE_OAUTH_REFRESH_TOKEN belongs to."""
+    from sixstars.clients._http import ClientError
+    from sixstars.clients.youtube import YouTubeClient
+
+    client = YouTubeClient()
+    if not client.has_oauth():
+        typer.echo(
+            "YouTube OAuth is not configured: set YOUTUBE_OAUTH_CLIENT_ID, YOUTUBE_OAUTH_CLIENT_SECRET and "
+            "YOUTUBE_OAUTH_REFRESH_TOKEN (run `sixstars youtube auth`)",
+            err=True,
+        )
+        raise typer.Exit(code=2)
+    try:
+        channel = client.whoami()
+    except ClientError as exc:
+        typer.echo(f"whoami failed: {exc}", err=True)
+        raise typer.Exit(code=1) from exc
+    finally:
+        db.close_pool()
+    typer.echo(f"{channel.title} ({channel.id})")
 
 
 if __name__ == "__main__":
