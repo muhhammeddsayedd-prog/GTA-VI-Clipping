@@ -46,6 +46,7 @@ _CLIP_SQL = """
 select c.id::text as id, c.creator_id::text as creator_id, c.spike_id::text as spike_id, c.status, c.lane,
        c.gate_profile, c.source_platform, c.source_id, c.start_s, c.end_s, c.duration_s, c.score,
        c.music_ratio, c.spoiler, c.safety_flags, c.hook, c.title, c.caption, c.hashtags, c.topic,
+       c.commentary,
        c.transcript, c.local_path, c.storage_path, c.gate_result, c.precheck_video_id, c.created_at
 from clips c
 """
@@ -170,6 +171,7 @@ def clip_facts(row: ClipRow, file: FileFacts | None, frames: tuple[bool, ...] | 
         created_at=_utc(raw["created_at"]),
         file=file,
         music_frames=frames,
+        commentary=raw["commentary"],
     )
 
 

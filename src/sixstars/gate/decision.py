@@ -9,7 +9,8 @@ verdict rejects.
 
 Express fallback (docs/10 section 2): an express clip is first judged by the express profile. If it fails
 and passes the whole hourly profile, it is approved (or held) as an hourly clip with `demoted` true and
-lane `hourly`. If it fails the hourly profile too it is rejected with the express failures.
+lane `hourly`. If it fails the hourly profile too it is rejected with the express failures. A clip judged
+under the hourly profile always ends in lane `hourly`, whatever lane its row had.
 
 `control.emergency_stop` is not an input: docs/16 stops posting only, rendering and the gate continue, and
 the posting engine refuses to post while the stop is set.
@@ -126,10 +127,12 @@ def decide(
     if clip.profile == HOURLY:
         results, risks = evaluate(settings.hourly, *args)
         codes, reasons = _failures(results)
+        # A verdict under the hourly profile never leaves a clip in the spike lane: only the express
+        # profile may send a clip to be posted at once.
         return GateDecision(
             verdict=_verdict(codes),
             profile=HOURLY,
-            lane=clip.lane,
+            lane=LANE_HOURLY,
             codes=codes,
             reasons=reasons,
             checks=results,

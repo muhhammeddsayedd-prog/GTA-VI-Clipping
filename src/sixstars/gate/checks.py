@@ -159,12 +159,13 @@ def check_spoiler(spoiler: bool | None, block_until: datetime | None, now: datet
 
 
 def _written_fields(clip: ClipFacts) -> list[tuple[str, str | None]]:
-    return [("hook", clip.hook), ("title", clip.title), ("caption", clip.caption)]
+    fields = [("hook", clip.hook), ("title", clip.title), ("caption", clip.caption)]
+    return [*fields, ("commentary", clip.commentary)]
 
 
 def check_spoiler_text(clip: ClipFacts, terms: Sequence[str]) -> CheckResult:
-    """D20: hook, title, caption and hashtags never contain a term of `gate.spoiler_terms`, whatever the
-    date and whatever the model said."""
+    """D20: hook, title, caption, commentary and hashtags never contain a term of `gate.spoiler_terms`,
+    whatever the date and whatever the model said."""
     hits = text.find_terms(_written_fields(clip), clip.hashtags, terms)
     failures: _Failures = (
         [(ReasonCode.SPOILER_IN_TEXT, "spoiler term in the written text: " + "; ".join(hits))] if hits else []
@@ -190,7 +191,8 @@ def check_safety(flags: Mapping[str, object] | None) -> CheckResult:
 
 
 def check_reject_topics(clip: ClipFacts, topics: Sequence[str]) -> CheckResult:
-    """D21 by keyword: no `gate.reject_topics` entry in the topic, hook, title, caption or hashtags."""
+    """D21 by keyword: no `gate.reject_topics` entry in the topic, hook, title, caption, commentary or
+    hashtags."""
     fields = [("topic", clip.topic), *_written_fields(clip)]
     hits = text.find_terms(fields, clip.hashtags, topics)
     failures: _Failures = (

@@ -96,6 +96,7 @@ def test_an_unknown_clip_is_an_error() -> None:
         ({"music_ratio": 0.05}, None, "music_strict"),
         ({"hook": "The final mission is wild"}, None, "spoiler_in_text"),
         ({"hashtags": ["gta", "FinalMission"]}, None, "spoiler_in_text"),
+        ({"commentary": "The ending nobody expected"}, None, "spoiler_in_text"),
         ({"spoiler": True}, None, "spoiler_blocked"),
         ({"score": 6}, None, "score_too_low"),
         ({"score": None}, None, "score_unknown"),

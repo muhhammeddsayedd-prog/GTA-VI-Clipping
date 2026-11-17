@@ -72,6 +72,12 @@ def test_a_good_express_clip_is_approved_in_the_spike_lane() -> None:
     assert (decision.profile, decision.lane, decision.demoted) == ("express", "spike", False)
 
 
+def test_a_clip_judged_by_the_hourly_profile_never_stays_in_the_spike_lane() -> None:
+    """Only the express profile may send a clip to be posted at once."""
+    decision = run(good_clip(profile="hourly", lane="spike", score=7))
+    assert decision.approved and (decision.profile, decision.lane) == ("hourly", "hourly")
+
+
 def test_the_result_document_has_the_shape_of_docs_10() -> None:
     document = run(good_clip(music_ratio=0.22)).as_json()
     assert document["profile"] == "hourly" and document["passed"] is False
@@ -408,6 +414,7 @@ def test_no_block_date_means_no_date_block() -> None:
         {"hashtags": ("gta", "#Ending")},
         {"hashtags": ("Spoiler",)},
         {"title": "Huge PLOT   TWIST nobody saw coming"},
+        {"commentary": "This is the final mission"},
     ],
 )
 def test_spoiler_terms_in_the_written_text(field_values: dict[str, Any]) -> None:
@@ -491,6 +498,7 @@ def test_an_empty_flag_object_means_no_flag() -> None:
         {"hashtags": ("gambling",)},
         {"caption": "this sponsored segment went wrong"},
         {"hook": "SEXUAL content warning"},
+        {"commentary": "pure gambling"},
     ],
 )
 def test_reject_topics_in_the_written_text(field_values: dict[str, Any]) -> None:

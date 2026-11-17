@@ -142,6 +142,7 @@ class ClipFacts:
     music_frames: tuple[bool, ...] | None = None  # the detector's per-second flags, when known
     subtitle_drift_s: float | None = None  # measured drift, when a second transcription exists
     is_compilation: bool = False
+    commentary: str | None = None  # P2's optional on-screen remark
 
 
 @dataclass(frozen=True, slots=True)
