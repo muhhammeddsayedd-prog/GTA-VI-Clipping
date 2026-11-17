@@ -27,6 +27,7 @@ import sys
 import time
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, Final, Literal
 from urllib.parse import quote
 
@@ -109,7 +110,7 @@ def build_search_url(term: str, sp: str) -> str:
     return f"{RESULTS_URL}?search_query={quote(term)}&sp={quote(sp)}"
 
 
-def build_command(url: str, limit: int, proxy: str | None) -> list[str]:
+def build_command(url: str, limit: int, proxy: str | None, cookies_file: Path | None = None) -> list[str]:
     """The yt-dlp command of one flat search (the proxy URL embeds credentials: never log the command)."""
     command = [
         sys.executable,
@@ -129,6 +130,8 @@ def build_command(url: str, limit: int, proxy: str | None) -> list[str]:
     ]
     if proxy:
         command += ["--proxy", proxy]
+    if cookies_file is not None:
+        command += ["--cookies", str(cookies_file)]
     command.append(url)
     return command
 
@@ -187,15 +190,28 @@ class YtDlpSearch:
     """Flat YouTube searches. Safe to call from several threads (each search is its own process)."""
 
     def __init__(
-        self, proxy: str | None = None, timeout_s: float = DEFAULT_TIMEOUT_S, runner: Runner | None = None
+        self,
+        proxy: str | None = None,
+        timeout_s: float = DEFAULT_TIMEOUT_S,
+        runner: Runner | None = None,
+        cookies_file: Path | None = None,
     ) -> None:
         self._proxy = proxy
         self._timeout_s = timeout_s
         self._runner = runner or run_subprocess
+        # Owner-supplied cookies, only when `discovery.ytdlp_use_cookies` is on and the file exists.
+        self._cookies_file = cookies_file
 
     def is_configured(self) -> bool:
         """yt-dlp needs no credentials."""
         return True
+
+    @property
+    def access(self) -> str:
+        """How the searches reach YouTube, without any value: `direct`, `proxy`, `cookies` or
+        `proxy+cookies`. The source health uses it to notice that the owner added a proxy or cookies."""
+        aids = [name for name, used in (("proxy", self._proxy), ("cookies", self._cookies_file)) if used]
+        return "+".join(aids) or "direct"
 
     def search(
         self,
@@ -214,7 +230,7 @@ class YtDlpSearch:
         """
         log = get_logger(SERVICE)
         sp = build_sp(live=True) if live else build_sp(date_code=date_code_for(within_hours), sort=sort)
-        command = build_command(build_search_url(term, sp), limit, self._proxy)
+        command = build_command(build_search_url(term, sp), limit, self._proxy, self._cookies_file)
         error = ""
         for attempt in range(1, ATTEMPTS + 1):
             started = time.monotonic()
@@ -234,6 +250,8 @@ class YtDlpSearch:
                 )
                 return rows[:limit]
             error = (stderr.strip().splitlines() or [f"exit code {code}"])[-1][:300]
+            if self._proxy:
+                error = error.replace(self._proxy, "<proxy>")  # the proxy URL embeds credentials
             log.warning(
                 "ytdlp_search_failed",
                 term=term,

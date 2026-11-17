@@ -211,6 +211,7 @@ def test_pass_creates_creators_candidates_sessions_and_video_jobs() -> None:
     assert {source["name"]: source["status"] for source in body["sources"]} == {
         "twitch": "ok",
         "youtube_search": "ok",
+        "youtube_search_api": "skipped",
         "youtube_rss": "skipped",
         "apify": "ok",
         "youtube_api": "ok",
