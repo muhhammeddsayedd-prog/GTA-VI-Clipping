@@ -246,6 +246,7 @@ def test_discovery_guardian_health_usage_settings(client: TestClient, world: dic
         "transcribe",
         "apify_daily",
         "apify_monthly",
+        "proxy",
         "month_ceiling",
     }
     assert usage["operations"][0]["calls"] == 1

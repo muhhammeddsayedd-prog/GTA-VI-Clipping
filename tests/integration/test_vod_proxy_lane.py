@@ -7,8 +7,8 @@ from datetime import timedelta
 from pathlib import Path
 
 import pytest
+import test_vod_process
 from test_vod_process import BOT_CHECK, NOW, Lane, queued, video_row
-from test_vod_process import lane as lane_fixture  # noqa: F401  (the `lane` fixture)
 
 from sixstars import config, db, settings, usage
 from sixstars.clients.fakes import FakeProxyProbe
@@ -17,6 +17,8 @@ from sixstars.factory.pipeline import next_budget_reset
 from sixstars.guardian import health as guardian
 from sixstars.guardian import incidents
 from sixstars.vod import proxy
+
+lane = test_vod_process.lane  # the fixture, shared with test_vod_process
 
 DATAIMPULSE = "http://user:s3cret@gw.dataimpulse.com:10000"
 PROXY_407 = "ERROR: Unable to download webpage: Tunnel connection failed: 407 Proxy Authentication Required"
