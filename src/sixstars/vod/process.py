@@ -272,8 +272,13 @@ def _blocked(video: Video, cfg: VodConfig, access: Access, detail: str, deps: De
     refusal = proxy_refusal(detail)
     if refusal is not None:
         detail = refusal.described  # "proxy refused: 407 Proxy Authentication Required"
-    store.note_block(video, detail, access.described)
-    health.record_blocked(video.platform, deps.now(), detail, access.described)  # read by discovery
+    # Through sticky proxy sessions every job has its own exit IPs, so a video refused on all of them
+    # says nothing about the next video: only this one waits. A refusal by the proxy account (401 / 402 /
+    # 407) or by the server's own address is the platform's state: every video waits, discovery holds.
+    per_video = access.sticky_port is not None and not proxy.is_account_failure(detail)
+    if not per_video:
+        store.note_block(video, detail, access.described)
+        health.record_blocked(video.platform, deps.now(), detail, access.described)  # read by discovery
     if store.claim_block_notification(video.platform, cfg.blocked_notify_interval_s):
         waiting = store.waiting_videos(video.platform)
         if refusal is not None:
