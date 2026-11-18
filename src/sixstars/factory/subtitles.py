@@ -10,8 +10,11 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 
 from sixstars.factory.bleep import ProfanityMatcher, mask_word, normalize_word
-from sixstars.factory.escape import ass_color, ass_field, ass_override_color, ass_text
+from sixstars.factory.escape import ass_color, ass_field, ass_override_color, ass_text, ass_text_emoji
 from sixstars.factory.layout import (
+    A_GAMEPLAY_H,
+    B_GAMEPLAY_H,
+    B_GAMEPLAY_Y,
     BADGE_Y,
     CAPTION_Y_A,
     CAPTION_Y_B,
@@ -21,7 +24,7 @@ from sixstars.factory.layout import (
     REF_WIDTH,
     LayoutKind,
 )
-from sixstars.factory.lines import Line
+from sixstars.factory.lines import Chunk, Line, chunk_line, collapse_repeats
 from sixstars.factory.overlays import (
     BADGE_GAP,
     BADGE_HEIGHT,
@@ -35,6 +38,7 @@ from sixstars.factory.overlays import (
     hook_events,
 )
 from sixstars.factory.params import FactoryParams
+from sixstars.factory.style import HookMode, StyleRules
 from sixstars.factory.textfit import TextMeasurer, estimate_text_width
 
 WHITE = "#FFFFFF"
@@ -46,9 +50,24 @@ WORD_GAP = "{\\fsp" + str(WORD_GAP_EXTRA) + "} {\\fsp0}"
 KEYWORD_POP = "\\t(0,80,\\fscx118\\fscy118)\\t(80,160,\\fscx100\\fscy100)"
 
 
+# docs/27: every caption chunk pops in (80% -> 110% -> 100%); a keyword chunk pops harder.
+CHUNK_POP = "\\fscx80\\fscy80\\t(0,60,\\fscx110\\fscy110)\\t(60,120,\\fscx100\\fscy100)"
+CHUNK_KEYWORD_POP = "\\fscx80\\fscy80\\t(0,70,\\fscx125\\fscy125)\\t(70,150,\\fscx100\\fscy100)"
+# docs/27: the payoff emoji, centred on the gameplay, pops in big for 1.5 s.
+PAYOFF_EMOJI_SIZE = 230
+PAYOFF_EMOJI_S = 1.5
+PAYOFF_POP = "\\fscx30\\fscy30\\t(0,120,\\fscx115\\fscy115)\\t(120,200,\\fscx100\\fscy100)"
+LAYER_PAYOFF = 8
+
+
 @dataclass(frozen=True, slots=True)
 class SubtitleStyle:
-    """Caption look fixed by docs/09 section 4 (size 78, outline 6, soft 50% shadow 3, bold)."""
+    """Caption look. The defaults are the classic look of docs/09 section 4 (size 78, outline 6, soft 50%
+    shadow 3, bold, whole lines); `from_rules` gives the chunked look of docs/27.
+
+    `chunk_words` 0 shows whole lines with the spoken word highlighted; otherwise captions are chunks of at
+    most `chunk_words` words and `chunk_chars` characters. `font` empty means `factory.font`.
+    """
 
     size: int = 78
     outline: int = 6
@@ -58,6 +77,30 @@ class SubtitleStyle:
     min_size: int = 48
     hold_s: float = 0.3
     credit_gap: int = 14
+    chunk_words: int = 0
+    chunk_chars: int = 22
+    caps: bool = False
+    font: str = ""
+
+    @classmethod
+    def from_rules(cls, rules: StyleRules) -> "SubtitleStyle":
+        """The caption look for a `factory.style`: classic for whole lines, else heavy capitals with a thick
+        outline and a hard drop shadow."""
+        if not rules.chunked:
+            return cls()
+        size = rules.caption_size
+        return cls(
+            size=size,
+            outline=max(4, round(size * 0.07)),
+            shadow=max(2, round(size * 0.045)),
+            shadow_alpha=0x00,
+            min_size=max(40, size // 2),
+            hold_s=0.25,
+            chunk_words=rules.caption_words,
+            chunk_chars=rules.caption_chars,
+            caps=rules.caption_caps,
+            font=rules.caption_font,
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -143,6 +186,17 @@ def caption_events(
     """
     style = style or SubtitleStyle()
     keywords = keywords or {}
+    if style.chunk_words > 0:
+        return chunk_events(
+            lines,
+            layout=layout,
+            params=params,
+            duration_s=duration_s,
+            keywords=keywords,
+            profanity=profanity,
+            style=style,
+            measure=measure,
+        )
     accent = ass_override_color(params.accent_color)
     bottom = round(caption_bottom(layout, params, style))
     max_width = REF_WIDTH - 2 * style.margin_x
@@ -174,6 +228,114 @@ def caption_events(
     return events
 
 
+def _display_words(line: Line, params: FactoryParams, profanity: ProfanityMatcher | None) -> list[str]:
+    texts = [word.text for word in line.words]
+    if params.bleep and profanity is not None:
+        for i in profanity.find(texts):
+            texts[i] = mask_word(texts[i])
+    return texts
+
+
+def chunk_events(
+    lines: Sequence[Line],
+    *,
+    layout: LayoutKind,
+    params: FactoryParams,
+    duration_s: float,
+    keywords: Mapping[int, Sequence[str]],
+    profanity: ProfanityMatcher | None,
+    style: SubtitleStyle,
+    measure: TextMeasurer = estimate_text_width,
+) -> list[str]:
+    """Caption Dialogue lines in the chunked look of docs/27: one event per chunk of one or two words.
+
+    Each chunk pops in when its first word is spoken and stays until the next chunk (or `hold_s` after its
+    last word). Keyword words are in the accent colour and their chunk pops harder; a chunk said again
+    straight away shows once with `X2`. Profanity is masked when `factory.bleep` is on, and a chunk too
+    wide for the frame gets a smaller font.
+    """
+    accent = ass_override_color(params.accent_color)
+    white = ass_override_color(WHITE)
+    bottom = round(caption_bottom(layout, params, style))
+    max_width = REF_WIDTH - 2 * style.margin_x
+    ordered = sorted(lines, key=lambda line: line.start_s)
+    shown = {line.index: _display_words(line, params, profanity) for line in ordered}
+    flags = {
+        line.index: keyword_flags([word.text for word in line.words], keywords.get(line.index, ()))
+        for line in ordered
+    }
+    chunks: list[Chunk] = []
+    for line in ordered:
+        chunks += chunk_line(line, style.chunk_words, style.chunk_chars)
+    chunks = collapse_repeats(ordered, chunks)
+    events: list[str] = []
+    for n, chunk in enumerate(chunks):
+        start = max(0.0, chunk.start_s)
+        end = min(chunk.end_s + style.hold_s, duration_s)
+        if n + 1 < len(chunks):
+            end = min(end, chunks[n + 1].start_s)
+        if round(end * 100) <= round(start * 100):
+            continue
+        texts = [shown[chunk.line_index][i] for i in chunk.words]
+        if style.caps:
+            texts = [text.upper() for text in texts]
+        if chunk.repeat > 1:
+            texts[-1] = f"{texts[-1]} X{chunk.repeat}"
+        marked = [flags[chunk.line_index][i] for i in chunk.words]
+        width = measure(" ".join(texts), style.size) + WORD_GAP_EXTRA * (len(texts) - 1)
+        size = style.size if width <= max_width else max(style.min_size, int(style.size * max_width / width))
+        pop = CHUNK_KEYWORD_POP if any(marked) else CHUNK_POP
+        prefix = (
+            f"{{\\an2\\pos({REF_WIDTH // 2},{bottom})"
+            + (f"\\fs{size}" if size != style.size else "")
+            + pop
+            + "}"
+        )
+        parts = [
+            f"{{\\1c{accent}}}{ass_text(text)}{{\\1c{white}}}" if keyword else ass_text(text)
+            for text, keyword in zip(texts, marked, strict=True)
+        ]
+        events.append(dialogue(LAYER_CAPTION, start, end, "Caption", prefix + WORD_GAP.join(parts)))
+    return events
+
+
+def payoff_events(emoji: str, *, payoff_s: float, duration_s: float, layout: LayoutKind) -> list[str]:
+    """The payoff emoji (docs/27): big, centred on the gameplay, popping in at `payoff_s` for 1.5 s."""
+    text = " ".join(emoji.split())
+    if not text or not 0 <= payoff_s < duration_s:
+        return []
+    centre_y = A_GAMEPLAY_H // 2 if layout == "A" else B_GAMEPLAY_Y + B_GAMEPLAY_H // 2
+    end = min(payoff_s + PAYOFF_EMOJI_S, duration_s)
+    tags = f"{{\\an5\\pos({REF_WIDTH // 2},{centre_y})\\fs{PAYOFF_EMOJI_SIZE}{PAYOFF_POP}}}"
+    return [dialogue(LAYER_PAYOFF, payoff_s, end, "Caption", tags + ass_text_emoji(text))]
+
+
+def hook_box_top(params: FactoryParams, *, live_badge: bool) -> float:
+    """Top of the hook box on the reference canvas: below the LIVE badge on spike clips, inside the safe
+    zone."""
+    zone = safe_zone(params)
+    badge_top = max(float(BADGE_Y), zone.top)
+    top = max(float(HOOK_TOP), zone.top)
+    if live_badge:
+        top = max(top, badge_top + BADGE_HEIGHT + BADGE_GAP)
+    return min(top, zone.bottom - (HOOK_BOTTOM - HOOK_TOP))
+
+
+def title_bar_top(params: FactoryParams, *, live_badge: bool) -> int:
+    """Top of the docs/27 title bar on the reference canvas: the top of the safe zone (about where the
+    reference puts it), or below the LIVE badge on spike clips."""
+    zone = safe_zone(params)
+    top = zone.top
+    if live_badge:
+        top = max(top, max(float(BADGE_Y), zone.top) + BADGE_HEIGHT + BADGE_GAP)
+    return round(top)
+
+
+def hook_box_bottom(params: FactoryParams, *, live_badge: bool) -> float:
+    """Bottom of the hook box on the reference canvas."""
+    return hook_box_top(params, live_badge=live_badge) + (HOOK_BOTTOM - HOOK_TOP)
+
+
 def _style(
     name: str, font: str, size: int, primary: str, outline_color: str, back: str, border: str, margin: int
 ) -> str:
@@ -195,9 +357,10 @@ def _styles(params: FactoryParams, style: SubtitleStyle) -> list[str]:
         "Alignment, MarginL, MarginR, MarginV, Encoding"
     )
     caption_border = f"{style.outline},{style.shadow},2"
+    caption_font = ass_field(style.font) if style.font else font
     return [
         fmt,
-        _style("Caption", font, style.size, white, black, soft_black, caption_border, style.margin_x),
+        _style("Caption", caption_font, style.size, white, black, soft_black, caption_border, style.margin_x),
         _style("Hook", font, 56, black, white, black, "0,0,5", 0),
         _style("Badge", font, BADGE_TEXT_SIZE, white, black, black, "0,0,4", 0),
         _style(
@@ -226,19 +389,22 @@ def build_ass(
     live_badge: bool = False,
     style: SubtitleStyle | None = None,
     measure: TextMeasurer = estimate_text_width,
+    hook_mode: HookMode = "box",
+    payoff_s: float | None = None,
+    payoff_emoji: str | None = None,
+    caption_measure: TextMeasurer | None = None,
 ) -> str:
-    """The complete `.ass` file for one clip: captions plus hook box, LIVE badge and creator credit.
+    """The complete `.ass` file for one clip: captions plus hook box, LIVE badge, creator credit and the
+    payoff emoji.
 
     `duration_s` is the clip length without the end card; nothing is drawn after it. On spike-lane clips
-    (`live_badge`) the hook box moves down so it clears the badge.
+    (`live_badge`) the hook box moves down so it clears the badge. With `hook_mode` `title_bar` the hook
+    stays for the whole clip instead of `factory.hook_seconds`. `payoff_s` is in clip time.
     """
     style = style or SubtitleStyle()
     zone = safe_zone(params)
     badge_top = max(float(BADGE_Y), zone.top)
-    hook_top = max(float(HOOK_TOP), zone.top)
-    if live_badge:
-        hook_top = max(hook_top, badge_top + BADGE_HEIGHT + BADGE_GAP)
-    hook_top = min(hook_top, zone.bottom - (HOOK_BOTTOM - HOOK_TOP))
+    hook_top = hook_box_top(params, live_badge=live_badge)
     events: list[str] = []
     if creator:
         events += credit_events(creator, end_s=duration_s, bottom=credit_bottom(layout, params, style))
@@ -250,12 +416,15 @@ def build_ass(
         keywords=keywords,
         profanity=profanity,
         style=style,
-        measure=measure,
+        measure=caption_measure or measure,
     )
     if live_badge:
         events += badge_events(end_s=duration_s, top=badge_top, measure=measure)
     if hook:
-        events += hook_events(hook, end_s=min(params.hook_seconds, duration_s), top=hook_top, measure=measure)
+        hook_end = duration_s if hook_mode == "title_bar" else min(params.hook_seconds, duration_s)
+        events += hook_events(hook, end_s=hook_end, top=hook_top, measure=measure)
+    if payoff_s is not None and payoff_emoji:
+        events += payoff_events(payoff_emoji, payoff_s=payoff_s, duration_s=duration_s, layout=layout)
     header = [
         "[Script Info]",
         "ScriptType: v4.00+",

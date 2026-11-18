@@ -94,3 +94,7 @@ Grab one frame at the window middle; send to the writer model with vision; it re
 - Scratch: `$DATA_DIR/render/<clip_id>/` (deleted after upload).
 - Storage key: `clips/<env>/<yyyy>/<mm>/<dd>/<clip_id>.mp4`.
 - Keep a local copy in `$DATA_DIR/ready/<clip_id>.mp4` until posted (posting uploads the local file to Upload-Post).
+
+## 10. Editing style (`factory.style`)
+
+Sections 4 to 6 describe the classic look. With the setting `factory.style` (migration 0021) the factory edits like the viral references of docs/27: captions of one or two words in Anton capitals that pop in on the seam, the hook as a title bar for the whole clip, hard punch-ins to a full-frame facecam on the loudest moments (an extra `ebur128` pass over the window audio places them), a step zoom on the gameplay every 2.5 s, whoosh/impact on each punch-in and an emoji with a bass hit at the clip writer's `payoff_s`, a compressor before loudnorm, and no end card. Layout A keeps gameplay on top. Every decision is logged as `clip_edit_effects`. Without the setting the classic look is unchanged.

@@ -26,6 +26,8 @@ def test_fields_match_the_documented_factory_settings_one_to_one() -> None:
     assert documented, "no factory.* rows found in docs/16"
     # `factory.cut_snap` is a rule of the cut, not of the look: `FactoryConfig.snap` reads it.
     documented.remove("factory.cut_snap")
+    # `factory.style` is one JSON setting read by `FactoryConfig.style` (`StyleRules`), docs/27.
+    documented.remove("factory.style")
     assert list(FactoryParams.setting_keys()) == documented
 
 

@@ -6,6 +6,7 @@ import json
 import math
 from collections.abc import Sequence
 from dataclasses import dataclass
+from pathlib import PurePath
 
 from sixstars.factory.bleep import BLEEP_FREQUENCY_HZ, BLEEP_GAIN_DB, Span
 from sixstars.factory.escape import render_filter
@@ -32,10 +33,35 @@ class LoudnormMeasurement:
 
 @dataclass(frozen=True, slots=True)
 class SfxPlan:
-    """Keyword pop sound: which ffmpeg input holds it and when (seconds from clip start) it plays."""
+    """A sound effect: which ffmpeg input holds it, when (seconds from clip start) it plays, how loud."""
 
     input_index: int
     times_s: tuple[float, ...]
+    gain_db: float = SFX_GAIN_DB
+
+
+@dataclass(frozen=True, slots=True)
+class SfxTrack:
+    """A sound effect file and the clip times it plays at (docs/27 whoosh, impact, payoff hit)."""
+
+    path: PurePath
+    times_s: tuple[float, ...]
+
+
+# docs/27: a compressor before loudness normalisation gives the dense, close sound of the references
+# (speech that stays loud between words instead of dipping).
+COMPRESSOR = (
+    ("threshold", "-20dB"),
+    ("ratio", "4"),
+    ("attack", "5"),
+    ("release", "80"),
+    ("makeup", "2"),
+)
+
+
+def compressor_filter() -> str:
+    """The speech compressor of `factory.style.compress`."""
+    return render_filter("acompressor", list(COMPRESSOR))
 
 
 def _seconds(value: float) -> str:
@@ -142,6 +168,8 @@ def build_audio_filters(
     duck_spans: Sequence[Span] = (),
     duck_db: float = 0.0,
     sfx: SfxPlan | None = None,
+    extra_sfx: Sequence[SfxPlan] = (),
+    compress: bool = False,
     measured: LoudnormMeasurement | None = None,
     report: bool = False,
     out: str = "aout",
@@ -181,7 +209,11 @@ def build_audio_filters(
     if sfx is not None and sfx.times_s:
         chains += _sfx_filters(sfx, duration_s, mixed, "a_sfx")
         mixed = "a_sfx"
+    for n, plan in enumerate(plan for plan in extra_sfx if plan.times_s):
+        chains += _sfx_filters(plan, duration_s, mixed, f"a_fx{n}")
+        mixed = f"a_fx{n}"
     tail = [
+        *([compressor_filter()] if compress else []),
         loudnorm_filter(target_lufs, measured, report=report),
         render_filter("aresample", [("out_sample_rate", str(SAMPLE_RATE))]),
         fmt,
@@ -213,7 +245,7 @@ def _sfx_filters(sfx: SfxPlan, duration_s: float, source: str, out: str) -> list
         return [f"[{source}]anull[{out}]"]
     fmt = render_filter("aformat", [("sample_fmts", "fltp"), ("channel_layouts", _CHANNEL_LAYOUT)])
     resample = render_filter("aresample", [("out_sample_rate", str(SAMPLE_RATE))])
-    gain = render_filter("volume", [("volume", f"{SFX_GAIN_DB:g}dB")])
+    gain = render_filter("volume", [("volume", f"{sfx.gain_db:g}dB")])
     labels = [f"{out}_p{i}" for i in range(len(times))]
     chains = [
         f"[{sfx.input_index}:a]{resample},{fmt},{gain},"

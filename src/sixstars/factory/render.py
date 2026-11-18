@@ -7,9 +7,19 @@ express renders. Arguments are lists, never shell strings.
 from dataclasses import dataclass, field
 from pathlib import PurePath
 
-from sixstars.factory.audio import LoudnormMeasurement, SfxPlan, build_audio_filters
+from sixstars.factory.audio import SFX_GAIN_DB, LoudnormMeasurement, SfxPlan, SfxTrack, build_audio_filters
 from sixstars.factory.bleep import Span
-from sixstars.factory.layout import Geometry, Layout, LayoutA, layout_filters
+from sixstars.factory.escape import normalize_filter_path, render_filter
+from sixstars.factory.layout import (
+    REF_HEIGHT,
+    REF_WIDTH,
+    Geometry,
+    Layout,
+    LayoutA,
+    PunchIns,
+    ZoomCut,
+    layout_filters,
+)
 from sixstars.factory.overlays import (
     SEAM_TRACK_COLOR,
     ass_filter,
@@ -67,6 +77,21 @@ class RenderSpec:
     zoom: bool = True
     loudnorm: LoudnormMeasurement | None = None
     nvenc_available: bool = False
+    # docs/27 edit effects (all off by default: the classic look).
+    zoom_cut: ZoomCut | None = None
+    punch_ins: PunchIns | None = None
+    sfx_tracks: tuple[SfxTrack, ...] = ()
+    sfx_gain_db: float = SFX_GAIN_DB
+    compress: bool = False
+    watermark_y: int | None = None
+    # docs/27 title bar: a PNG drawn on the 1080x1920 reference canvas, centred, its top at `title_top`
+    # (reference pixels), shown for the whole clip.
+    title_png: PurePath | None = None
+    title_top: int = 0
+
+    @property
+    def _active_tracks(self) -> tuple[SfxTrack, ...]:
+        return tuple(track for track in self.sfx_tracks if track.times_s)
 
     @property
     def clip_duration_s(self) -> float:
@@ -108,12 +133,18 @@ def build_video_filters(spec: RenderSpec) -> list[str]:
         duration_s=duration,
         zoom=spec.zoom,
         out="v_layout",
+        zoom_cut=spec.zoom_cut,
+        punch_ins=spec.punch_ins,
     )
+    # The seam and the progress bar belong to the split frame: they are hidden while a punch-in fills it.
+    shown = None
+    if spec.punch_ins is not None and spec.punch_ins.spans:
+        shown = f"not({spec.punch_ins.expression()})"
     # The progress bar goes under the text. In layout A it runs along the seam (the seam is its track), so
     # it never crosses the streamer's face; in layout B it sits at the bottom of the safe zone.
     bar_source, bar_y = "v_layout", None
     if isinstance(spec.layout, LayoutA):
-        chains.append(f"[v_layout]{seam_filter(geometry, SEAM_TRACK_COLOR)}[v_seam]")
+        chains.append(f"[v_layout]{seam_filter(geometry, SEAM_TRACK_COLOR, enable=shown)}[v_seam]")
         bar_source = "v_seam"
         bar_y = geometry.a_seam_y - max(0, (geometry.progress_h - geometry.a_seam_h) // 2)
     chains += progress_filters(
@@ -124,7 +155,12 @@ def build_video_filters(spec: RenderSpec) -> list[str]:
         source=bar_source,
         out="v_progress",
         y=bar_y,
+        enable=shown,
     )
+    text_source = "v_progress"
+    if spec.title_png is not None:
+        chains += title_filters(spec, geometry, source="v_progress", out="v_titled")
+        text_source = "v_titled"
     text_chain = [ass_filter(spec.ass_path, spec.fonts.fonts_dir)]
     watermark = watermark_filter(
         params.watermark,
@@ -132,15 +168,16 @@ def build_video_filters(spec: RenderSpec) -> list[str]:
         font_name=params.font,
         fonts=spec.fonts,
         start_s=min(params.hook_seconds, duration) if spec.hook_shown else 0.0,
+        y=spec.watermark_y,
     )
     if watermark is not None:
         text_chain.append(watermark)
     finish = f"trim=duration={_seconds(duration)},setpts=PTS-STARTPTS,setsar=1,format=yuv420p"
     text_chain.append(finish)
     if spec.end_card_s <= 0:
-        chains.append(f"[v_progress]{','.join(text_chain)}[{VIDEO_OUT}]")
+        chains.append(f"[{text_source}]{','.join(text_chain)}[{VIDEO_OUT}]")
         return chains
-    chains.append(f"[v_progress]{','.join(text_chain)}[v_main]")
+    chains.append(f"[{text_source}]{','.join(text_chain)}[v_main]")
     chains += end_card_filters(
         geometry=geometry,
         fps=params.fps,
@@ -157,10 +194,38 @@ def build_video_filters(spec: RenderSpec) -> list[str]:
     return chains
 
 
-def _audio_filters(spec: RenderSpec, *, report: bool, with_end_card: bool) -> list[str]:
-    sfx = None
+def title_filters(spec: RenderSpec, geometry: Geometry, *, source: str, out: str) -> list[str]:
+    """The title bar PNG read with `movie`, scaled from the reference canvas to the output, laid over
+    `source` centred with its top at `spec.title_top` (one still frame, held for the whole clip)."""
+    assert spec.title_png is not None
+    scale = geometry.width / REF_WIDTH
+    image = [
+        render_filter("movie", [("filename", normalize_filter_path(str(spec.title_png)))]),
+        "format=rgba",
+    ]
+    if geometry.width != REF_WIDTH:
+        image.append(render_filter("scale", [("w", f"trunc(iw*{scale:.4f}/2)*2"), ("h", "-2")]))
+    y = round(spec.title_top * geometry.height / REF_HEIGHT)
+    overlay = render_filter("overlay", [("x", "(W-w)/2"), ("y", str(y))])
+    return [f"{','.join(image)}[{out}_img]", f"[{source}][{out}_img]{overlay}[{out}]"]
+
+
+def _sfx_plans(spec: RenderSpec) -> tuple[SfxPlan | None, list[SfxPlan]]:
+    """The keyword pop (input 1 when present) and one plan per extra sound effect, in input order."""
+    index = 1
+    pop = None
     if spec.sfx_path is not None and spec.sfx_times_s:
-        sfx = SfxPlan(input_index=1, times_s=spec.sfx_times_s)
+        pop = SfxPlan(input_index=index, times_s=spec.sfx_times_s, gain_db=spec.sfx_gain_db)
+        index += 1
+    extra: list[SfxPlan] = []
+    for track in spec._active_tracks:
+        extra.append(SfxPlan(input_index=index, times_s=track.times_s, gain_db=spec.sfx_gain_db))
+        index += 1
+    return pop, extra
+
+
+def _audio_filters(spec: RenderSpec, *, report: bool, with_end_card: bool) -> list[str]:
+    sfx, extra = _sfx_plans(spec)
     return build_audio_filters(
         source="0:a" if spec.source.has_audio else None,
         duration_s=spec.clip_duration_s,
@@ -170,6 +235,8 @@ def _audio_filters(spec: RenderSpec, *, report: bool, with_end_card: bool) -> li
         duck_spans=spec.duck_spans,
         duck_db=spec.params.music_duck_db,
         sfx=sfx,
+        extra_sfx=extra,
+        compress=spec.compress,
         measured=None if report else spec.loudnorm,
         report=report,
         out=AUDIO_OUT,
@@ -197,6 +264,8 @@ def _input_args(spec: RenderSpec) -> list[str]:
     ]
     if spec.sfx_path is not None and spec.sfx_times_s:
         args += ["-i", _path_arg(spec.sfx_path)]
+    for track in spec._active_tracks:
+        args += ["-i", _path_arg(track.path)]
     return args
 
 
@@ -237,6 +306,29 @@ def build_loudnorm_measure_command(spec: RenderSpec, *, ffmpeg: str = "ffmpeg") 
         "-map",
         f"[{AUDIO_OUT}]",
         "-vn",
+        "-f",
+        "null",
+        "-",
+    ]
+
+
+def build_envelope_command(spec: RenderSpec, *, ffmpeg: str = "ffmpeg") -> list[str]:
+    """Measures the momentary loudness of the clip's source audio every 100 ms (`ebur128`), for placing the
+    punch-ins; read the readings from stderr with `effects.parse_momentary`. Needs a source with audio."""
+    return [
+        ffmpeg,
+        "-hide_banner",
+        "-nostdin",
+        "-nostats",
+        "-ss",
+        _seconds(spec.window.start_s),
+        "-t",
+        _seconds(spec.clip_duration_s),
+        "-i",
+        _path_arg(spec.source.path),
+        "-vn",
+        "-af",
+        "ebur128",
         "-f",
         "null",
         "-",
