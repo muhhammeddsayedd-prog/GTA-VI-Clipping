@@ -36,7 +36,8 @@ select
    where provider ilike 'anthropic%%' and created_at >= a and created_at < b) ai_usd,
  (select count(*) from clips, w where approved_at >= a and approved_at < b
    and (spoiler
-        or exists (select 1 from jsonb_each(coalesce(safety_flags, '{}'::jsonb)) f where f.value = 'true'::jsonb)
+        or exists (select 1 from jsonb_each(coalesce(safety_flags, '{}'::jsonb)) f
+                   where f.value = 'true'::jsonb)
         or exists (select 1 from posts p where p.clip_id = clips.id
                    and (coalesce(p.claim_status, 'ok') not in ('ok', 'unknown') or p.removed_at is not null))
         )) flagged_approvals,
