@@ -139,12 +139,13 @@ def test_one_video_refused_on_every_port_does_not_hold_the_others(lane: Lane, st
     settings.set("vod.confirm_with_captions", False)
     settings.set("vod.download_workers", 1)
     stubborn = lane.video("vodtest0001")
-    lane.ytdlp.section_results = [(1, "", BOT_CHECK)] * 3
+    lane.ytdlp.section_results = [(1, "", BOT_CHECK)] * 20
     lane.enqueue(stubborn)
     assert lane.run_next().kind == "download_blocked"
     no_platform_block = db.fetch_all("select 1 from events where type = 'vod.download_blocked'")
     assert no_platform_block == []
 
+    lane.ytdlp.section_results = []  # the next video is served
     other = lane.video("vodtest0002")
     lane.enqueue(other)
     assert lane.run_next().status == "done"  # not deferred by a platform-wide back-off
