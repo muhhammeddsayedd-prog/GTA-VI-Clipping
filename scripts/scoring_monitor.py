@@ -23,9 +23,11 @@ SQL = """
 with w as (select %(a)s::timestamptz a, %(b)s::timestamptz b)
 select
  (select count(*) from spikes, w where detected_at >= a and detected_at < b) spikes,
- (select count(*) from events, w where type = 'spike.confirmed' and created_at >= a and created_at < b) confirmed,
+ (select count(*) from events, w where type = 'spike.confirmed'
+   and created_at >= a and created_at < b) confirmed,
  (select count(*) from clips, w where created_at >= a and created_at < b) clips,
- (select count(*) from events, w where type = 'clip.rendered' and created_at >= a and created_at < b) rendered,
+ (select count(*) from events, w where type = 'clip.rendered'
+   and created_at >= a and created_at < b) rendered,
  (select count(*) from clips, w where approved_at >= a and approved_at < b) approved,
  (select count(*) from posts, w where published_at >= a and published_at < b and not dry_run) posted,
  (select count(*) from events, w where level = 'error' and created_at >= a and created_at < b) errors,
@@ -39,7 +41,8 @@ select
                    and (coalesce(p.claim_status, 'ok') not in ('ok', 'unknown') or p.removed_at is not null))
         )) flagged_approvals,
  (select count(*) from scoring_log, w where created_at >= a and created_at < b) scoring_log_rows,
- (select count(*) from scoring_log, w where stage = 'spike.confirm' and created_at >= a and created_at < b
+ (select count(*) from scoring_log, w where stage = 'spike.confirm'
+   and created_at >= a and created_at < b
    and (sub_scores ->> 'fast_path_overrode_reject')::boolean) fast_path_overrides,
  (select count(*) from scoring_log, w where stage = 'gate' and created_at >= a and created_at < b
    and sub_scores -> 'first_time' ->> 'score_points' is not null
@@ -82,8 +85,14 @@ def main() -> None:
     }
     print(
         json.dumps(
-            {"since": since.isoformat(), "now": now.isoformat(), "per_hour_after": after,
-             "per_hour_before": before, "triggers": triggers, "rollback": any(triggers.values())},
+            {
+                "since": since.isoformat(),
+                "now": now.isoformat(),
+                "per_hour_after": after,
+                "per_hour_before": before,
+                "triggers": triggers,
+                "rollback": any(triggers.values()),
+            },
             indent=1,
         )
     )
