@@ -491,7 +491,9 @@ def test_the_holding_window_posts_the_best_spike_of_the_batch(production: None, 
     (late_job,) = [
         j
         for j in job_rows(RETRY_JOB_TYPE)
-        if j["payload"]["clip_id"] == late  # type: ignore[index]
+        if j["payload"].get("kind") == "spike"  # type: ignore[attr-defined]
+        and j["payload"].get("clip_id") == late  # type: ignore[attr-defined]
+        and j["status"] == "queued"
     ]
     db.execute("update jobs set status = 'running' where id = %s", (late_job["id"],))
     settled = try_post_spike(late, client, clock=fixed(hold_end), job_id=int(str(late_job["id"])))
