@@ -136,7 +136,7 @@ function cutoffOf(c: Candidate, cut: Cutoffs): number | null { return c.source_t
 
 function candidateCols(cut: Cutoffs): Col<Candidate>[] {
   return [
-    { key: "who", head: "Creator", render: (c) => <Who name={c.creator.handle} p={c.platform} size={28} /> },
+    { key: "who", head: "Creator", render: (c) => <Who name={c.creator.handle} avatar={c.creator.avatar_url} p={c.platform} size={28} /> },
     { key: "type", head: "Type", render: (c) => <Badge tone={c.source_type === "live" ? "purple" : "blue"}>{c.source_type === "live" ? "live" : "VOD"}</Badge> },
     {
       key: "title", head: "Title", render: (c) => {
@@ -182,7 +182,7 @@ function CandidateDrawer({ c, onClose, cut, weights }: { c: Candidate | null; on
       {c && (
         <>
           <div className="row">
-            <Who name={c.creator.handle} p={c.platform} size={52} sub={c.title ? `“${c.title}”` : undefined} />
+            <Who name={c.creator.handle} avatar={c.creator.avatar_url} p={c.platform} size={52} sub={c.title ? `“${c.title}”` : undefined} />
             <div className="right"><Ring pct={c.trend_score} size={74} text={String(Math.round(c.trend_score))} fs={18} label={`Trend score ${Math.round(c.trend_score)}`} /></div>
           </div>
           <div className="flabel mt2">Score parts</div>

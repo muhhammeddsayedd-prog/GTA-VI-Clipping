@@ -8,8 +8,8 @@ const jakarta = Plus_Jakarta_Sans({ variable: "--font-jakarta", subsets: ["latin
 const jbmono = JetBrains_Mono({ variable: "--font-jbmono", subsets: ["latin"], weight: ["400", "500"] });
 
 export const metadata: Metadata = {
-  title: { default: "6 Stars Console", template: "%s · 6 Stars Console" },
-  description: "Private control console for the 6 Stars Clips pipeline.",
+  title: { default: "VI Stars Clippy", template: "%s · VI Stars Clippy" },
+  description: "Private control console for the VI Stars Clippy pipeline.",
   robots: { index: false, follow: false },
 };
 

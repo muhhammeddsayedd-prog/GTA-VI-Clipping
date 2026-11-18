@@ -15,7 +15,7 @@ const KEYS = ["tier", "platform", "q"];
 const DEFAULTS = {};
 
 const COLS: Col<Creator>[] = [
-  { key: "who", head: "Creator", render: (c) => <Who name={c.handle ?? c.display_name ?? c.channel_id} p={c.platform} size={32} sub={c.language ? c.language.toUpperCase() : undefined} /> },
+  { key: "who", head: "Creator", render: (c) => <Who name={c.handle ?? c.display_name ?? c.channel_id} avatar={c.avatar_url} p={c.platform} size={32} sub={c.language ? c.language.toUpperCase() : undefined} /> },
   { key: "tier", head: "Tier", mobile: "aside", render: (c) => <Badge status={c.tier} /> },
   { key: "reason", head: "Reason / evidence", render: (c) => <span className="ink2 clamp2" style={{ maxWidth: 340 }}>{c.tier_reason ?? "—"}</span> },
   { key: "fol", head: "Followers", align: "right", render: (c) => <span className="num">{fmtCompact(c.follower_count)}</span> },

@@ -19,7 +19,7 @@ const PROVIDER: Record<string, string> = { anthropic: "Anthropic", transcription
 
 export function OverviewView() {
   const q = useApi<Overview>("admin/overview", undefined, { interval: POLL.status });
-  if (q.error && !q.data) return <><PageHead title="Overview" sub="Live status of the 6 Stars pipeline" /><ErrorState error={q.error} retry={() => q.refetch()} /></>;
+  if (q.error && !q.data) return <><PageHead title="Overview" sub="Live status of the VI Stars Clippy pipeline" /><ErrorState error={q.error} retry={() => q.refetch()} /></>;
   if (!q.data) return <><PageHead title="Overview" sub="Loading live status…" /><SkeletonCards n={4} /><div className="mt2"><SkeletonCards n={4} h={120} /></div></>;
   const o = q.data;
   const hourLabels = o.posts_24h.by_hour.map((_, i) => {
@@ -33,7 +33,7 @@ export function OverviewView() {
     <>
       <PageHead
         title="Overview"
-        sub={<>Live status of the 6 Stars pipeline · {fmtDay(o.now)} · {fmtTime(o.now)} UTC</>}
+        sub={<>Live status of the VI Stars Clippy pipeline · {fmtDay(o.now)} · {fmtTime(o.now)} UTC</>}
         actions={<><RefreshBtn onClick={() => q.refetch()} spinning={q.isFetching} /><Btn kind="p" href="/reports" icon={<FileText size={15} />}>Today’s report</Btn></>}
       />
 
@@ -183,11 +183,11 @@ function PostingPanel({ items }: { items: QueueItem[] }) {
                 <span className="dbadge" style={{ background: "rgba(255,255,255,.18)", color: "#fff" }}>approved</span>
                 <div className="right row" style={{ gap: 22 }}>
                   <div><div className="lbl">Creator</div><div className="row semi" style={{ marginTop: 4, gap: 6 }}><Plat p={c.creator.platform} />{c.creator.handle}</div></div>
-                  <div className="row"><Avatar name={c.creator.handle} size={38} /><div><div className="semi">{c.lane === "spike" ? "Spike lane" : "Hourly lane"}</div><div className="lbl">{c.expires_at ? `expires ${fmtTime(c.expires_at)}` : ""}</div></div></div>
+                  <div className="row"><Avatar name={c.creator.handle} size={38} src={c.creator.avatar_url} /><div><div className="semi">{c.lane === "spike" ? "Spike lane" : "Hourly lane"}</div><div className="lbl">{c.expires_at ? `expires ${fmtTime(c.expires_at)}` : ""}</div></div></div>
                 </div>
               </div>
               <div className="row pc-media" style={{ gap: 18, marginTop: 20, alignItems: "stretch" }}>
-                <div className="pc-thumb" style={{ width: 118, flex: "none" }}><Thumb seed={c.clip_id} hook={c.hook} dur={fmtClock(c.duration_s)} /></div>
+                <div className="pc-thumb" style={{ width: 118, flex: "none" }}><Thumb seed={c.clip_id} src={c.thumb_url} hook={c.hook} dur={fmtClock(c.duration_s)} /></div>
                 <div className="g g3 grow" style={{ alignContent: "start" }}>
                   <div className="glass"><span className="ar"><ArrowUpRight size={14} /></span><div className="v">{c.score ?? "—"}</div><div className="k">Score</div></div>
                   <div className="glass"><span className="ar"><ArrowUpRight size={14} /></span><div className="v">{c.rank_score?.toFixed(2) ?? "—"}</div><div className="k">Rank score</div></div>

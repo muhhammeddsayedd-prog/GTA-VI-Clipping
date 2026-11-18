@@ -18,7 +18,7 @@ export function laneTone(lane: string) { return lane === "spike" ? "purple" : "b
 export function ClipCard({ c }: { c: Clip }) {
   return (
     <Link href={`/clips/${c.id}`} className="clipcard" aria-label={`Clip ${series(c.series_no)}: ${c.hook ?? c.title ?? ""}, ${humanize(c.status)}`}>
-      <Thumb seed={c.id} hook={c.hook} dur={fmtClock(c.duration_s)} live={c.lane === "spike" && c.source_type === "live"}>
+      <Thumb seed={c.id} src={c.thumb_url} kind={c.thumb_kind} hook={c.hook} dur={fmtClock(c.duration_s)} live={c.lane === "spike" && c.source_type === "live"}>
         <div style={{ position: "absolute", right: 8, bottom: 44 }}><Badge status={c.status} /></div>
       </Thumb>
       <div className="meta">
@@ -104,10 +104,10 @@ export function ClipPlayer({ clip }: { clip: ClipDetail }) {
     <div id="player" className="clip-player" style={{ background: "var(--dark)", borderRadius: 30, padding: 12 }}>
       {media?.reason === "ok" && media.url ? (
         <div className="thumb" style={{ width: "100%", background: "#000" }}>
-          <video key={media.url} src={media.url} controls playsInline preload="metadata" aria-label={label} onError={onVideoError} style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover" }} />
+          <video key={media.url} src={media.url} poster={clip.thumb_kind === "frame" && clip.thumb_url ? clip.thumb_url : undefined} controls playsInline preload="metadata" aria-label={label} onError={onVideoError} style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover" }} />
         </div>
       ) : (
-        <Thumb seed={clip.id} hook={gone ? null : clip.hook} dur={fmtClock(clip.duration_s)} live={clip.lane === "spike" && clip.source_type === "live"}>
+        <Thumb seed={clip.id} src={clip.thumb_url} kind={clip.thumb_kind} hook={gone ? null : clip.hook} dur={fmtClock(clip.duration_s)} live={clip.lane === "spike" && clip.source_type === "live"}>
           {(gone || m.error) && (
             <div style={{ position: "absolute", inset: 0, background: "rgba(20,20,32,.82)", display: "grid", placeItems: "center", textAlign: "center", padding: 24 }} role="status">
               <div>
