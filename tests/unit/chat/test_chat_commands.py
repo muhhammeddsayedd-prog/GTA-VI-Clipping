@@ -189,9 +189,25 @@ def test_proxy_applies_only_to_the_configured_platforms(monkeypatch: pytest.Monk
 
     monkeypatch.setenv("PROXY_URL", "http://user:pass@proxy:8080")
     config.env.cache_clear()
-    monkeypatch.setattr(settings, "get_list", lambda key: ["youtube"])
+    lists = {"downloads.proxy_platforms": ["youtube"]}
+    monkeypatch.setattr(settings, "get_list", lambda key, default=None: lists.get(key, default))
     assert net.proxy_for("youtube") == "http://user:pass@proxy:8080"
     assert net.proxy_for("twitch") is None
+
+
+def test_proxy_is_for_video_downloads_only_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Paid per GB: live recording, discovery and the chat CLI stay direct unless `proxy.lanes` says so."""
+    from sixstars import config
+
+    monkeypatch.setenv("PROXY_URL", "http://user:pass@proxy:8080")
+    config.env.cache_clear()
+    lists: dict[str, list[Any]] = {"downloads.proxy_platforms": ["youtube"]}
+    monkeypatch.setattr(settings, "get_list", lambda key, default=None: lists.get(key, default))
+    assert net.proxy_for("youtube", "vod") == "http://user:pass@proxy:8080"
+    for lane in ("live", "discovery", "chat"):
+        assert net.proxy_for("youtube", lane) is None  # type: ignore[arg-type]
+    lists["proxy.lanes"] = ["vod", "live"]
+    assert net.proxy_for("youtube", "live") == "http://user:pass@proxy:8080"
 
 
 def test_backoff_delay_schedule() -> None:

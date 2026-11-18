@@ -109,7 +109,7 @@ function usage(range: string): Usage & { range: string } {
   return {
     range,
     totals: [{ provider: "anthropic", usd: sum("anthropic") }, { provider: "openai", usd: sum("openai") }, { provider: "apify", usd: sum("apify") }, { provider: "youtube", usd: sum("youtube") }],
-    budgets: { anthropic: 25, transcribe: 5, apify_daily: 0.4, apify_monthly: 12, month_ceiling: 840 },
+    budgets: { anthropic: 25, transcribe: 5, apify_daily: 0.4, apify_monthly: 12, proxy: 3, month_ceiling: 840 },
     daily,
     operations: [
       { provider: "anthropic", operation: "clip_writer", model: "claude-sonnet-5-5", calls: 58, input_tokens: 412000, output_tokens: 61000, units: null, usd: 6.21 },

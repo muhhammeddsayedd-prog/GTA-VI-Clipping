@@ -644,6 +644,21 @@ def waiting_videos(platform: str) -> int:
     return int(row["n"]) if row is not None else 0
 
 
+def retry_waiting_now(platform: str) -> int:
+    """Run the queued jobs of the waiting (download-blocked) videos of `platform` now instead of at the end
+    of their back-off. Returns how many jobs were moved."""
+    return db.execute(
+        """
+        update jobs j set run_after = now()
+        from videos v
+        where j.status = 'queued' and j.type in ('vod.process', 'replay.scan') and j.run_after > now()
+          and j.payload ->> 'video_id' = v.id::text
+          and v.platform = %s and v.status = 'new' and v.skip_reason like 'download_blocked%%'
+        """,
+        (platform,),
+    )
+
+
 def transcribed_today_s() -> float:
     """Seconds of audio the transcript fallback has transcribed since 00:00 UTC."""
     row = db.fetch_one(

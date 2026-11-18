@@ -185,6 +185,18 @@ def vod_process(
     raise typer.Exit(code=code)
 
 
+@vod_app.command("retry-waiting")
+def vod_retry_waiting(
+    platform: str = typer.Option("youtube", "--platform", help="youtube or twitch."),
+) -> None:
+    """Run the jobs of videos waiting after a download refusal now, not at the end of their back-off."""
+    from sixstars.vod import store
+
+    with _database():
+        moved = store.retry_waiting_now(platform)
+    typer.echo(f"{moved} waiting {platform} job(s) will run now")
+
+
 @vod_app.command("scan-only")
 def vod_scan_only(
     url: str = typer.Argument(..., help="Twitch VOD or YouTube video URL."),

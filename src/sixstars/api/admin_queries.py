@@ -77,6 +77,8 @@ WRITTEN_BY_CODE = frozenset(
         "live.source_health",
         "vod.source_health",
         "vod.paused_until",
+        "proxy.health",
+        "proxy.health_checked_at",
     }
 )
 
@@ -1528,6 +1530,7 @@ def usage_view(range_name: str) -> dict[str, Any]:
             "transcribe": number(settings.get("transcribe.daily_budget_usd", None)),
             "apify_daily": number(settings.get("discovery.apify_daily_budget_usd", None)),
             "apify_monthly": number(settings.get("discovery.apify_monthly_budget_usd", None)),
+            "proxy": number(settings.get("proxy.daily_budget_usd", None)),
             "month_ceiling": number(settings.get("admin.month_ceiling_usd", None)),
         },
         "daily": daily,

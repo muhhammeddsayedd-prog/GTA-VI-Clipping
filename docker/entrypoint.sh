@@ -9,7 +9,7 @@ set -eu
 if [ "${SIXSTARS_SKIP_TOOL_UPGRADE:-0}" != "1" ]; then
   # One retry only: with no network uv gives up in a few seconds instead of half a minute.
   if UV_HTTP_RETRIES="${UV_HTTP_RETRIES:-1}" timeout "${SIXSTARS_TOOL_UPGRADE_TIMEOUT_S:-90}" \
-    uv pip install --quiet --python /app/.venv/bin/python --upgrade 'yt-dlp[default]' streamlink; then
+    uv pip install --quiet --python /app/.venv/bin/python --upgrade 'yt-dlp[default,curl-cffi]' streamlink; then
     echo '{"event":"tool_upgrade_done","level":"info","service":"entrypoint"}'
   else
     echo '{"event":"tool_upgrade_failed","level":"warning","service":"entrypoint","message":"starting with the installed yt-dlp and streamlink"}' >&2

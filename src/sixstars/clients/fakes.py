@@ -17,6 +17,7 @@ from pydantic import BaseModel
 
 from sixstars.clients.anthropic_client import AnthropicClient, Effort
 from sixstars.clients.apify import ApifyClient, ApifyRun, YouTubeItem, normalise_youtube_item
+from sixstars.clients.proxy_probe import ProbeResult, ProxyProbe
 from sixstars.clients.transcribe import Mode, Transcriber, Transcript, Word
 from sixstars.clients.twitch import TwitchClient, TwitchClip, TwitchStream, TwitchUser, TwitchVideo
 from sixstars.clients.upload_post import (
@@ -713,3 +714,15 @@ class FakeUploadPostClient(_Recorder, UploadPostClient):
             raise NotSupported(f"Upload-Post cannot delete {platform} posts")
         self.deleted.append((user, platform, post_id))
         return True
+
+
+class FakeProxyProbe(_Recorder, ProxyProbe):
+    """Answers with `result` (a working proxy by default) and records the proxy URL it was asked about."""
+
+    def __init__(self, result: ProbeResult | None = None) -> None:
+        self.calls = []
+        self.result = result or ProbeResult(True, "ok", exit_ip="203.0.113.7", duration_ms=120)
+
+    def probe(self, proxy_url: str) -> ProbeResult:
+        self._record("probe", proxy_url=proxy_url)
+        return self.result

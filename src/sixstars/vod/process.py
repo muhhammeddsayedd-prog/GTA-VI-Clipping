@@ -54,7 +54,7 @@ from sixstars.factory.pipeline import next_budget_reset
 from sixstars.logging import get_logger
 from sixstars.spikes import DetectedSpike, SpikeConfig, analyse_replay, persist_spike
 from sixstars.spikes.buckets import tokenise
-from sixstars.vod import captions, fallback, health, sections, slots, store, ytdlp
+from sixstars.vod import captions, fallback, health, proxy, sections, slots, store, ytdlp
 from sixstars.vod.captions import Track
 from sixstars.vod.common import DeferredError, Deps, VideoGoneError
 from sixstars.vod.config import VodConfig
@@ -86,6 +86,15 @@ Status = Literal["done", "deferred", "skipped", "failed", "ignored"]
 
 class SectionsFailedError(RuntimeError):
     """Window downloads of a video failed for a reason worth another attempt."""
+
+
+class _RefusedError(Exception):
+    """A step was refused (bot check, 403 on every window, the proxy failed). `_run` tries the next proxy
+    attempt, and calls `_blocked` when there is none."""
+
+    def __init__(self, detail: str) -> None:
+        super().__init__(detail)
+        self.detail = detail
 
 
 @dataclass(frozen=True, slots=True)
@@ -237,7 +246,8 @@ def blocked_message(platform: str, waiting: int, backoff_s: float, access: Acces
         f"{waiting} video(s) are waiting. They are not failed; they are tried again every {minutes} min "
         f"and the backlog drains by itself once downloads work.\n"
         f"Fix: set PROXY_URL (a residential proxy) or YOUTUBE_COOKIES_FILE (cookies of a signed-in "
-        f"account) in the server's .env and restart the workers. Now: {access.described}."
+        f"account) in the server's .env and restart the workers. Now: {access.described}"
+        + (f"; {proxy.status_line()}." if access.proxy else ".")
     )
 
 
@@ -267,9 +277,13 @@ def _blocked(video: Video, cfg: VodConfig, access: Access, detail: str, deps: De
     if store.claim_block_notification(video.platform, cfg.blocked_notify_interval_s):
         waiting = store.waiting_videos(video.platform)
         if refusal is not None:
-            notify.send(
-                "warn", PROXY_TITLE, proxy_message(video.platform, waiting, cfg.blocked_backoff_s, refusal)
+            name = proxy.provider_name(access.proxy)
+            title = (
+                f"{name} proxy failing: {refusal.summary} — top up or check credentials"
+                if name == proxy.USAGE_PROVIDER
+                else PROXY_TITLE
             )
+            notify.send("warn", title, proxy_message(video.platform, waiting, cfg.blocked_backoff_s, refusal))
         else:
             notify.send(
                 "warn",
@@ -291,6 +305,12 @@ def _gates(video: Video, cfg: VodConfig, deps: Deps, *, force: bool) -> None:
         raise DeferredError(
             "emergency_stop", "control.emergency_stop is set", now + timedelta(seconds=cfg.stop_retry_s)
         )
+    if video.platform == "youtube" and ytdlp.access_for(video.platform).proxy is not None:
+        until = proxy.budget_pause(now)
+        if until is not None:
+            raise DeferredError(
+                "proxy_budget", "the daily proxy budget (proxy.daily_budget_usd) is used up", until
+            )
     if force:
         return
     access = ytdlp.access_for(video.platform).described
@@ -322,14 +342,17 @@ def _no_slot(cfg: VodConfig, deps: Deps, limit: int, deferrals: int) -> NoReturn
     )
 
 
-def download_chat(platform: str, source_id: str, raw_path: Path | None = None) -> ReplayChat | None:
-    """Download a chat replay with the lane's access rules.
+def download_chat(
+    platform: str, source_id: str, raw_path: Path | None = None, *, access: Access | None = None
+) -> ReplayChat | None:
+    """Download a chat replay with the lane's access rules (`access`: the job's proxy session; default
+    the configured access).
 
     Same contract as `sixstars.chat.download_replay`, but the cookies file is used only when it exists:
     the chat adapter opens the file named by `YOUTUBE_COOKIES_FILE` without checking, so a path that is
     configured but not present would fail every chat download.
     """
-    access = ytdlp.access_for(platform)
+    access = access or ytdlp.access_for(platform)
     if platform == "twitch":
         return twitch_replay.download(source_id, raw_path, proxy=access.proxy)
     return youtube_replay.download(source_id, proxy=access.proxy, cookies_file=access.cookies_file)
@@ -351,7 +374,11 @@ def _load_chat(video: Video, cfg: VodConfig, access: Access, deps: Deps) -> Repl
             duration_s=video.duration_s,
             title=video.title or None,
         )
-    download = deps.chat_downloader or download_chat
+
+    def through_job_access(platform: str, source_id: str, raw_path: Path | None) -> ReplayChat | None:
+        return download_chat(platform, source_id, raw_path, access=access)
+
+    download = deps.chat_downloader or through_job_access
     try:
         replay = download(video.platform, video.source_id, None)
         if replay is None and video.platform == "youtube":
@@ -361,10 +388,10 @@ def _load_chat(video: Video, cfg: VodConfig, access: Access, deps: Deps) -> Repl
     except ChatSourceError as exc:
         failure = ytdlp.classify_failure(1, redact_proxy(str(exc), access.proxy))
         if failure.kind == "proxy":  # the proxy refused the chat request: wait, like a refused download
-            _blocked(video, cfg, access, failure.detail, deps)
+            raise _RefusedError(failure.detail) from exc
         if isinstance(exc, youtube_replay.VideoUnavailableError):
             if failure.kind == "blocked":
-                _blocked(video, cfg, access, failure.detail, deps)
+                raise _RefusedError(failure.detail) from exc
             if failure.kind == "unavailable":
                 raise VideoGoneError(str(exc)) from exc
         raise
@@ -374,6 +401,8 @@ def _load_chat(video: Video, cfg: VodConfig, access: Access, deps: Deps) -> Repl
     partial = path.with_name(path.name + ".part")
     write_jsonl(partial, replay.messages)
     partial.replace(path)
+    if access.proxy and access.meter is not None:
+        access.meter.add_bytes(proxy.size_of(path))  # about what came through the proxy
     return replay
 
 
@@ -429,7 +458,7 @@ def _captions(video: Video, cfg: VodConfig, access: Access, deps: Deps) -> Track
             runner=deps.runner,
         )
     except DownloadBlockedError as exc:
-        _blocked(video, cfg, access, exc.detail, deps)
+        raise _RefusedError(exc.detail) from exc
     except VideoUnavailableError as exc:
         raise VideoGoneError(exc.detail) from exc
     except YtDlpError as exc:
@@ -481,7 +510,7 @@ def _fallback(video: Video, cfg: VodConfig, track: Track | None, access: Access,
     except BudgetExceededError as exc:
         raise DeferredError("ai_budget", str(exc), next_budget_reset(deps.now())) from exc
     except DownloadBlockedError as exc:
-        _blocked(video, cfg, access, exc.detail, deps)
+        raise _RefusedError(exc.detail) from exc
     except VideoUnavailableError as exc:
         raise VideoGoneError(exc.detail) from exc
     return result.source
@@ -591,7 +620,7 @@ def _download_and_queue(video: Video, cfg: VodConfig, access: Access, deps: Deps
                 elif _queue_render(video, row, result, cfg):
                     stats.queued += 1
     if blocked is not None:
-        _blocked(video, cfg, access, blocked.detail, deps)
+        raise _RefusedError(blocked.detail)
     if gone is not None:
         raise VideoGoneError(gone.detail)
     if stopped:
@@ -606,7 +635,7 @@ def _download_and_queue(video: Video, cfg: VodConfig, access: Access, deps: Deps
         if stats.downloaded == 0 and all(kind == "forbidden" for kind in kinds):
             # Every window was refused with 403 and none came through: from a data-centre address this
             # is the same refusal as the bot check, so the video waits instead of failing.
-            _blocked(video, cfg, access, failures[-1].detail, deps)
+            raise _RefusedError(failures[-1].detail)
         raise SectionsFailedError(
             f"{len(failures)} window download(s) failed ({sections.summarise_failures(kinds)}): "
             f"{failures[-1].detail}"
@@ -617,7 +646,46 @@ def _download_and_queue(video: Video, cfg: VodConfig, access: Access, deps: Deps
 
 
 def _run(video: Video, cfg: VodConfig, deps: Deps, stats: _Stats) -> None:
-    access = ytdlp.access_for(video.platform)
+    """All attempts of the job. Through the proxy each attempt has its own sticky session (`proxy.py`);
+    what an attempt stored (chat, verdicts, window files) is reused by the next. A refusal moves on to the
+    next attempt; after the last one, or when the proxy account itself refused, the video waits."""
+    log = get_logger("vod")
+    proxy_cfg = proxy.ProxyConfig.load()
+    meter = ytdlp.TrafficMeter()
+    attempts = proxy.job_accesses(video.platform, deps.rand, proxy_cfg, meter)
+    work = store.work_dir(video.id)
+    try:
+        for number, access in enumerate(attempts, start=1):
+            before_bytes, before_work = meter.bytes, proxy.size_of(work)
+            try:
+                try:
+                    _attempt(video, cfg, access, deps, stats)
+                finally:
+                    if access.proxy and access.meter is not None:  # captions, fallback audio
+                        access.meter.add_bytes(proxy.size_of(work) - before_work)
+            except _RefusedError as refused:
+                proxy.note_attempt(video.id, number, access, refused.detail, meter.bytes - before_bytes)
+                if number == len(attempts) or proxy.is_account_failure(refused.detail):
+                    _blocked(video, cfg, access, refused.detail, deps)
+                upcoming = attempts[number]
+                log.warning(
+                    "vod_proxy_retry",
+                    attempt=number,
+                    port=access.sticky_port,
+                    next_port=upcoming.sticky_port,
+                    next_cookies=upcoming.cookies_file is not None,
+                    detail=redact_proxy(refused.detail, access.proxy)[:200],
+                )
+                continue
+            proxy.note_attempt(video.id, number, access, "ok", meter.bytes - before_bytes)
+            return
+    finally:
+        if attempts[0].proxy is not None:
+            proxy.record_usage(video.id, meter, proxy_cfg)
+
+
+def _attempt(video: Video, cfg: VodConfig, access: Access, deps: Deps, stats: _Stats) -> None:
+    """One pass over the steps with one access. Raises `_RefusedError` when a step was refused."""
     with stats.timed("chat"):
         replay = _load_chat(video, cfg, access, deps)
     if replay is not None:
@@ -662,7 +730,9 @@ def _defer(video: Video, error: DeferredError) -> None:
         "new",
         "video.blocked" if error.kind == "download_blocked" else "video.deferred",
         reason=reason,
-        level="warn" if error.kind in ("download_blocked", "ai_budget", "transcribe_budget") else "info",
+        level="warn"
+        if error.kind in ("download_blocked", "ai_budget", "transcribe_budget", "proxy_budget")
+        else "info",
         data={"kind": error.kind, "run_after": error.run_after.isoformat()},
     )
 

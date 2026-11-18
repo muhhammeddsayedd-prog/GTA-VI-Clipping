@@ -17,7 +17,8 @@ dependencies = [
     "anthropic",
     "supabase",
     "websockets",
-    "yt-dlp[default]",
+    "yt-dlp[default,curl-cffi]",
+    "bgutil-ytdlp-pot-provider==2.0.2",  # same version as the `bgutil` compose service
     "streamlink",
     "faster-whisper",
     "panns-inference",
