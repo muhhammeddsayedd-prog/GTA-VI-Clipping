@@ -22,11 +22,13 @@ from posting_helpers import (
 
 from sixstars.posting.models import Action, Lane, Reason
 from sixstars.posting.precedence import (
+    HOLD_AGE_MARGIN_S,
     SPIKE_DEMOTION_BOOST,
     decide_hourly_account,
     decide_spike,
     demoted_rank,
     has_pending_spike,
+    hold_release_at,
     plan_spikes,
 )
 
@@ -636,6 +638,60 @@ def test_r5_a_second_spike_that_cannot_wait_the_whole_gap_is_demoted() -> None:
     assert {d.code for d in second.decisions} == {Reason.SPIKE_WAIT_EXCEEDED}
     assert second.demote_to_hourly
     assert not first.demote_to_hourly
+
+
+# ── R12 holding window ────────────────────────────────────────────────────────────────────────────────────
+HOLD = make_params(spike_hold_s=420)
+
+
+def test_r12_without_a_holding_window_a_spike_posts_at_once() -> None:
+    (plan,) = plan_spikes([spike_clip()], [acct(IG)], [], T0, make_params())
+    assert {d.action for d in plan.decisions} == {Action.ALLOW}
+    assert hold_release_at([spike_clip()], make_params()) is None
+
+
+def test_r12_a_spike_waits_for_the_holding_window_and_is_not_demoted() -> None:
+    (plan,) = plan_spikes([spike_clip()], [acct(IG), acct(YT)], [], T0 + MINUTE, HOLD)
+
+    assert {(d.action, d.code, d.defer_until) for d in plan.decisions} == {
+        (Action.DEFER, Reason.SPIKE_HOLD, T0 + 7 * MINUTE)
+    }
+    assert not plan.demote_to_hourly
+
+
+def test_r12_a_better_clip_that_arrives_during_the_hold_takes_the_spike_post() -> None:
+    # The owner's example: a 7 is approved first, a 10 five minutes later. When the hold of the first
+    # ends, the batch is decided best first: the 10 posts; the 7 cannot wait out another 15-minute gap
+    # within posting.spike_max_wait_s, so it moves to the hourly queue with the boosted rank (R7).
+    early = spike_clip("early-7", rank=7.0, at=T0)
+    late = spike_clip("late-10", rank=10.0, at=T0 + 5 * MINUTE)
+    accounts = [acct(IG), acct(YT)]
+
+    before = plan_spikes([early, late], accounts, [], T0 + 6 * MINUTE, HOLD)
+    assert {d.code for p in before for d in p.decisions} == {Reason.SPIKE_HOLD}
+
+    first, second = plan_spikes([early, late], accounts, [], T0 + 7 * MINUTE, HOLD)
+    assert first.clip_id == "late-10" and {d.action for d in first.decisions} == {Action.ALLOW}
+    assert second.clip_id == "early-7"
+    assert {(d.action, d.code) for d in second.decisions} == {(Action.SKIP, Reason.SPIKE_WAIT_EXCEEDED)}
+    assert second.demote_to_hourly and second.demoted_rank_score == pytest.approx(7.0 * SPIKE_DEMOTION_BOOST)
+
+
+def test_r12_the_hold_ends_before_any_clip_gets_too_old() -> None:
+    # The spike happened 25 minutes before approval: max age 30 min minus the 2-minute margin wins.
+    stale = spike_clip("stale", spike_at=T0 - 25 * MINUTE)
+    assert hold_release_at([stale], HOLD) == T0 + 3 * MINUTE
+    assert HOLD_AGE_MARGIN_S == 120
+
+
+def test_r12_only_approved_spike_lane_clips_start_the_hold() -> None:
+    hourly = replace(spike_clip("h"), lane=Lane.HOURLY)
+    assert hold_release_at([hourly], HOLD) is None
+    assert hold_release_at([replace(spike_clip("x"), status="posted")], HOLD) is None
+
+
+def test_r12_a_held_spike_still_counts_as_pending_for_the_hourly_lane() -> None:
+    assert has_pending_spike(acct(IG), [spike_clip()], [], T0 + MINUTE, HOLD)
 
 
 def test_r5_ties_are_broken_by_the_earlier_spike_then_the_id() -> None:

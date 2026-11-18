@@ -56,6 +56,7 @@ class Reason(StrEnum):
     SPIKE_HOURLY_LIMIT = "spike_hourly_limit"
     MIN_GAP_WAIT = "min_gap_wait"
     SPIKE_WAIT_EXCEEDED = "spike_wait_exceeded"
+    SPIKE_HOLD = "spike_hold"
     SLOT_NOT_DUE = "slot_not_due"
     SLOT_EXPIRED = "slot_expired"
     OUTSIDE_HOURLY_HOURS = "outside_hourly_hours"

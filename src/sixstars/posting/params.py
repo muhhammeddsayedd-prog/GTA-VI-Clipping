@@ -35,6 +35,7 @@ OPTIONAL_KEYS = (
     "posting.staging_allow_instagram",  # absent = false
     "posting.reserve_release_hour_utc",  # absent or null = unused spike reserve is never released
     "posting.reserve_release_keep",
+    "posting.spike_hold_s",  # absent = 0: spike clips post as soon as they are ready
 )
 
 
@@ -60,6 +61,9 @@ class PostingParams:
     staging_allow_instagram: bool = False
     reserve_release_hour_utc: int | None = None
     reserve_release_keep: int | None = None
+    # R12 (holding window): spike clips wait this long after the first of them is approved, so the best
+    # clip of the batch takes the spike post. 0 posts each spike clip as soon as it is ready.
+    spike_hold_s: int = 0
 
     def __post_init__(self) -> None:
         if self.app_env not in APP_ENVS:
@@ -72,6 +76,7 @@ class PostingParams:
             "skip_hourly_after_spike_s",
             "spike_max_wait_s",
             "spike_max_age_s",
+            "spike_hold_s",
         ):
             if getattr(self, name) < 0:
                 raise ValueError(f"posting.{name} must not be negative")
@@ -134,6 +139,7 @@ class PostingParams:
             reserve_release_keep=None
             if release_keep is None
             else _int("posting.reserve_release_keep", release_keep),
+            spike_hold_s=_int("posting.spike_hold_s", values.get("posting.spike_hold_s", 0)),
         )
 
 

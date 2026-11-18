@@ -53,6 +53,7 @@ On a platform "limit reached" / HTTP 429 response: set `paused_until` = now + 1 
 | R9 | Hourly lane: same creator as the last hourly post on this account | Pick the next clip |
 | R10 | Hourly queue empty | Post the best unposted compilation if any; else skip the slot (event `posting.slot_empty`, alert if 2 in a row) |
 | R11 | Emergency stop | Nothing posts |
+| R12 | Several spike clips ready within a few minutes | Holding window: spike clips wait `posting.spike_hold_s` (7 min) after the first of them was approved, then the best-ranked posts first; the rest wait for the gap or move to the hourly queue boosted (R7). The release is never later than 2 min before a clip reaches `posting.spike_max_age_s`. |
 
 Demotion means: the clip will not be posted on that account by the spike lane; it can still be posted to that account later by the hourly lane.
 
@@ -81,7 +82,7 @@ Triggered by `POST /v1/posting/hourly` (n8n `WF02` at minute 0 each hour; failov
 ## 7. Spike lane (`posting/spike.py`)
 
 Called directly by the express worker after the gate passes (`try_post(clip)`):
-1. For each enabled account with lane `spike`: apply R4–R8, R11.
+1. For each enabled account with lane `spike`: apply R4–R8, R11, R12.
 2. Publish immediately where allowed; for accounts that need to wait for the gap, enqueue `post.retry` with `run_after` = gap end (only if within `spike_max_wait_s`).
 3. If the clip could not be posted to any account → R7 demotion to hourly.
 4. Set `spikes.spike_to_post_s` on first successful publish.
