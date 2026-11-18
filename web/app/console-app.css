@@ -11,7 +11,11 @@
 /* Source video and live stream previews (16:9). */
 .vthumb { width: 96px; aspect-ratio: 16/9; object-fit: cover; border-radius: 8px; flex: none; background: var(--line, #E7E5F2); }
 .live-prev { display: block; width: calc(100% + 40px); margin: -20px -20px 16px; aspect-ratio: 16/9; object-fit: cover; border-radius: var(--r) var(--r) 0 0; }
-@media (max-width: 760px) { .vthumb { width: 72px; } }
+@media (max-width: 760px) {
+  .vthumb { width: 72px; }
+  /* phone cards have 14px padding and an 18px radius */
+  .live-prev { width: calc(100% + 28px); margin: -14px -14px 14px; border-radius: 18px 18px 0 0; }
+}
 
 /* Creator photos */
 .avatar.photo { background: var(--line, #E7E5F2); overflow: hidden; }
