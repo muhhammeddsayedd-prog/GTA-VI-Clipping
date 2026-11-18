@@ -124,7 +124,7 @@ function usage(range: string): Usage & { range: string } {
       ...o, calls: Math.round(o.calls * scale), usd: +(o.usd * scale).toFixed(2),
       input_tokens: o.input_tokens && Math.round(o.input_tokens * scale), output_tokens: o.output_tokens && Math.round(o.output_tokens * scale), units: o.units && Math.round(o.units * scale),
     })),
-    quotas: { youtube_units_today: 1240, youtube_units_limit: 3000, search_calls_today: 14, search_calls_limit: 60, transcribe_local_s_today: 1710, transcribe_local_s_limit: 21600, month_usd: 214.3 },
+    quotas: { youtube_units_today: 1240, youtube_units_limit: 9000, search_calls_today: 14, search_calls_limit: 60, transcribe_local_s_today: 1710, transcribe_local_s_limit: 21600, month_usd: 214.3 },
   };
 }
 
@@ -150,7 +150,7 @@ const S: [string, Json, string][] = [
   ["discovery.title_blocklist", ["giveaway", "24/7", "rerun"], "Titles containing these are skipped."],
   ["discovery.apify_daily_budget_usd", 0.4, "Apify spend cap per day."],
   ["discovery.apify_monthly_budget_usd", 12, "Apify spend cap per month."],
-  ["discovery.youtube_quota_daily_units", 3000, "YouTube Data API units per day."],
+  ["discovery.youtube_quota_daily_units", 9000, "YouTube Data API units per day."],
   ["discovery.excluded_channels", [], "Channels discovery never picks."],
   ["discovery.source_health", { yt_dlp: { blocked_since: ago(19500), failures: 4 } }, "Written by discovery."],
   ["discovery.apify_last_run", { run_id: "k2Jx…", cost_usd: 0.21, results: 70 }, "Written by discovery."],
