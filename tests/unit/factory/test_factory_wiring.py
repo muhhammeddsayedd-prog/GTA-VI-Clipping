@@ -77,6 +77,7 @@ def test_offline_defaults_follow_the_seed_migration() -> None:
     seed = (migrations / "0002_seed_settings.sql").read_text(encoding="utf-8")
     seed += (migrations / "0011_quality.sql").read_text(encoding="utf-8")  # adds factory.cut_snap
     style = (migrations / "0021_viral_style.sql").read_text(encoding="utf-8")
+    styles = (migrations / "0027_design_styles.sql").read_text(encoding="utf-8")
     # Migration 0021 moves these seeded values to the docs/27 look and adds factory.style.
     restyled = ("factory.accent_color", "factory.end_card_s", "factory.loudness_lufs")
     for key, value in OFFLINE_DEFAULTS.items():
@@ -88,6 +89,11 @@ def test_offline_defaults_follow_the_seed_migration() -> None:
         if key == "factory.style":
             raw = style.split("('factory.style',", 1)[1].split("'", 2)[1]
             assert json.loads(raw) == value
+            continue
+        if key in ("factory.styles", "factory.style_director"):
+            # Added by migration 0027 (development-plan/M18).
+            raw = styles.split(f"('{key}',", 1)[1].split("'", 2)[1]
+            assert json.loads(raw) == value, key
             continue
         assert f"('{key}', '{json.dumps(value)}'::jsonb" in seed, key
     cfg = FactoryConfig.offline("spike", {"factory.crf": 18, "vod.whisper_model": "small"})

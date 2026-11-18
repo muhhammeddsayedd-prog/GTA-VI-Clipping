@@ -306,6 +306,9 @@ def clip_render_file(
     no_music: bool = typer.Option(False, "--no-music", help="Skip music detection."),
     payoff: float = typer.Option(-1.0, "--payoff", help="Payoff time in the file, seconds (without --ai)."),
     payoff_emoji: str = typer.Option("", "--payoff-emoji", help="Payoff emoji (without --ai)."),
+    style: str = typer.Option(
+        "", "--style", help="Design style id from factory.styles (default: the single factory.style)."
+    ),
 ) -> None:
     """Render a clip from a local video without writing a clip row (for design iteration)."""
     from pathlib import Path
@@ -334,6 +337,7 @@ def clip_render_file(
             no_music=no_music,
             payoff_s=payoff if payoff >= 0 else None,
             payoff_emoji=payoff_emoji,
+            style_id=style,
         )
 
     if not ai:

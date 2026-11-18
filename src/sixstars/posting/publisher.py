@@ -190,14 +190,15 @@ class Publisher:
 
     def _send(self, work: _Work) -> PublishResult:
         post = work.post
-        path = Path(work.loaded.local_path) if work.loaded.local_path else None
+        render_id, local = self._store.file_for_post(post.clip_id, post.account_id, work.loaded.local_path)
+        path = Path(local) if local else None
         if path is None or not path.is_file():
             return self._fail(post, "video file is missing on this server")
         try:
             request = build_upload_request(work.loaded.clip, work.account, work.params)
         except ValueError as exc:  # includes UnsafePostError
             return self._fail(post, f"upload fields refused: {exc}")
-        self._store.mark_sending(post.id, request.request_id)
+        self._store.mark_sending(post.id, request.request_id, render_id)
         self._log.info("post_sending", clip_id=post.clip_id, post_id=post.id, account_id=post.account_id)
         try:
             status = self._client.upload_video(

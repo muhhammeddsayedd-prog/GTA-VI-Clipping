@@ -8,7 +8,7 @@ import { Badge, Card, CardHead, Plat } from "@/components/kit/primitives";
 import { useState } from "react";
 
 import { useApi } from "@/lib/api/client";
-import type { Clip, ClipDetail, ClipMedia, GateCheck, GateResult } from "@/lib/api/types";
+import type { Clip, ClipDetail, ClipMedia, ClipRender, GateCheck, GateResult } from "@/lib/api/types";
 import { fmtClock, humanize, series } from "@/lib/format";
 import { isRecord, num, showValue, splitReason } from "@/lib/shape";
 
@@ -134,6 +134,62 @@ export function ClipPlayer({ clip }: { clip: ClipDetail }) {
         <span className="dbadge">{series(clip.series_no)}</span>
         <span className="right" style={{ color: "var(--dmute)", fontSize: 11 }}>{media?.reason === "ok" ? "signed URL · 1 h" : clip.has_file && m.isLoading ? "loading…" : ""}</span>
       </div>
+    </div>
+  );
+}
+
+/** Human name of a design style id (development-plan/M18). */
+export function styleName(id: string | null | undefined): string {
+  if (!id) return "—";
+  const known: Record<string, string> = { cam_top_viral: "Facecam top · viral", cam_top_title: "Facecam top · title", legacy: "Single style (legacy)" };
+  return known[id] ?? humanize(id);
+}
+
+/** The renders of a clip, one per design style, each playable on demand (a signed URL per render). */
+export function StyleRenders({ clip }: { clip: ClipDetail }) {
+  const renders = clip.renders ?? [];
+  const [open, setOpen] = useState<string | null>(null);
+  return (
+    <Card>
+      <CardHead title="Design styles" hint="One render per style · the platforms that post it" />
+      {renders.length === 0 ? (
+        <div className="muted small">Rendered before design styles existed: one file for every platform.</div>
+      ) : (
+        <div className="col" style={{ gap: 12 }}>
+          {renders.map((r) => (
+            <div key={r.id} className="col" style={{ gap: 8, padding: 12, border: "1px solid var(--line)", borderRadius: 14 }}>
+              <div className="row" style={{ gap: 8, flexWrap: "wrap", justifyContent: "space-between" }}>
+                <span className="semi">{styleName(r.style_id)}{r.is_reference && <span className="muted"> · first render</span>}</span>
+                <Badge status={r.status} />
+              </div>
+              <div className="row muted small" style={{ gap: 8, flexWrap: "wrap" }}>
+                <span>Layout {r.layout_kind === "C" ? "facecam on top" : r.layout_kind === "A" ? "gameplay on top" : r.layout_kind === "B" ? "no facecam" : "—"}</span>
+                {r.render_ms ? <span>· {Math.round(r.render_ms / 1000)} s render</span> : null}
+                {r.file_size_bytes ? <span>· {(r.file_size_bytes / 1e6).toFixed(1)} MB</span> : null}
+              </div>
+              <div className="row" style={{ gap: 6, flexWrap: "wrap" }}>
+                {r.accounts.length ? r.accounts.map((a) => <span key={a} className="chip">{a}</span>) : <span className="muted small">No account planned for it</span>}
+              </div>
+              {r.error && <div className="small down">{r.error}</div>}
+              {r.has_file && (open === r.id ? <RenderPlayer clipId={clip.id} render={r} /> : (
+                <button type="button" className="btn sm" onClick={() => setOpen(r.id)}>Play this style</button>
+              ))}
+            </div>
+          ))}
+        </div>
+      )}
+    </Card>
+  );
+}
+
+function RenderPlayer({ clipId, render }: { clipId: string; render: ClipRender }) {
+  const m = useApi<ClipMedia>(`admin/clips/${clipId}/media?render=${render.id}`, undefined, { interval: 45 * 60 * 1000, staleTime: 40 * 60 * 1000 });
+  if (m.error) return <div className="small down">Video unavailable: {m.error.message}</div>;
+  if (!m.data) return <div className="muted small">Loading…</div>;
+  if (m.data.reason !== "ok" || !m.data.url) return <div className="muted small">{m.data.reason === "deleted" ? "The file was removed from storage." : "No file in storage."}</div>;
+  return (
+    <div className="thumb" style={{ width: "100%", maxWidth: 300, background: "#000", borderRadius: 14 }}>
+      <video key={m.data.url} src={m.data.url} controls playsInline preload="metadata" aria-label={`Clip in style ${styleName(render.style_id)}`} style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover" }} />
     </div>
   );
 }

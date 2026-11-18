@@ -9,9 +9,11 @@ from typing import Literal
 
 from sixstars import settings
 from sixstars.factory.anchor import CutRules
+from sixstars.factory.director import DirectorRules
 from sixstars.factory.params import FactoryParams
 from sixstars.factory.pauses import SnapRules
 from sixstars.factory.style import VIRAL_STYLE, StyleRules
+from sixstars.factory.styles import DEFAULT_STYLES, StyleCatalog
 from sixstars.scoring import config as scoring_config
 
 Lane = Literal["spike", "hourly"]
@@ -35,6 +37,8 @@ OFFLINE_DEFAULTS: dict[str, object] = {
     "factory.hook_seconds": 3.0,
     "factory.end_card_s": 0,
     "factory.style": VIRAL_STYLE,
+    "factory.styles": DEFAULT_STYLES,
+    "factory.style_director": {"no_repeat_n": 1, "diverse_across_accounts": True},
     "factory.watermark": "6 Stars Clips",
     "factory.series_label": "6 Stars Moments",
     "factory.bleep": True,
@@ -87,6 +91,10 @@ class FactoryConfig:
     snap: SnapRules = SnapRules()
     style: StyleRules = StyleRules()
     cut_rules: CutRules | None = None  # scoring_config cut.adaptive (None: the classic cut)
+    # development-plan/M18: the styles to pick from and how. `style` above is the old single setting,
+    # the catalogue's fallback.
+    catalog: StyleCatalog = StyleCatalog.legacy(None)
+    director: DirectorRules = DirectorRules()
 
     @classmethod
     def from_mapping(cls, values: Mapping[str, object], lane: str) -> "FactoryConfig":
@@ -115,6 +123,8 @@ class FactoryConfig:
             max_music_ratio=max(0.0, _number(gate.get("max_music_ratio"), 0.0)),
             snap=SnapRules.from_setting(values.get("factory.cut_snap")),
             style=StyleRules.from_setting(values.get("factory.style")),
+            catalog=StyleCatalog.from_setting(values.get("factory.styles"), values.get("factory.style")),
+            director=DirectorRules.from_setting(values.get("factory.style_director")),
         )
 
     @classmethod
@@ -134,6 +144,9 @@ class FactoryConfig:
         values["factory.cut_snap"] = settings.get("factory.cut_snap", None)
         # Absent before migration 0021: the classic look.
         values["factory.style"] = settings.get("factory.style", None)
+        # Absent before migration 0027: one style for every clip (factory.style).
+        values["factory.styles"] = settings.get("factory.styles", None)
+        values["factory.style_director"] = settings.get("factory.style_director", None)
         return with_cut_rules(cls.from_mapping(values, lane), scoring_config.flag("cut.adaptive"))
 
     @classmethod

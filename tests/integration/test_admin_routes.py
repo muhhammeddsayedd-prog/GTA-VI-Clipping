@@ -368,6 +368,38 @@ def test_clip_media(client: TestClient, world: dict[str, str], monkeypatch: pyte
     get(client, f"clips/{MISSING}/media", 404)
 
 
+def test_clip_renders_and_their_media(client: TestClient, world: dict[str, str]) -> None:
+    """development-plan/M18: the clip shows one render per design style, each playable."""
+    clip = world["clip"]
+    plan = {"by_account": {"tiktok_main": "cam_top_title", "youtube_main": "cam_top_viral"}}
+    db.execute(
+        "update clips set style_id = 'cam_top_viral', layout_kind = 'C', style_plan = %s where id = %s",
+        (Jsonb(plan), clip),
+    )
+    rows = db.fetch_all(
+        "insert into clip_renders (clip_id, style_id, layout_kind, is_reference, status, storage_path) "
+        "values "
+        "(%s, 'cam_top_viral', 'C', true, 'ready', null), "
+        "(%s, 'cam_top_title', 'C', false, 'ready', 'clips/test/x.cam_top_title.mp4') "
+        "returning id::text as id, style_id",
+        (clip, clip),
+    )
+    ids = {row["style_id"]: row["id"] for row in rows}
+    body = get(client, f"clips/{clip}")
+    assert (body["style_id"], body["layout_kind"]) == ("cam_top_viral", "C")
+    renders = body["renders"]
+    assert [r["style_id"] for r in renders] == ["cam_top_viral", "cam_top_title"], "the reference first"
+    assert renders[0]["accounts"] == ["youtube_main"] and renders[1]["accounts"] == ["tiktok_main"]
+    assert renders[0]["has_file"] and renders[1]["has_file"], "the reference plays the clip's own file"
+
+    reference = get(client, f"clips/{clip}/media?render={ids['cam_top_viral']}")
+    assert reference["reason"] == "ok" and clip in reference["url"]
+    title = get(client, f"clips/{clip}/media?render={ids['cam_top_title']}")
+    assert title["reason"] == "ok" and "cam_top_title" in title["url"]
+    get(client, f"clips/{clip}/media?render={MISSING}", 404)
+    get(client, f"clips/{clip}/media?render=nope", 404)
+
+
 def test_console_media_fields(
     client: TestClient, world: dict[str, str], monkeypatch: pytest.MonkeyPatch
 ) -> None:

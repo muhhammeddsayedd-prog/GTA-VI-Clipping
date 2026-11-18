@@ -121,7 +121,12 @@ def _measure(row: store.ClipRow, settings: GateSettings, deps: GateDeps) -> File
         return None
     try:
         return visuals.measure_file(
-            Path(row.local_path), row.duration_s, settings, ffmpeg=deps.ffmpeg, ffprobe=deps.ffprobe
+            Path(row.local_path),
+            row.duration_s,
+            settings,
+            ffmpeg=deps.ffmpeg,
+            ffprobe=deps.ffprobe,
+            layout_kind=row.layout_kind,
         )
     except tools.FfmpegError as exc:
         get_logger("gate").warning("gate_file_unreadable", error=str(exc)[:300])

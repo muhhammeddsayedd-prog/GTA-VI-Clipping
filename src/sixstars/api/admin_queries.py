@@ -503,6 +503,7 @@ POST_COLUMNS = f"""
 p.id::text as id, p.clip_id::text as clip_id, pc.series_no as clip_series_no, pc.hook as clip_hook,
 p.account_id, p.platform, p.lane, p.slot_at, p.status, p.dry_run, p.post_url, p.platform_post_id,
 p.published_at, p.views, p.likes, p.comments, p.shares, p.claim_status, p.error, p.attempts, p.created_at,
+(select r.style_id from clip_renders r where r.id = p.render_id) as style_id,
 pc.thumb_path as {CLIP_THUMB_PATH}, {source_thumb_sql("pc")} as {CLIP_SOURCE_THUMB}
 """
 POST_SOURCE = "posts p join clips pc on pc.id = p.clip_id"
@@ -1311,6 +1312,41 @@ def spikes_of(column: str, row_id: str) -> list[Row]:
     return db.fetch_all(
         f"select {SPIKE_COLUMNS} from {SPIKE_SOURCE} where sp.{column} = %s order by sp.detected_at",
         (row_id,),
+    )
+
+
+def clip_renders(clip_id: str) -> list[Row]:
+    """The renders of a clip, one per design style (development-plan/M18), the reference first, with the
+    accounts whose plan names that style. `has_file`: a file in Storage the console can play (the
+    reference render's is the clip's own)."""
+    return db.fetch_all(
+        """
+        select r.id::text as id, r.style_id, r.layout_kind, r.is_reference, r.status, r.error, r.render_ms,
+               r.file_size_bytes, r.duration_s, r.checks, r.created_at, r.updated_at,
+               (case when r.is_reference then c.storage_path else r.storage_path end) is not null as has_file,
+               coalesce((
+                 select array_agg(plan.key order by plan.key)
+                 from jsonb_each_text(coalesce(c.style_plan -> 'by_account', '{}'::jsonb)) as plan
+                 where plan.value = r.style_id
+               ), '{}') as accounts
+        from clip_renders r join clips c on c.id = r.clip_id
+        where r.clip_id = %s
+        order by r.is_reference desc, r.style_id
+        """,
+        (clip_id,),
+    )
+
+
+def render_storage_path(clip_id: str, render_id: str) -> Row | None:
+    """`{"storage_path"}` of one render of the clip (the clip's own for the reference render), or None
+    when the render is not one of this clip's."""
+    return db.fetch_one(
+        """
+        select case when r.is_reference then c.storage_path else r.storage_path end as storage_path
+        from clip_renders r join clips c on c.id = r.clip_id
+        where r.id = %s and r.clip_id = %s
+        """,
+        (render_id, clip_id),
     )
 
 

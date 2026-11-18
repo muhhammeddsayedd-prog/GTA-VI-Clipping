@@ -156,6 +156,17 @@ export interface ClipDetail extends Clip {
   spoiler: boolean | null; profanity_count: number | null; gate_result: GateResult | null; precheck_result: Json;
   render_ms: number | null; file_size_bytes: number | null; storage_path: string | null; start_s: number | null; end_s: number | null;
   original_language: string | null; posts: Post[]; events: Event[]; trace: Trace;
+  /** Design styles (development-plan/M18): the style of the first render, its layout ("A", "B" or "C": facecam on top) and the director's plan. */
+  style_id?: string | null; layout_kind?: string | null; style_plan?: Json;
+  /** One render per design style, the reference first; absent on clips rendered before migration 0027. */
+  renders?: ClipRender[];
+}
+export interface ClipRender {
+  id: string; style_id: string; layout_kind: string | null; is_reference: boolean;
+  status: "pending" | "ready" | "failed" | "skipped"; error: string | null; render_ms: number | null;
+  file_size_bytes: number | null; duration_s: number | null; checks: Json; has_file: boolean;
+  /** Accounts whose plan names this style. */
+  accounts: string[]; created_at: Iso; updated_at: Iso;
 }
 export interface ClipMedia { url: string | null; expires_at: Iso | null; reason: "ok" | "no_file" | "deleted" }
 
@@ -165,6 +176,8 @@ export interface Post {
   published_at: Iso | null; views: number | null; likes: number | null; comments: number | null; shares: number | null;
   claim_status: string | null; error: string | null; attempts: number; created_at: Iso;
   clip_thumb_url?: string | null;
+  /** The design style of the file that was posted (null before migration 0027 or before the send). */
+  style_id?: string | null;
 }
 export interface PostDetail extends Post {
   upload_request_id: string | null; idempotency_key: string; stats_updated_at: Iso | null; claim_checked_at: Iso | null;

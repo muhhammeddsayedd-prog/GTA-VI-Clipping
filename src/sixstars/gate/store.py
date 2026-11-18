@@ -14,6 +14,7 @@ from typing import Any
 from psycopg.types.json import Jsonb
 
 from sixstars import db, events
+from sixstars.factory.layout import LayoutKind
 from sixstars.gate import visual as visuals
 from sixstars.gate.models import (
     EXPRESS,
@@ -47,7 +48,8 @@ select c.id::text as id, c.creator_id::text as creator_id, c.spike_id::text as s
        c.gate_profile, c.source_platform, c.source_id, c.start_s, c.end_s, c.duration_s, c.score,
        c.score_parts, c.music_ratio, c.spoiler, c.safety_flags, c.hook, c.title, c.caption, c.hashtags,
        c.topic, c.commentary,
-       c.transcript, c.local_path, c.storage_path, c.gate_result, c.precheck_video_id, c.created_at
+       c.transcript, c.local_path, c.storage_path, c.gate_result, c.precheck_video_id, c.created_at,
+       c.layout_kind
 from clips c
 """
 
@@ -68,6 +70,11 @@ class ClipRow:
     gate_result: Mapping[str, Any] | None
     precheck_video_id: str | None
     raw: Mapping[str, Any]
+    layout_kind: LayoutKind | None = None  # migration 0027; None for older clips
+
+
+def _layout_kind(value: object) -> LayoutKind | None:
+    return value if value in ("A", "B", "C") else None
 
 
 def _float(value: object) -> float | None:
@@ -124,6 +131,7 @@ def get_clip(clip_id: str) -> ClipRow | None:
         gate_result=result if isinstance(result, Mapping) else None,
         precheck_video_id=row["precheck_video_id"],
         raw=row,
+        layout_kind=_layout_kind(row.get("layout_kind")),
     )
 
 

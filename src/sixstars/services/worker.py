@@ -29,6 +29,7 @@ HANDLERS: dict[str, jobs.Handler] = {}
 HANDLER_MODULES: tuple[str, ...] = (
     "sixstars.posting.handlers",  # M10: post.hourly, post.retry
     "sixstars.factory.pipeline:register_handlers",  # M06
+    "sixstars.factory.variants:register_handlers",  # M18: clip.variants
     "sixstars.gate.gate:install",  # M07
     "sixstars.vod:register_handlers",  # M08
     "sixstars.discovery.tiers:register_handlers",  # M09
