@@ -5,10 +5,11 @@ import { ChevronRight, Pause } from "lucide-react";
 
 import { Ring } from "@/components/kit/charts";
 import { Hours } from "@/components/kit/data";
-import { Badge, Card, KV, Plat } from "@/components/kit/primitives";
+import { Badge, Card, KV, Plat, platformName } from "@/components/kit/primitives";
 import { accountState } from "@/components/domain/AccountCard";
 import type { AccountSummary } from "@/lib/api/types";
 import { fmtAgo, fmtTime } from "@/lib/format";
+import { accountLabel } from "@/lib/use-accounts";
 
 export function hourCells(a: AccountSummary) {
   const allowed = a.hourly_hours_utc;
@@ -34,7 +35,7 @@ export function AccountBig({ a }: { a: AccountSummary }) {
     <Card as="article" aria-labelledby={`acc-${a.id}`}>
       <div className="row">
         <Plat p={a.platform} lg />
-        <div style={{ minWidth: 0 }}><h2 id={`acc-${a.id}`} className="semi" style={{ fontSize: 15, margin: 0 }}>{a.id}</h2><div className="muted xs">{a.handle}</div></div>
+        <div style={{ minWidth: 0 }}><h2 id={`acc-${a.id}`} className="semi" style={{ fontSize: 15, margin: 0 }} title={a.id}>{accountLabel(a, a.id)}</h2><div className="muted xs">{platformName(a.platform)}{a.lanes.length === 1 && a.lanes[0] === "spike" ? " · spike lane" : ""}</div></div>
         <span className="right"><Badge status={st} /></span>
       </div>
       <div className="row" style={{ marginTop: 18, gap: 20, alignItems: "center" }}>

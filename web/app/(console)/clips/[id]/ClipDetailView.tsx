@@ -14,9 +14,10 @@ import { POLL, useApi } from "@/lib/api/client";
 import type { ClipDetail, Post } from "@/lib/api/types";
 import { fmtNum, humanize, series } from "@/lib/format";
 import { isRecord, keywordSet, num, numericEntries, showValue, splitReason, str } from "@/lib/shape";
+import { AccountName } from "@/components/domain/AccountName";
 
 const POST_COLS: Col<Post>[] = [
-  { key: "acc", head: "Account", render: (p) => <span className="row" style={{ gap: 8 }}><Plat p={p.platform} />{p.account_id}</span> },
+  { key: "acc", head: "Account", render: (p) => <span className="row" style={{ gap: 8 }}><Plat p={p.platform} /><AccountName id={p.account_id} /></span> },
   { key: "st", head: "Status", render: (p) => <Badge status={p.status} /> },
   { key: "pub", head: "Published", render: (p) => <When iso={p.published_at} seconds /> },
   { key: "link", head: "Link", render: (p) => (p.post_url && /^https?:\/\//.test(p.post_url) ? <ExtLink href={p.post_url}>open</ExtLink> : <span className="muted">{p.error ? humanize(p.error) : p.dry_run ? "dry run" : "no URL yet"}</span>) },

@@ -35,7 +35,7 @@ const pretty = (day: string) => new Date(`${day}T00:00:00Z`).toLocaleDateString(
 
 function asText(r: Report): string {
   const lines = [`VI Stars Clippy daily report — ${r.day} (${r.timezone})`, "",
-    ...r.accounts.map((a) => `${a.account_id}: ${fmtNum(a.followers)} followers (${a.followers_change ?? "—"}), ${a.published} posts, ${a.failed} failed`),
+    ...r.accounts.map((a) => `${a.handle ?? a.account_id}: ${fmtNum(a.followers)} followers (${a.followers_change ?? "—"}), ${a.published} posts, ${a.failed} failed`),
     `Views: ${fmtNum(r.views.total)} (${r.views.change ?? "—"})`,
     `Posts: ${r.posts.hourly_published} hourly, ${r.posts.spike_published} spike, ${r.posts.failed} failed`,
     `Spikes: ${r.spikes.detected} detected (S ${r.spikes.S} · A ${r.spikes.A} · B ${r.spikes.B})`,
@@ -90,7 +90,7 @@ export function ReportView() {
         <Card>
           <CardHead title="Accounts" />
           <DataTable dense caption="Accounts" rowKey={(a) => a.account_id} rows={r.accounts} cols={[
-            { key: "a", head: "Account", render: (a) => <span className="row"><Plat p={a.platform} /> <span className="semi">{a.account_id}</span>{!a.enabled && <Badge status="disabled" />}</span> },
+            { key: "a", head: "Account", render: (a) => <span className="row"><Plat p={a.platform} /> <span className="semi" title={a.account_id}>{a.handle ?? a.account_id}</span>{!a.enabled && <Badge status="disabled" />}</span> },
             { key: "f", head: "Followers", align: "right", render: (a) => fmtNum(a.followers) },
             { key: "c", head: "Change", align: "right", render: (a) => a.followers_change === null ? "—" : <Delta v={a.followers_change} /> },
             { key: "v", head: "Views", align: "right", render: (a) => fmtCompact(a.views_change) },

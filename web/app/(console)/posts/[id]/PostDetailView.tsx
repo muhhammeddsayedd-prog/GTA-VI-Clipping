@@ -12,6 +12,7 @@ import { Badge, Banner, Btn, Card, CardHead, ErrorState, KV, PageHead, Plat, pla
 import { POLL, useApi } from "@/lib/api/client";
 import type { Event, PostDetail } from "@/lib/api/types";
 import { fmtAgo, fmtDuration, fmtTime, humanize, series } from "@/lib/format";
+import { AccountName } from "@/components/domain/AccountName";
 
 function stepOf(e: Event): "done" | "fail" | "run" {
   if (e.level === "error" || e.level === "critical" || /failed/.test(e.type)) return "fail";
@@ -35,7 +36,7 @@ export function PostDetailView({ id }: { id: string }) {
   return (
     <>
       <PageHead back="/posts" title="Post"
-        sub={<span className="row" style={{ gap: 8, flexWrap: "wrap" }}><Plat p={p.platform} /> {p.account_id} · clip <span className="pc semi">{series(p.clip_series_no)}</span> <Badge status={p.status} /></span>}
+        sub={<span className="row" style={{ gap: 8, flexWrap: "wrap" }}><Plat p={p.platform} /> <AccountName id={p.account_id} /> · clip <span className="pc semi">{series(p.clip_series_no)}</span> <Badge status={p.status} /></span>}
         actions={<>
           <Btn icon={<Code size={15} />} onClick={() => setRaw(true)}>Raw JSON</Btn>
           {url && <Btn kind="p" href={url} external icon={<ExternalLink size={15} />}>Open on {platformName(p.platform)}</Btn>}
@@ -51,7 +52,7 @@ export function PostDetailView({ id }: { id: string }) {
       <div className="g collapse-md" style={{ gridTemplateColumns: "1.2fr 1fr" }}>
         <SpotlightCard className="pcard" spotlightColor="rgba(255,255,255,.18)" theme="dark">
           <div className="row" style={{ flexWrap: "wrap", gap: 12 }}>
-            <div><div className="lbl">Post</div><div className="big">{p.account_id} · {series(p.clip_series_no)}</div></div>
+            <div><div className="lbl">Post</div><div className="big"><AccountName id={p.account_id} /> · {series(p.clip_series_no)}</div></div>
             <span className="dbadge" style={{ background: "#fff", color: p.status === "published" ? "var(--green)" : "var(--ink)" }}>{humanize(p.status)}</span>
             <div className="right row" style={{ gap: 12 }}><Plat p={p.platform} lg /><div><div className="semi">{p.lane === "spike" ? "Spike lane" : "Hourly lane"}</div><div className="lbl">{p.dry_run ? "dry run" : p.slot_at ? `slot ${fmtTime(p.slot_at)}` : "posted immediately"}</div></div></div>
           </div>
@@ -95,7 +96,7 @@ export function PostDetailView({ id }: { id: string }) {
         <Card>
           <CardHead title="Details" />
           <KV rows={[
-            ["Account", p.account_id],
+            ["Account", <AccountName key="acc" id={p.account_id} withId />],
             ["Lane", p.lane],
             ["Slot", p.slot_at ? `${fmtTime(p.slot_at)} UTC` : "— (spike lane)"],
             ["Dry run", p.dry_run ? "yes" : "no"],

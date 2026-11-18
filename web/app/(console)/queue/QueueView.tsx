@@ -12,11 +12,12 @@ import { POLL, useApi } from "@/lib/api/client";
 import type { CapRow, Event, QueueView as Q } from "@/lib/api/types";
 import { useNow } from "@/components/domain/clips/useNow";
 import { fmtAgo, fmtDuration, fmtTime, series, humanize } from "@/lib/format";
+import { AccountName } from "@/components/domain/AccountName";
 
 const SLOT_CLS: Record<string, string> = { posted: "done", planned: "on", skipped: "skip", failed: "fail", not_allowed: "off", empty: "skip" };
 
 const CAP_COLS: Col<CapRow>[] = [
-  { key: "a", head: "Account", render: (r) => <span className="semi">{r.account_id}</span> },
+  { key: "a", head: "Account", render: (r) => <AccountName id={r.account_id} className="semi" /> },
   { key: "u", head: "Used 24h", align: "right", render: (r) => <span className="num">{r.used_24h} / {r.cap_24h}</span> },
   { key: "f", head: "Free", align: "right", render: (r) => <span className="num">{r.free}</span> },
   { key: "r", head: "Reserve", align: "right", render: (r) => <span className="num">{r.spike_reserve_remaining}</span> },
@@ -31,7 +32,7 @@ const CAP_COLS: Col<CapRow>[] = [
 const DEC_COLS: Col<Event>[] = [
   // posting.slot_empty has no data: its entity is the slot itself (entity_type "slot", entity_id = slot time).
   { key: "t", head: "Slot", render: (e) => <When iso={(e.data?.slot_at as string | undefined) ?? (e.entity_type === "slot" ? e.entity_id : null) ?? e.created_at} /> },
-  { key: "a", head: "Account", mobile: "primary", render: (e) => (e.entity_type === "slot" ? <span className="muted">all accounts</span> : String(e.data?.account_id ?? e.entity_id ?? "—")) },
+  { key: "a", head: "Account", mobile: "primary", render: (e) => (e.entity_type === "slot" ? <span className="muted">all accounts</span> : <AccountName id={String(e.data?.account_id ?? e.entity_id ?? "")} />) },
   { key: "d", head: "Decision", mobile: "aside", render: (e) => <Badge status={e.type === "posting.slot_empty" ? "empty" : e.type.startsWith("post.failed") ? "failed" : "skipped"}>{e.type === "posting.slot_empty" ? "empty" : e.type.startsWith("post.failed") ? "failed" : "skipped"}</Badge> },
   { key: "r", head: "Rule", render: (e) => <span className="mono">{String(e.data?.code ?? e.data?.rule ?? "—")}</span> },
   { key: "w", head: "Why", render: (e) => e.message ?? (e.type === "posting.slot_empty" ? "No approved clip was waiting for this slot" : typeof e.data?.code === "string" ? humanize(e.data.code) : "—") },
@@ -94,7 +95,7 @@ export function QueueView() {
               actions={<Legend items={[{ color: "var(--p)", label: "posted" }, { color: "var(--ps2)", label: "planned" }, { color: "#F6D7A4", label: "skipped / empty" }, { color: "var(--red)", label: "failed" }, { color: "#E6E6EE", label: "not allowed" }]} />} />
             {d.slots.map((s, i) => (
               <div key={s.account_id} className="row slot-row" style={{ gap: 14, padding: "10px 0", borderBottom: i < d.slots.length - 1 ? "1px solid var(--line)" : 0 }}>
-                <Link href={`/accounts/${s.account_id}`} className="row slot-label" style={{ width: 160, flex: "none" }}><Plat p={s.platform} /><span className="semi">{s.account_id}</span></Link>
+                <Link href={`/accounts/${s.account_id}`} className="row slot-label" style={{ width: 160, flex: "none" }}><Plat p={s.platform} /><AccountName id={s.account_id} className="semi ellipsis" /></Link>
                 <div className="grow" style={{ minWidth: 0 }}>
                   <Hours labels={i === d.slots.length - 1} cells={s.hours.map((h) => ({
                     cls: `${SLOT_CLS[h.state] ?? ""}${h.hour === nowH ? " now" : ""}`,
