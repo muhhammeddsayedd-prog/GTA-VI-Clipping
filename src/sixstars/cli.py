@@ -102,6 +102,18 @@ def scheduler() -> None:
         scheduler_service.run()
 
 
+@app.command("console-media-backfill")
+def console_media_backfill(
+    limit: int = typer.Option(200, "--limit", min=1, help="Rows per step (creators: per round)."),
+) -> None:
+    """Fill clip thumbnails, source thumbnails and creator pictures for rows made before them (docs/26)."""
+    from sixstars import console_media
+
+    with _database():
+        result = console_media.backfill(limit)
+    typer.echo(json.dumps(result, indent=2, default=str))
+
+
 @discovery_app.command("run-once")
 def discovery_run_once(
     as_json: bool = typer.Option(False, "--json", help="Print the full summary as JSON."),

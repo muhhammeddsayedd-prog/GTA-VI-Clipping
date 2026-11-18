@@ -32,7 +32,7 @@ from sixstars.ai.schemas import ClipWriting, SpikeVerdict
 from sixstars.clients.anthropic_client import AnthropicClient, BudgetKind
 from sixstars.clients.transcribe import Mode, Transcriber
 from sixstars.config import env
-from sixstars.factory import facecam, music, tools, writer
+from sixstars.factory import facecam, music, thumbs, tools, writer
 from sixstars.factory import transcript as transcripts
 from sixstars.factory.assets import FactoryAssets, load_assets
 from sixstars.factory.audio import parse_loudnorm_report
@@ -871,6 +871,16 @@ def render_clip(item: RenderInput, *, deps: Deps | None = None, force: bool = Fa
         finally:
             shutil.rmtree(scratch, ignore_errors=True)
         _finish(row.id, item, cfg, produced)
+        # The console's frame of the clip, made before the gate so a rejected clip has one too. Never
+        # raises: a missing thumbnail must not fail the render.
+        thumbs.try_make_thumb(
+            row.id,
+            str(produced.outcome.output_path),
+            created_at=None,
+            duration_s=produced.outcome.clip_duration_s,
+            storage=deps.storage,
+            ffmpeg=deps.ffmpeg,
+        )
         if item.upload:
             upload_clip(row.id, storage=deps.storage)
         return row.id

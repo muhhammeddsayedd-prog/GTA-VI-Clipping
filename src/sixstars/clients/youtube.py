@@ -24,7 +24,7 @@ import secrets
 import threading
 import time
 import xml.etree.ElementTree as ET
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from functools import partial
@@ -60,6 +60,13 @@ SEARCH_EVENT_TYPES = ("live", "completed", "upcoming")
 SEARCH_ORDERS = ("date", "rating", "relevance", "title", "videoCount", "viewCount")
 SEARCH_DURATIONS = ("any", "long", "medium", "short")
 CATEGORY_GAMING = "20"
+
+# snippet.thumbnails sizes (https://developers.google.com/youtube/v3/docs/thumbnails, checked 2026-11-18):
+# video default 120x90, medium 320x180, high 480x360, standard 640x480, maxres 1280x720; channel default
+# 88x88, medium 240x240, high 800x800. Each entry's `url` is "The image's URL"; no URL form is documented,
+# so URLs are only ever taken from API answers.
+VIDEO_THUMB_PREFERENCE = ("high", "medium", "default")
+CHANNEL_THUMB_PREFERENCE = ("medium", "high", "default")
 
 DEFAULT_VIDEO_PARTS = ("snippet", "status", "contentDetails", "statistics", "liveStreamingDetails")
 DEFAULT_CHANNEL_PARTS = ("snippet", "statistics")
@@ -139,6 +146,21 @@ def parse_feed(xml_text: str) -> list[FeedEntry]:
             )
         )
     return entries
+
+
+def pick_thumbnail(item: Mapping[str, Any], prefer: Sequence[str] = VIDEO_THUMB_PREFERENCE) -> str | None:
+    """The URL of the first thumbnail size in `prefer` that a `videos.list` / `channels.list` /
+    `search.list` item carries in `snippet.thumbnails`, or None."""
+    snippet = item.get("snippet")
+    thumbnails = snippet.get("thumbnails") if isinstance(snippet, Mapping) else None
+    if not isinstance(thumbnails, Mapping):
+        return None
+    for size in prefer:
+        entry = thumbnails.get(size)
+        url = entry.get("url") if isinstance(entry, Mapping) else None
+        if isinstance(url, str) and url:
+            return url
+    return None
 
 
 def parse_video_status(item: dict[str, Any]) -> YouTubeVideoStatus:

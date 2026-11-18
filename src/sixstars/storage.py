@@ -10,11 +10,18 @@ client 2.34.1 (read from its source on 2026-11-17, then checked live against the
 - delete: `DELETE /storage/v1/object/<bucket>` with `{"prefixes": [<path>, ...]}`
 - signed URL: `POST /storage/v1/object/sign/<bucket>/<path>` with `{"expiresIn": <seconds>}`; answers
   `{"signedURL": "/object/sign/..."}`, relative to `/storage/v1`
+- several signed URLs in one request: `POST /storage/v1/object/sign/<bucket>` with
+  `{"expiresIn": <seconds>, "paths": [<path>, ...]}` (1 to 1,000 paths, `MAX_OBJECTS_PER_REQUEST` of the
+  storage server); answers one item per path, `{"path", "signedURL" | null, "error" | null}`. Read on
+  2026-11-18 from supabase/storage `src/http/routes/object/getSignedURLs.ts` and `src/storage/limits.ts`,
+  and storage-js `createSignedUrls` (which the JS reference documents as "Creates multiple signed URLs").
 
 A storage key is `clips/<env>/<yyyy>/<mm>/<dd>/<clip_id>.mp4` (docs/09 section 9): the bucket name, then
-the object path. `clips.storage_path` holds the whole key.
+the object path. `clips.storage_path` holds the whole key. A clip thumbnail (console media) sits next to
+it as `clips/thumbs/<env>/<yyyy>/<mm>/<dd>/<clip_id>.jpg`, in `clips.thumb_path`.
 """
 
+from collections.abc import Iterable, Sequence
 from datetime import UTC, datetime
 from pathlib import Path
 from urllib.parse import quote
@@ -30,6 +37,8 @@ BUCKET = "clips"
 CONTENT_TYPE = "video/mp4"
 CACHE_CONTROL_S = "3600"
 SIGNED_URL_TTL_S = 3600
+THUMB_CONTENT_TYPE = "image/jpeg"
+SIGN_PATHS_MAX = 1000  # MAX_OBJECTS_PER_REQUEST of the storage server
 
 
 class StorageError(ClientError):
@@ -40,6 +49,29 @@ def clip_key(clip_id: str, when: datetime | None = None, app_env: str | None = N
     """The storage key of a clip: `clips/<env>/<yyyy>/<mm>/<dd>/<clip_id>.mp4` (UTC date)."""
     moment = (when or datetime.now(UTC)).astimezone(UTC)
     return f"{BUCKET}/{app_env or env().APP_ENV}/{moment:%Y/%m/%d}/{clip_id}.mp4"
+
+
+def thumb_key(clip_id: str, when: datetime | None = None, app_env: str | None = None) -> str:
+    """The storage key of a clip thumbnail: `clips/thumbs/<env>/<yyyy>/<mm>/<dd>/<clip_id>.jpg` (UTC
+    date of the clip row, like `clip_key`)."""
+    moment = (when or datetime.now(UTC)).astimezone(UTC)
+    return f"{BUCKET}/thumbs/{app_env or env().APP_ENV}/{moment:%Y/%m/%d}/{clip_id}.jpg"
+
+
+def group_by_bucket(keys: Iterable[str]) -> dict[str, list[tuple[str, str]]]:
+    """Keys grouped by bucket as `(key, object path)` pairs, duplicates and non-keys dropped."""
+    out: dict[str, list[tuple[str, str]]] = {}
+    seen: set[str] = set()
+    for key in keys:
+        if key in seen:
+            continue
+        seen.add(key)
+        try:
+            bucket, path = split_key(key)
+        except ValueError:
+            continue
+        out.setdefault(bucket, []).append((key, path))
+    return out
 
 
 def split_key(key: str) -> tuple[str, str]:
@@ -139,6 +171,45 @@ class ClipStorage:
             raise StorageError("Storage sign answered without signedURL") from exc
         return f"{self._base()}{signed}" if str(signed).startswith("/") else str(signed)
 
+    def signed_urls(self, keys: Sequence[str], expires_in_s: int = SIGNED_URL_TTL_S) -> dict[str, str | None]:
+        """Signed download URLs for many objects, one request per bucket (and per 1,000 paths). Returns
+        `{key: url}`; a key Storage could not sign (missing object) maps to None. Keys that are not
+        storage keys are left out."""
+        out: dict[str, str | None] = {}
+        endpoint = "POST /object/sign/{bucket}"
+        for bucket, pairs in group_by_bucket(keys).items():
+            url = f"{self._base()}/object/sign/{bucket}"
+            headers = self._headers()
+            for start in range(0, len(pairs), SIGN_PATHS_MAX):
+                chunk = pairs[start : start + SIGN_PATHS_MAX]
+                body = {"expiresIn": expires_in_s, "paths": [path for _, path in chunk]}
+
+                def call(
+                    url: str = url, headers: dict[str, str] = headers, body: dict[str, object] = body
+                ) -> httpx.Response:
+                    return self._http.post(url, headers=headers, json=body)
+
+                response = _http.send(SERVICE, endpoint, call)
+                _http.raise_for_status(SERVICE, endpoint, response)
+                try:
+                    items = response.json()
+                except ValueError as exc:
+                    raise StorageError("Storage sign answered without JSON") from exc
+                if not isinstance(items, list):
+                    raise StorageError("Storage sign answered without a list")
+                signed_by_path: dict[str, str | None] = {}
+                for item in items:
+                    if isinstance(item, dict) and isinstance(item.get("path"), str):
+                        signed = item.get("signedURL")
+                        signed_by_path[item["path"]] = (
+                            (f"{self._base()}{signed}" if signed.startswith("/") else signed)
+                            if isinstance(signed, str) and signed
+                            else None
+                        )
+                for key, path in chunk:
+                    out[key] = signed_by_path.get(path)
+        return out
+
 
 class FakeClipStorage(ClipStorage):
     """Storage without the network, for tests: objects are kept in memory by key."""
@@ -147,6 +218,8 @@ class FakeClipStorage(ClipStorage):
         super().__init__(supabase_url="https://fake.supabase.test", service_role_key="fake")
         self.objects: dict[str, bytes] = {}
         self.error: Exception | None = None
+        self.missing: set[str] = set()
+        self.sign_batches = 0
 
     def is_configured(self) -> bool:
         return True
@@ -165,3 +238,15 @@ class FakeClipStorage(ClipStorage):
     def signed_url(self, key: str, expires_in_s: int = SIGNED_URL_TTL_S) -> str:
         bucket, path = split_key(key)
         return f"https://fake.supabase.test/storage/v1/object/sign/{bucket}/{path}?token=fake"
+
+    def signed_urls(self, keys: Sequence[str], expires_in_s: int = SIGNED_URL_TTL_S) -> dict[str, str | None]:
+        """Every key signs (as `signed_url` does) unless `missing` names it; `error` is raised if set.
+        Each call is counted in `sign_batches`."""
+        if self.error is not None:
+            raise self.error
+        self.sign_batches += 1
+        return {
+            key: None if key in self.missing else self.signed_url(key, expires_in_s)
+            for pairs in group_by_bucket(keys).values()
+            for key, _ in pairs
+        }

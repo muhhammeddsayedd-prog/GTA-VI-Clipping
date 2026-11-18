@@ -49,7 +49,20 @@ def read_tx() -> Iterator[None]:
         raise ApiError(504, "timeout", "the query took too long; narrow the filters") from exc
 
 
+def sign_thumbs(keys: list[str]) -> dict[str, str | None]:
+    """Signed URLs (1 h) for the clip frames of one answer, in one Storage request. Any failure gives
+    `{}`: every row then falls back to its source thumbnail, the answer itself never fails."""
+    if not keys:
+        return {}
+    try:
+        return storage_factory().signed_urls(keys, SIGNED_URL_TTL_S)
+    except Exception as exc:
+        get_logger("api").warning("admin_thumbs_sign_failed", count=len(keys), error=type(exc).__name__)
+        return {}
+
+
 def answer(data: Any) -> JSONResponse:
+    q.resolve_thumbs(data, sign_thumbs(q.thumb_keys(data)))
     return JSONResponse(q.jsonify(data))
 
 
@@ -97,7 +110,8 @@ def detail(row: q.Row | None, what: str) -> q.Row:
 @router.get("/overview")
 def overview() -> JSONResponse:
     with read_tx():
-        return answer(q.overview())
+        body = q.overview()
+    return answer(body)  # outside the transaction: thumbnails are signed over the network
 
 
 @router.get("/pipeline")

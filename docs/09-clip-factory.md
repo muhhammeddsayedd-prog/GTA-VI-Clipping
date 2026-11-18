@@ -93,4 +93,5 @@ Grab one frame at the window middle; send to the writer model with vision; it re
 
 - Scratch: `$DATA_DIR/render/<clip_id>/` (deleted after upload).
 - Storage key: `clips/<env>/<yyyy>/<mm>/<dd>/<clip_id>.mp4`.
+- Console thumbnail: right after the render (before the gate) one JPEG frame of the finished clip is uploaded to `clips/thumbs/<env>/<yyyy>/<mm>/<dd>/<clip_id>.jpg` and saved in `clips.thumb_path` (`factory/thumbs.py`, settings `console.thumb_*`). A failure is recorded as `clip.thumb_failed` and never fails the render (docs/26, Console media).
 - Keep a local copy in `$DATA_DIR/ready/<clip_id>.mp4` until posted (posting uploads the local file to Upload-Post).

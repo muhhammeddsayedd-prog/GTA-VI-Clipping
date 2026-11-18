@@ -361,3 +361,15 @@ Viewer-made Twitch Clips of `env.target_game` as a discovery source (decision D1
 | `admin.list_max_limit` | `200` | Largest page an admin console list returns; the default page is 50. (M17) |
 | `admin.month_ceiling_usd` | `840` | Monthly spend ceiling shown on the Spend page (top of the docs/23 cost model). Display only. (M17) |
 | `admin.noisy_event_types` | `["post.dry_run", "post.link_updated", "stats.collected", "clip.scored", "job.recovered"]` | Event types left out of the overview's recent events. (M17) |
+
+## Console media
+
+Clip thumbnails and creator profile pictures for the admin console (docs/26, migration 0022).
+
+| Key | Default | Meaning |
+|---|---|---|
+| `console.thumb_frame_s` | `1.5` | The clip thumbnail is the frame this many seconds into the rendered clip (the middle of a shorter clip). |
+| `console.thumb_width_px` | `540` | Width of the clip thumbnail JPEG; the height keeps the 9:16 shape. |
+| `console.thumb_jpeg_qscale` | `5` | ffmpeg JPEG quality of the thumbnail (`-q:v`, 2 best to 31 worst; 5 is about JPEG quality 80). |
+| `console.avatar_refresh_days` | `7` | A creator's profile picture is looked up again after this many days. |
+| `console.avatars_per_pass` | `100` | Creators whose picture is looked up per discovery pass, at most (Twitch: 100 per request; YouTube: 50 per request, 1 quota unit each, inside `discovery.youtube_quota_daily_units`). |
