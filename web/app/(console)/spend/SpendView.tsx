@@ -104,7 +104,7 @@ export function SpendView() {
         </Card>
         <Card>
           <CardHead title="Quotas" hint="Not money, but they stop the pipeline when used up" />
-          {quota("YouTube Data API units", qd.youtube_units_today, qd.youtube_units_limit)}
+          {quota("YouTube Data API units (day resets 00:00 Pacific)", qd.youtube_units_today, qd.youtube_units_limit)}
           {quota("Search API calls", qd.search_calls_today, qd.search_calls_limit)}
           {quota("Apify spend today ($)", qd.apify_today_usd, qd.apify_daily_budget_usd)}
           {quota("Apify spend this month ($)", qd.apify_month_usd, qd.apify_monthly_budget_usd)}

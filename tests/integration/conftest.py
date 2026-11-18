@@ -27,7 +27,7 @@ create table if not exists storage.buckets (id text primary key, name text, publ
 """
 LAST_BOOTSTRAP_MIGRATION = "0002"
 FORBIDDEN_HOST_PARTS = ("supabase.co", "supabase.com", "supabase.net")
-MUTABLE_TABLES = "jobs, events, notify_outbox, heartbeats, api_usage"
+MUTABLE_TABLES = "jobs, events, notify_outbox, heartbeats, api_usage, youtube_channel_cache"
 
 
 @pytest.fixture(scope="session")
