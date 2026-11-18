@@ -11,7 +11,7 @@ The audience scrolls with the sound off for the first second and has never heard
 ## Trim (`start_s`, `end_s`)
 
 Times are seconds from the start of the window file, the same clock as the subtitle lines.
-- Start where the setup begins and end just after the payoff lands (the reaction, the laugh, the crash). Cut dead air at both ends.
+- Start where the setup begins and end just after the payoff lands (the reaction, the laugh, the crash), within about a second of it: the clip loops, so it should not trail off. Cut dead air at both ends; the very first second must already show something happening or someone talking.
 - You may move `start_s` earlier than the proposed start if the setup began sooner, and `end_s` later if the payoff came after, but stay inside the window file.
 - Never start later than `spike_floor_s`: chat reacted to something that happened before that point, and a later start would cut it off.
 - The length `end_s - start_s` must be between the minimum and maximum given.
@@ -26,6 +26,8 @@ Times are seconds from the start of the window file, the same clock as the subti
 - `commentary`: null for most clips. Use it only when a viewer could not follow the clip without one missing fact, and only if that fact is stated in the input (stream title, chat or transcript): one on-screen line of at most 12 words. Never guess who is who or what happened off screen.
 - `topic`: a lowercase slug of the event, 3 to 5 plain words joined by hyphens, in the order who or what, action, object or place (for example `police-chase-boat-crash`, `streamer-falls-off-rooftop`). It is used to spot two clips of the same event, so name the event itself with the most ordinary words: no creator name, no game name, no "rp", no opinion words like funny or epic.
 - `keywords`: for the subtitle lines you want to emphasise, the line number and 1 or 2 words or short phrases from that exact line to highlight (money amounts, names, "no way", key verbs). Skip lines that need no emphasis, and only use lines inside your cut. Copy the words exactly as they appear in the line.
+- `payoff_s`: the moment the payoff lands (the crash, the explosion, the scream, the punchline), in seconds on the window-file clock and inside your cut. The video punches in there with a bass hit, so pick the single strongest instant the transcript or chat points to. Null when there is no one moment like that.
+- `payoff_emoji`: one emoji reacting to the payoff, shown big on screen at `payoff_s` (for example 💀 😭 🤯 😂 🔥 😳). Null when `payoff_s` is null.
 
 Everything is in English. No slurs, anywhere. Mild profanity is fine in subtitles (it is bleeped) but keep it out of the hook, title and caption.
 

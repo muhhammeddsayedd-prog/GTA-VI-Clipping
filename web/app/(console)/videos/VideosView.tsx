@@ -14,8 +14,15 @@ const STATUSES = ["new", "processing", "done", "failed", "skipped"];
 const KEYS = ["status", "platform"];
 
 const cols: Col<Video>[] = [
-  { key: "c", head: "Creator", render: (v) => <Who name={v.creator.handle} p={v.platform} size={30} sub={`${fmtDuration(v.duration_s)}${v.has_chat ? "" : " · no chat"}`} /> },
-  { key: "v", head: "Video", mobile: "primary", render: (v) => <Two a={<span className="clamp2">{v.title ?? v.source_id}</span>} b={<>published <When iso={v.published_at} /></>} /> },
+  { key: "c", head: "Creator", render: (v) => <Who name={v.creator.handle} avatar={v.creator.avatar_url} p={v.platform} size={30} sub={`${fmtDuration(v.duration_s)}${v.has_chat ? "" : " · no chat"}`} /> },
+  {
+    key: "v", head: "Video", mobile: "primary", render: (v) => (
+      <div className="row" style={{ gap: 10 }}>
+        {v.thumbnail_url && <img className="vthumb" src={v.thumbnail_url} alt="" loading="lazy" decoding="async" referrerPolicy="no-referrer" />}
+        <Two a={<span className="clamp2">{v.title ?? v.source_id}</span>} b={<>published <When iso={v.published_at} /></>} />
+      </div>
+    ),
+  },
   { key: "s", head: "Status", mobile: "aside", render: (v) => <Badge status={v.status} /> },
   { key: "a", head: "Attempts", align: "right", render: (v) => <span className={v.attempts >= 3 ? "down semi" : undefined}>{v.attempts}</span> },
   { key: "ch", head: "Chat", mobile: "hide", render: (v) => (v.has_chat === null ? "—" : <Badge tone={v.has_chat ? "green" : "gray"}>{v.has_chat ? "yes" : "no"}</Badge>) },

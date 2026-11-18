@@ -88,9 +88,9 @@ export function Shell({ env, email, mock, signOut, children }: ShellProps) {
 
         <header className="top">
           <button type="button" className="ibtn mobile-only" aria-label="Open menu" onClick={() => setSheet(true)}><Menu size={18} /></button>
-          <Link href="/" className="brand" aria-label="6 Stars Clips console home">
+          <Link href="/" className="brand" aria-label="VI Stars Clippy console home">
             <Logo />
-            <div><b>6 STARS</b><span>Clips control console</span></div>
+            <div><b>VI STARS CLIPPY</b><span>Clips control console</span></div>
           </Link>
           {envChip}
           <nav className="navpill" aria-label="Main">

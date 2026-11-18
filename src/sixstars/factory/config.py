@@ -10,6 +10,7 @@ from typing import Literal
 from sixstars import settings
 from sixstars.factory.params import FactoryParams
 from sixstars.factory.pauses import SnapRules
+from sixstars.factory.style import VIRAL_STYLE, StyleRules
 
 Lane = Literal["spike", "hourly"]
 GateProfile = Literal["hourly", "express"]
@@ -24,13 +25,14 @@ OFFLINE_DEFAULTS: dict[str, object] = {
     "factory.preset_normal": "veryfast",
     "factory.preset_express": "superfast",
     "factory.use_nvenc": False,
-    "factory.loudness_lufs": -14,
+    "factory.loudness_lufs": -12,
     "factory.safe_top_px": 220,
     "factory.safe_bottom_px": 420,
-    "factory.accent_color": "#FFD400",
+    "factory.accent_color": "#FF2BD6",
     "factory.font": "Montserrat Black",
     "factory.hook_seconds": 3.0,
-    "factory.end_card_s": 1.5,
+    "factory.end_card_s": 0,
+    "factory.style": VIRAL_STYLE,
     "factory.watermark": "6 Stars Clips",
     "factory.series_label": "6 Stars Moments",
     "factory.bleep": True,
@@ -81,6 +83,7 @@ class FactoryConfig:
     gate_profile: GateProfile
     max_music_ratio: float
     snap: SnapRules = SnapRules()
+    style: StyleRules = StyleRules()
 
     @classmethod
     def from_mapping(cls, values: Mapping[str, object], lane: str) -> "FactoryConfig":
@@ -108,6 +111,7 @@ class FactoryConfig:
             gate_profile=profile,
             max_music_ratio=max(0.0, _number(gate.get("max_music_ratio"), 0.0)),
             snap=SnapRules.from_setting(values.get("factory.cut_snap")),
+            style=StyleRules.from_setting(values.get("factory.style")),
         )
 
     @classmethod
@@ -125,6 +129,8 @@ class FactoryConfig:
         values[f"gate.{profile}"] = settings.get(f"gate.{profile}", {})
         # Absent before migration 0011: the snap rule is then switched off.
         values["factory.cut_snap"] = settings.get("factory.cut_snap", None)
+        # Absent before migration 0021: the classic look.
+        values["factory.style"] = settings.get("factory.style", None)
         return cls.from_mapping(values, lane)
 
     @classmethod

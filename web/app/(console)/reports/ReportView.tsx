@@ -34,7 +34,7 @@ const yesterday = () => shift(iso(new Date()), -1);
 const pretty = (day: string) => new Date(`${day}T00:00:00Z`).toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
 
 function asText(r: Report): string {
-  const lines = [`6 Stars daily report — ${r.day} (${r.timezone})`, "",
+  const lines = [`VI Stars Clippy daily report — ${r.day} (${r.timezone})`, "",
     ...r.accounts.map((a) => `${a.account_id}: ${fmtNum(a.followers)} followers (${a.followers_change ?? "—"}), ${a.published} posts, ${a.failed} failed`),
     `Views: ${fmtNum(r.views.total)} (${r.views.change ?? "—"})`,
     `Posts: ${r.posts.hourly_published} hourly, ${r.posts.spike_published} spike, ${r.posts.failed} failed`,

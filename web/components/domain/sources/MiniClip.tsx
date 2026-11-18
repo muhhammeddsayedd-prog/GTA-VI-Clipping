@@ -10,7 +10,7 @@ import { fmtClock, series } from "@/lib/format";
 export function MiniClip({ c }: { c: Clip }) {
   return (
     <Link href={`/clips/${c.id}`} className="clipcard" aria-label={`Clip ${series(c.series_no)}: ${c.hook ?? c.title ?? ""}, ${c.status}`}>
-      <Thumb seed={c.id} hook={c.hook} dur={fmtClock(c.duration_s)} live={c.lane === "spike"}>
+      <Thumb seed={c.id} src={c.thumb_url} kind={c.thumb_kind} hook={c.hook} dur={fmtClock(c.duration_s)} live={c.lane === "spike"}>
         <div style={{ position: "absolute", right: 8, bottom: 44 }}><Badge status={c.status} /></div>
       </Thumb>
       <div className="meta">

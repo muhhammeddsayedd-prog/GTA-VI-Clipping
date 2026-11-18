@@ -16,7 +16,7 @@ const STATUSES = ["detected", "confirmed", "rendering", "clipped", "rejected", "
 
 const cols: Col<Spike>[] = [
   { key: "t", head: "Tier", mobile: "lead", render: (s) => <TierChip tier={s.tier} /> },
-  { key: "c", head: "Creator", render: (s) => <Who name={s.creator.handle} p={s.creator.platform} size={28} sub={<ModeBadge mode={s.mode} />} /> },
+  { key: "c", head: "Creator", render: (s) => <Who name={s.creator.handle} avatar={s.creator.avatar_url} p={s.creator.platform} size={28} sub={<ModeBadge mode={s.mode} />} /> },
   { key: "at", head: "At", mobile: "meta", render: (s) => <span className="num">{spikeAt(s)}</span> },
   { key: "z", head: "z", align: "right", mobile: "meta", render: (s) => <b className="num">{s.score_z ?? "—"}</b> },
   { key: "p", head: "Parts", mobile: "hide", render: (s) => <PartsMini parts={s.parts as Record<string, number> | null} /> },

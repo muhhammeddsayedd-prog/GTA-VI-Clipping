@@ -445,7 +445,9 @@ def test_layout_cache_validity(creator_id: str) -> None:
 def test_factory_config_loads_from_the_settings_table(database: None) -> None:
     cfg = FactoryConfig.load("hourly")
     assert (cfg.params.width, cfg.params.height, cfg.params.fps) == (1080, 1920, 30)
-    assert cfg.params.watermark and cfg.params.loudness_lufs == -14
+    # Migration 0021 (docs/27): -12 LUFS, no end card, and the editing style read from the table.
+    assert cfg.params.watermark and cfg.params.loudness_lufs == -12 and cfg.params.end_card_s == 0
+    assert cfg.style.chunked and cfg.style.hook_mode == "title_bar" and cfg.style.punchins
     assert (cfg.min_len_s, cfg.max_len_s, cfg.context_pad_s, cfg.max_music_ratio) == (20.0, 60.0, 15.0, 0.1)
     assert FactoryConfig.load("spike").max_len_s == 45.0
     settings.set("factory.accent_color", "#00FF88")
