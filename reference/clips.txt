@@ -1,0 +1,53 @@
+# Reference clips, collected 2026-11-18 ~15:30 UTC
+# Columns: url | views | length | channel (subscribers) | posted | title
+# Views from Apify scrapes of YouTube and Twitch. Launch-day clips are hours old.
+
+## Proven YouTube Shorts winners (>100k views)
+https://www.youtube.com/shorts/0mIF7wzixzE | 44,339,531 | 10s | GTA Mastermind (902k) | 2026-08-05 | Police GTA VI Persuit Is CRAZY
+https://www.youtube.com/shorts/5mMUBDjtS2U | 40,334,611 | 31s | Kully52 (609k) | 2023-12-11 | The wait until 2025 is going to be hard (Speed/xQc/Kai)
+https://www.youtube.com/shorts/gJns3DopxnY | 13,379,884 | 11s | Leonida Stunts (304k) | 2024-11-04 | POV: Lucia's special ability
+https://www.youtube.com/shorts/kLHfOmWE35w | 6,909,658 | 11s | Kai Cenat Live (16.8M) | 2026-08-27 | Kai Cenat thinks a GTA VI character is indecisive
+https://www.youtube.com/shorts/DDBh-a5HNAk | 6,367,633 | 36s | Streamy Wave (21.9k) | 2025-07-25 | Streamers who showed up in GTA 6
+https://www.youtube.com/shorts/LS_Z1tflefo | 4,515,389 | 26s | Asmongold Shorts (570k) | 2026-06-23 | We need someone like Trevor in GTA 6
+https://www.youtube.com/shorts/lQtFv5yv_Rs | 1,538,538 | 11s | Snickerly (1.49M) | 2026-08-27 | Kai Cenat reacts to GTA VI adding a streamer
+https://www.youtube.com/shorts/Msh7YXWP56o | 1,210,837 | 15s | Kai Cenat Live (16.8M) | 2026-08-27 | Kai Cenat ready to go broke for GTA VI
+https://www.youtube.com/shorts/1i5XLsSZwi4 | 878,721 | 15s | iboclips (278k) | 2026-11-16 | Jynxzi won't be marathoning GTA 6 (talking only)
+https://www.youtube.com/shorts/cMSoSbbkxss | 780,828 | 11s | Succesful Celebrity (3.56M) | 2026-11-17 | Kai Cenat hopping fences for his GTA 6 trailer
+https://www.youtube.com/shorts/l4BKvggf_OY | 618,453 | 22s | DaPlug (1.79M) | 2025-05-05 | Kai Cenat reacts to the delay to 2026
+https://www.youtube.com/shorts/yDS-4jzP-yk | 382,833 | 16s | Quivoro (229) | 2026-08-27 | N3on reacts to finding himself in GTA 6 (tiny channel, big result)
+https://www.youtube.com/shorts/crrQTvbJDIQ | 244,648 | 13s | Worthy Streamers (621k) | 2026-11-11 | Kai can't imagine how good the graphics will be
+https://www.youtube.com/shorts/q_H48trnyaw | 213,334 | 14s | JasonTheWeen Fan (48.8k) | 2026-08-27 | Jason reacts to N3on in GTA 6
+https://www.youtube.com/shorts/-fNFXiyuz7s | 187,704 | 66s | RankCraft (8k) | 2026-11-17 | Ranking IShowSpeed reacting to the delay
+https://www.youtube.com/shorts/2-kiRB5eyxs | 125,155 | 103s | RankT-rex (18.2k) | 2026-09-19 | Ranking craziest GTA 6 parking moments
+https://www.youtube.com/shorts/dCn-v_nLiJ0 | 100,719 | 39s | Asmongold Shorts (570k) | 2026-11-02 | Asmongold's thoughts on GTA 6
+https://www.youtube.com/shorts/KTKGsQz5HzA | 98,165 | 6s | TopGTA6Clips (548) | 2026-11-17 | Kai Cenat pauses the trailer for Lucia (tiny channel, 1 day)
+
+## Launch day (18 Nov) gameplay clips, hours old
+https://www.youtube.com/shorts/lOikMVNUQxE | 3,715 | 19s | CLIPPSTA (5.3k) | 11:09 UTC | xQc first to load GTA 6
+https://www.youtube.com/shorts/MlUC0MKbdVI | 2,969 | 39s | starzy (37.6k) | 08:17 UTC | xQc only votes GTA 6 for Game Awards
+https://www.youtube.com/shorts/Jv9iNoQ9TqM | 2,273 | 26s | StreamerHQ (32.5k) | 11:21 UTC | xQc plays the early playthrough
+https://www.youtube.com/shorts/1UTcxCYgSco | 2,164 | 26s | starzy (37.6k) | 12:33 UTC | xQc tries playing basketball
+https://www.youtube.com/shorts/NKzYPOg8CUQ | 2,142 | 22s | CLIPPSTA (5.3k) | 11:17 UTC | The 30 fps feeling hit instantly (xQc)
+https://www.youtube.com/shorts/X8ndPMj4klQ | 2,116 | 27s | starzy (37.6k) | 11:43 UTC | xQc tries stealing a car
+https://www.youtube.com/shorts/Ey7QENwRFV4 | 1,761 | 12s | Daily GTA Chaos (292) | 11:51 UTC | xQc's first GTA 6 ragdoll
+https://www.youtube.com/shorts/HdtPVaYiIW4 | 1,816 | 32s | NallaC2 (1.5k) | 12:04 UTC | Casetoo's GTA 6 celebration
+https://www.youtube.com/shorts/0kKm9dstPTc | 1,346 | 23s | Undercooked clips (52.7k) | 14:08 UTC | Kai Cenat's first time playing
+https://www.youtube.com/shorts/5hV99VDMo1I | 1,318 | 35s | GTA 6 PANDA (1.2k) | 11:34 UTC | Glock in the Rari turns into a stick-up
+https://www.youtube.com/shorts/DBaddKE-rOw | 1,031 | 27s | ORYVANTA (5) | 12:17 UTC | xQc tried to steal his first car
+https://www.youtube.com/shorts/cKUb0HOZJ-0 | 850 | 26s | GTA 6 Daily (22) | 11:45 UTC | xQc steals his first car
+https://www.youtube.com/shorts/6TvG3QhgHbs | 848 | 23s | Unscripted (66) | 12:45 UTC | xQc's first carjacking goes wrong
+https://www.youtube.com/shorts/qzKUmN0qyS0 | 696 | 20s | DispatchRP (1.4k) | 13:23 UTC | xQc fails at Grand Theft Auto
+https://www.youtube.com/shorts/E1oNlKld0KQ | 699 | 33s | ClipShark (504) | 13:15 UTC | Typical Gamer steals a car, cops chase him
+https://www.youtube.com/shorts/MohlCb-o4UY | 672 | 29s | GTA 6 Daily (1) | 13:53 UTC | Streamers played GTA 6 for the first time (countdown)
+https://www.youtube.com/shorts/nRrPLPTaemQ | 463 | 30s | Six Star Clips (5) | 14:29 UTC | Jason feeding his pet snake
+https://www.youtube.com/shorts/kCVYNszHVxw | 401 | 20s | ClipperinShadow (39) | 14:04 UTC | GTA 6 has a baby, Kai Cenat lost it
+https://www.youtube.com/shorts/Kh4Ls3oIUCQ | 457 | 30s | THE IRREGULAR SHOOT TV (16.8k) | 13:48 UTC | Kai playing GTA 6, good graphics (rambling, weak)
+
+## Launch day Twitch clips (source moments, for the trace-back in Phase 0)
+https://www.twitch.tv/xqc/clip/WealthyNimbleHamsterDansGame-yrU7UShZomelh1Ke | 6,413 | 54s | xqc | 11:19 UTC | xQc commits Grand Theft Auto for the first time
+https://www.twitch.tv/xqc/clip/TrustworthyCarefulJalapenoKAPOW--CPhZdDJiBW-X0-C | 4,294 | 17s | xqc | 12:27 UTC | NPC insults xQc right after he insulted it
+https://www.twitch.tv/lacy/clip/SlickStylishBeaverStrawBeary-ljpqadoCXEhYwJx5 | 2,945 | 12s | lacy | 11:02 UTC | LUCIA (unlock reaction)
+https://www.twitch.tv/lacy/clip/CredulousKawaiiTriangleFUNgineer-Zys54vtw1G4OmIkN | 2,748 | 60s | lacy | 12:05 UTC | wtf
+https://www.twitch.tv/lacy/clip/RelievedRichRhinocerosPeteZaroll-qOXHVQ3XVK3asCkK | 1,931 | 30s | lacy | 11:00 UTC | THE RELEASE OF GTA VI (countdown)
+https://www.twitch.tv/kaicenat/clip/SparklingGrotesqueArtichokeCorgiDerp-I3x3bsdsVQvrlIkt | 1,930 | 30s | kaicenat | 11-17 | Kai talks GTA 6 after the first look
+https://www.twitch.tv/xqc/clip/DifferentPreciousWaffleHotPokket-wMDh_pqLv3Ve6ZOc | 1,768 | 60s | xqc | 11:18 UTC | GTA 6 first ever police chase
