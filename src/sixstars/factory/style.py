@@ -1,7 +1,7 @@
 """The editing style of a clip: the setting `factory.style` (docs/09 section 10, docs/27).
 
 The look is modelled on short-form clips that reached millions of views (docs/27): captions of one or two
-words in heavy capitals that pop in on the seam, the hook as a title bar that stays for the whole clip,
+words in heavy capitals that pop in on the seam, the hook as a title bar over the first seconds,
 hard punch-ins to a full-frame facecam on the loudest reactions, a step zoom on the gameplay every few
 seconds, sound effects on every cut and on the payoff, and dense compressed audio.
 
@@ -26,7 +26,8 @@ class StyleRules:
       subtitle lines with the spoken word highlighted, the classic look).
     * `caption_font` / `caption_size` / `caption_caps`: caption font family (empty: `factory.font`), size
       on the 1080x1920 canvas, and whether captions are upper case.
-    * `hook_mode`: `box` shows the hook for `factory.hook_seconds`; `title_bar` keeps it for the whole clip.
+    * `hook_mode`: `box` draws the hook as a subtitle box, `title_bar` as a TikTok-style bar; both
+      show it for the first `factory.hook_seconds`.
     * `punchin_max` / `punchin_zoom` / `punchin_len_s` / `punchin_min_gap_s` / `punchin_db`: up to
       `punchin_max` hard cuts to a full-frame close-up (the facecam in layout A, the centre of the source in
       layout B), `punchin_len_s` long, where the audio is `punchin_db` dB louder than the clip's median, at
