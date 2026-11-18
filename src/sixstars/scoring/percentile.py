@@ -57,7 +57,8 @@ def spike_percentile(creator_id: str | None, score_z: float, exclude_spike_id: s
             own = _history(
                 """
                 select score_z from spikes
-                where creator_id = %s and id <> %s and detected_at > now() - make_interval(days => %s)
+                where creator_id = %s and id <> %s and mode <> 'transcript'
+                  and detected_at > now() - make_interval(days => %s)
                 order by detected_at desc limit %s
                 """,
                 (creator_id, exclude, int(days), max_rows),
@@ -67,7 +68,7 @@ def spike_percentile(creator_id: str | None, score_z: float, exclude_spike_id: s
         pool = _history(
             """
             select s.score_z from spikes s
-            where s.id <> %s and s.detected_at > now() - make_interval(days => %s)
+            where s.id <> %s and s.mode <> 'transcript' and s.detected_at > now() - make_interval(days => %s)
               and (%s::uuid is null or exists (
                     select 1 from creators c, creators me
                     where c.id = s.creator_id and me.id = %s::uuid and c.platform = me.platform))
@@ -88,10 +89,13 @@ def strength_of_spike(spike_id: str | None) -> Strength:
     if not spike_id:
         return Strength(None, "none", 0)
     try:
-        row = db.fetch_one("select creator_id::text as c, score_z from spikes where id = %s", (spike_id,))
+        row = db.fetch_one(
+            "select creator_id::text as c, score_z, mode from spikes where id = %s", (spike_id,)
+        )
     except Exception as exc:  # noqa: BLE001
         _log.warning("spike_percentile_failed", error=f"{type(exc).__name__}: {exc}"[:200])
         return Strength(None, "none", 0)
-    if row is None or row["score_z"] is None:
+    if row is None or row["score_z"] is None or row["mode"] == "transcript":
+        # A transcript-picked moment has no chat spike: its score_z is the model's confidence.
         return Strength(None, "none", 0)
     return spike_percentile(row["c"], float(row["score_z"]), spike_id)

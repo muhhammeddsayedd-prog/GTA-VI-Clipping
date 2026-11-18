@@ -3,7 +3,9 @@
 Writing the log must never stop the pipeline: a failed insert is logged and swallowed.
 """
 
+import json
 from collections.abc import Mapping
+from decimal import Decimal
 from typing import Any
 
 from psycopg.types.json import Jsonb
@@ -13,6 +15,18 @@ from sixstars.logging import get_logger
 from sixstars.scoring import config
 
 _log = get_logger("scoring")
+
+
+def _plain(value: object) -> object:
+    if isinstance(value, Decimal):
+        return float(value)
+    return str(value)
+
+
+def json_safe(values: Mapping[str, Any]) -> dict[str, Any]:
+    """`values` with every Decimal (Postgres numeric) as a float and anything else non-JSON as text. Pure."""
+    loaded: dict[str, Any] = json.loads(json.dumps(dict(values), default=_plain))
+    return loaded
 
 
 def record(
@@ -42,7 +56,7 @@ def record(
                 creator_id,
                 decision,
                 (reason or "")[:500] or None,
-                Jsonb(dict(sub_scores or {})),
+                Jsonb(json_safe(sub_scores or {})),
             ),
         )
     except Exception as exc:  # noqa: BLE001 - the log is for humans; it never blocks a decision
