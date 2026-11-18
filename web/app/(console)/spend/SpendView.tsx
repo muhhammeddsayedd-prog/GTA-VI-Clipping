@@ -13,8 +13,8 @@ import type { Usage } from "@/lib/api/types";
 import { fmtCompact, fmtNum, fmtUsd } from "@/lib/format";
 import { useListParams } from "@/lib/use-list";
 
-const COLORS: Record<string, string> = { anthropic: "#5A4AF4", openai: "#9F94FF", groq: "#9F94FF", transcription: "#9F94FF", apify: "#D27A06" };
-const NAMES: Record<string, string> = { anthropic: "Anthropic", openai: "Transcription", groq: "Transcription", transcription: "Transcription", local: "Local (free)", ytdlp: "yt-dlp (free)", apify: "Apify", youtube: "YouTube / other", upload_post: "Upload-Post", twitch: "Twitch" };
+const COLORS: Record<string, string> = { anthropic: "#5A4AF4", openai: "#9F94FF", groq: "#9F94FF", transcription: "#9F94FF", apify: "#D27A06", DataImpulse: "#0E8A9A" };
+const NAMES: Record<string, string> = { anthropic: "Anthropic", openai: "Transcription", groq: "Transcription", transcription: "Transcription", local: "Local (free)", ytdlp: "yt-dlp (free)", apify: "Apify", youtube: "YouTube / other", upload_post: "Upload-Post", twitch: "Twitch", DataImpulse: "DataImpulse proxy" };
 const TRANSCRIBE = ["openai", "groq", "transcription"];
 const color = (p: string) => COLORS[p] ?? "#E1E1EC";
 
@@ -29,7 +29,7 @@ export function SpendView() {
   const chart = useMemo(() => {
     const src = month.data?.daily ?? [];
     const days = [...new Set(src.map((d) => d.day))].sort();
-    const groupsOf: string[][] = [["anthropic"], TRANSCRIBE, ["apify"]];
+    const groupsOf: string[][] = [["anthropic"], TRANSCRIBE, ["apify"], ["DataImpulse"]];
     const known = groupsOf.flat();
     const series = [...groupsOf.map((ps) => days.map((d) => src.filter((x) => x.day === d && ps.includes(x.provider)).reduce((a, x) => a + x.usd, 0))),
       days.map((d) => src.filter((x) => x.day === d && !known.includes(x.provider)).reduce((a, x) => a + x.usd, 0))];
@@ -50,6 +50,7 @@ export function SpendView() {
     { name: `Anthropic · ${rangeLabel}`, v: tot("anthropic"), b: u.budgets.anthropic ? u.budgets.anthropic * budgetScale : null, hint: today ? "ai.daily_budget_usd" : "daily budget × days", c: "#5A4AF4", t: "#EFECFF" },
     { name: `Transcription · ${rangeLabel}`, v: transcribe, b: u.budgets.transcribe ? u.budgets.transcribe * budgetScale : null, hint: "transcribe.daily_budget_usd", c: "#5A4AF4", t: "#EFECFF" },
     { name: `Apify · ${rangeLabel}`, v: tot("apify"), b: today ? u.budgets.apify_daily : u.budgets.apify_monthly, hint: today ? `month ${fmtUsd(month.data ? month.data.totals.find((t) => t.provider === "apify")?.usd ?? 0 : null)} / ${fmtUsd(u.budgets.apify_monthly, 0)}` : "monthly budget", c: "#D27A06", t: "#FEF2DF" },
+    { name: `Proxy · ${rangeLabel}`, v: tot("DataImpulse"), b: u.budgets.proxy ? u.budgets.proxy * budgetScale : null, hint: today ? "proxy.daily_budget_usd" : "daily budget × days", c: "#0E8A9A", t: "#E2F5F7" },
     { name: "Month to date", v: monthTotal, b: u.budgets.month_ceiling, hint: "of the monthly ceiling", c: "#12A150", t: "#E5F7EC" },
   ];
 
@@ -77,7 +78,7 @@ export function SpendView() {
           <RefreshBtn onClick={() => { q.refetch(); month.refetch(); }} spinning={q.isFetching} /></>} />
 
       <AnimatedContent distance={20} duration={0.5} stagger={0.06} trigger="mount">
-        <Grid cols={4}>
+        <Grid cols={5}>
           {rings.map((r) => {
             const pct = r.b ? (r.v / r.b) * 100 : 0;
             return (
@@ -99,8 +100,8 @@ export function SpendView() {
       <div className="g mt2 collapse-md" style={{ gridTemplateColumns: "1fr 360px" }}>
         <Card>
           <CardHead title="Daily spend by provider" hint="This month · tracked providers only"
-            actions={<Legend items={[{ color: color("anthropic"), label: "Anthropic" }, { color: color("openai"), label: "Transcription" }, { color: color("apify"), label: "Apify" }, { color: "#E1E1EC", label: "YouTube / other" }]} />} />
-          {month.data ? <Stacked label="Daily spend this month by provider" series={chart.series} colors={["#5A4AF4", "#9F94FF", "#D27A06", "#E1E1EC"]} labels={chart.labels} width={900} height={210} /> : <div className="skel" style={{ height: 210 }} />}
+            actions={<Legend items={[{ color: color("anthropic"), label: "Anthropic" }, { color: color("openai"), label: "Transcription" }, { color: color("apify"), label: "Apify" }, { color: color("DataImpulse"), label: "DataImpulse proxy" }, { color: "#E1E1EC", label: "YouTube / other" }]} />} />
+          {month.data ? <Stacked label="Daily spend this month by provider" series={chart.series} colors={["#5A4AF4", "#9F94FF", "#D27A06", "#0E8A9A", "#E1E1EC"]} labels={chart.labels} width={900} height={210} /> : <div className="skel" style={{ height: 210 }} />}
         </Card>
         <Card>
           <CardHead title="Quotas" hint="Not money, but they stop the pipeline when used up" />

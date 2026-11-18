@@ -80,6 +80,12 @@ class Env(BaseSettings):
 
     # Downloads (PROXY_URL embeds credentials, so it is a secret)
     PROXY_URL: SecretStr | None = None
+    # A residential provider with sticky sessions: every port in this range is its own exit IP, held for a
+    # while (DataImpulse: 10000-20000, ~30 min). Unset: PROXY_URL is used as it is.
+    PROXY_STICKY_PORT_MIN: int | None = None
+    PROXY_STICKY_PORT_MAX: int | None = None
+    # The PO-token provider (bgutil-ytdlp-pot-provider HTTP server, the `bgutil` compose service).
+    POT_PROVIDER_URL: str | None = None
     TWITCH_DOWNLOADER_CLI: Path = Path("/usr/local/bin/TwitchDownloaderCLI")
 
     def require(self, name: str) -> str:

@@ -19,6 +19,7 @@ DeferKind = Literal[
     "download_blocked",
     "ai_budget",
     "transcribe_budget",
+    "proxy_budget",
     "paused",
     "emergency_stop",
     "concurrency",

@@ -15,13 +15,18 @@ they are configured, and a failure turned into one of five kinds:
 - `timeout` / `error`: anything else; worth a retry.
 
 The proxy URL embeds credentials, so commands are never logged and the proxy is scrubbed from error text.
+
+A video job uses one sticky proxy session for all its calls (`vod/proxy.py`): the `Access` it passes down
+carries that session's URL, the PO-token provider (which mints from the same address, the plugin forwards
+`--proxy`) and a `TrafficMeter` that counts the calls made through the proxy.
 """
 
 import subprocess
 import sys
+import threading
 import time
 from collections.abc import Callable, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Final, Literal
 
@@ -109,18 +114,47 @@ class VideoUnavailableError(YtDlpError):
     """The video cannot be downloaded by anyone without an account that may see it."""
 
 
+class TrafficMeter:
+    """Counts what one video job sent through the proxy: yt-dlp calls and bytes. Thread-safe (the windows
+    of a video download in parallel)."""
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self.calls = 0
+        self.bytes = 0
+
+    def count_call(self) -> None:
+        with self._lock:
+            self.calls += 1
+
+    def add_bytes(self, size: int) -> None:
+        with self._lock:
+            self.bytes += max(0, size)
+
+
 @dataclass(frozen=True, slots=True)
 class Access:
-    """How yt-dlp reaches a platform: an optional proxy and an optional cookies file."""
+    """How yt-dlp reaches a platform: an optional proxy and an optional cookies file.
+
+    `cookies_held` means a cookies file is configured but this attempt goes without it (cookies are a
+    fallback after the proxy alone, `proxy.cookies_mode`); `described` still says "set", because it names
+    the configuration and the blocked-downloads back-off compares it. `sticky_port` is the proxy session
+    of the job (None: `PROXY_URL` as it is). `pot_url` is the PO-token provider, used with the proxy only.
+    """
 
     proxy: str | None = None
     cookies_file: Path | None = None
+    cookies_held: bool = False
+    sticky_port: int | None = None
+    pot_url: str | None = None
+    meter: TrafficMeter | None = field(default=None, compare=False)
 
     @property
     def described(self) -> str:
-        """Which aids are in use, without their values (for logs and notifications)."""
+        """Which aids are configured, without their values (for logs and notifications). Never the port:
+        the back-off of blocked downloads compares this text."""
         proxy = "set" if self.proxy else "not set"
-        cookies = "set" if self.cookies_file is not None else "not set"
+        cookies = "set" if self.cookies_file is not None or self.cookies_held else "not set"
         return f"PROXY_URL {proxy}, YOUTUBE_COOKIES_FILE {cookies}"
 
 
@@ -206,6 +240,9 @@ def base_command(access: Access) -> list[str]:
     ]
     if access.proxy:
         command += ["--proxy", access.proxy]
+        if access.pot_url:
+            # bgutil's HTTP provider; it mints the token through the same proxy yt-dlp uses.
+            command += ["--extractor-args", f"youtubepot-bgutilhttp:base_url={access.pot_url}"]
     if access.cookies_file is not None:
         command += ["--cookies", str(access.cookies_file)]
     return command
@@ -239,6 +276,8 @@ def run(
     """
     log = get_logger("vod")
     started = time.monotonic()
+    if access.proxy and access.meter is not None:
+        access.meter.count_call()
     code, stdout, stderr = (runner or run_subprocess)([*base_command(access), *arguments], timeout_s)
     duration_ms = int((time.monotonic() - started) * 1000)
     if code == 0:
