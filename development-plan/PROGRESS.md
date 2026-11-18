@@ -414,3 +414,22 @@ FakeUploadPostClient()                 .uploads .deleted .upload_error .platform
 ### Open issues / next
 
 - Only clips rendered after the deploy are affected. Clips already rendered or posted keep the title for the whole clip.
+
+## Scoring overhaul Phase 1 — 2026-11-18 UTC
+
+### What was built
+- Migration 0026 (additive): `scoring_config` (flags) + `scoring_config_history` (config version),
+  `scoring_log` (every decision with sub-scores), `scoring_version` on spikes and clips.
+- Package `sixstars.scoring` (flags, log, per-channel percentiles, first-time boost); `factory/anchor.py`
+  (loudness + chat + speech anchor); `gate/overhaul.py`; live fast path and keep-stronger merging; stored
+  live chat baselines. Scripts `scoring_flag.py`, `scoring_monitor.py`. Full log: `docs/CHANGELOG-scoring.md`.
+
+### Deviations
+- Flags live in `scoring_config` (owner's order), not `settings` as CLAUDE.md says for thresholds.
+- `reactions.extended` rolled back twice on the error trigger; left off.
+- `cut.adaptive` tripped the error trigger on a false positive (jobs queued before the flip); re-enabled with
+  a fresh, clean 30-minute window.
+
+### Open issues / next
+- Normal queue CPU saturation (local Whisper) makes live cuts expire; see the changelog summary.
+- Phase 2: judge rewrite (rubric in docs/taste-profile.md), unknown instead of reject, cap hold, 30-min buffer.

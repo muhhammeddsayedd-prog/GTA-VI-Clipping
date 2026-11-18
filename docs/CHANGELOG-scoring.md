@@ -38,4 +38,20 @@ Funnel before Phase 1 (production, per hour, 18 Nov UTC; spikes → clips → ap
 | 2026-11-18 18:56:51 | `cut.adaptive` re-enabled (see the row above). v16. | `cut.adaptive` | `scripts/scoring_flag.py production cut.adaptive off` | **Kept.** Fresh 30 min, no trigger: errors 0 (3.3/h), failed jobs 0 (3.0), clips 46/h (42), rendered 34 (31), approved 2.0 (3.0), AI $1.67 (1.38). Mean cut 15.1 s over 17 clips. Render queue down to 11, oldest 14 min. |
 | 2026-11-18 19:27:45 | A clip whose spike is in its channel's top 10% passes the hourly profile at score 5 instead of 6. v17. | `pass.strong_spike` | `scripts/scoring_flag.py production pass.strong_spike off` | **Kept.** No trigger: errors 0, failed jobs 0, AI $0.44/h (1.39); a quiet half hour (61 spikes/h). One clip qualified (p100, min score lowered to 5) but scored 4. Gate: 1 approve, 7 reject. |
 | 2026-11-18 19:58 | First-time boost: +1 gate score and +1 rank for "first time / first ever / finally" in transcript or chat, or a creator's first approved clip of an event type (car theft, wanted level, death, police chase, gun). | `boost.first_time` | `scripts/scoring_flag.py production boost.first_time off` | **Kept.** No trigger: errors 1.95/h (3.33; one live cut expired in the backlog), AI $1.06/h (1.22). Boost fired once (first car theft, AI score 4 → 5), still rejected. 0 approvals in the window: the visual judge scored all 15 gated clips 3-5 (hourly bar 6) — the Phase 2 judge rewrite is the fix. |
-| 2026-11-18 20:29:45 | `reactions.extended` retried with `burst_min` 4 (was 3). | `reactions.extended` | `scripts/scoring_flag.py production reactions.extended off` | monitoring |
+| 2026-11-18 20:29:45 | `reactions.extended` retried with `burst_min` 4 (was 3). | `reactions.extended` | `scripts/scoring_flag.py production reactions.extended off` | **Rolled back 21:00:42 (v21), left off.** Error trigger: 7 `render_failed` (live cuts expired in the normal-queue backlog) and one age-gated video. No gain either: live spikes 35 vs 33 in the half hour before. |
+
+## Phase 1 summary (21:00 UTC)
+
+On: `warmup.v2`, `merge.keep_stronger`, `fastpath.live`, `cut.adaptive`, `pass.strong_spike`, `boost.first_time`.
+Off: `reactions.extended` (rolled back twice).
+
+Funnel, 15:00-16:00 (before) vs 20:00-21:00 (after), per hour: spikes 116 → 81, P1 confirmed 50 → 48,
+clips 47 → 71, rendered 39 → 51, approved 2 → 3, posted 3 → 1 (posting cadence unchanged; slot timing),
+errors 1 → 9 and failed jobs 1 → 8 (live cuts expiring in the normal-queue backlog), AI $1.48 → $1.87.
+
+Open issues found during Phase 1:
+- The normal queue is CPU-bound: four workers run local Whisper "medium" on 8 cores (load 16) while VOD
+  jobs pile up; live A/B renders wait past `live.cut_keep_s` (45 min) and fail on a missing cut.
+- The visual judge scores almost every clip 3-5: the main remaining cause of rejections (Phase 2).
+- `boost.first_time` counts an event as "first" until the creator has an approved clip of it, and few clips
+  are approved, so it fires on many clips (8 in 30 min). Tighten in Phase 2 (compare with rendered clips).
