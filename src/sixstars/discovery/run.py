@@ -70,7 +70,7 @@ class DiscoveryClients:
             youtube=YouTubeClient(),
             apify=ApifyClient(),
             search=YtDlpSearch(
-                proxy=proxy_for("youtube"),
+                proxy=proxy_for("youtube", "discovery"),
                 timeout_s=config.ytdlp_timeout_s,
                 # owner-supplied cookies, off unless `discovery.ytdlp_use_cookies` is set
                 cookies_file=cookies_file() if config.ytdlp_use_cookies else None,

@@ -50,7 +50,7 @@ def open_live(
     means no cookies). Twitch: the iterator never ends by
     itself. YouTube: it ends when the stream ends and raises `ChatSourceError` if there is no live chat.
     """
-    proxy = proxy_for(platform)
+    proxy = proxy_for(platform, "live")
     if platform == "twitch":
         return twitch_irc.stream(channel, proxy=proxy, max_reconnects=max_reconnects)
     return youtube_live.stream(
@@ -65,7 +65,7 @@ def download_replay(platform: Platform, source_id: str, *, raw_path: Path | None
     `ReplayChat` (the raw TwitchDownloaderCLI JSON is kept at `raw_path` when given). YouTube returns None
     when the video has no chat replay. Failures raise `ChatSourceError`.
     """
-    proxy = proxy_for(platform)
+    proxy = proxy_for(platform, "chat")
     if platform == "twitch":
         return twitch_replay.download(source_id, raw_path, proxy=proxy)
     return youtube_replay.download(source_id, proxy=proxy, cookies_file=cookies_file())

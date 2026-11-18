@@ -302,7 +302,7 @@ class LiveSession:
             stall_timeout_s=cfg.stall_timeout_s,
             ad_break_max_s=cfg.ad_break_max_s,
             max_lag_s=cfg.max_lag_s,
-            proxy=proxy_for(self._platform),
+            proxy=proxy_for(self._platform, "live"),
             cookies_file=cookies_file() if row.platform == "youtube" else None,
             ffmpeg=self.deps.ffmpeg,
             spawn=self.deps.spawn,

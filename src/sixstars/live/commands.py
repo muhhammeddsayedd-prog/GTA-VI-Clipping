@@ -82,13 +82,13 @@ def probe(source: str, seconds: float, *, keep: bool = False, with_chat: bool = 
         start_timeout_s=cfg.start_timeout_s,
         stall_timeout_s=cfg.stall_timeout_s,
         max_lag_s=cfg.max_lag_s,
-        proxy=proxy_for(platform),
+        proxy=proxy_for(platform, "live"),
         cookies_file=cookies_file() if platform == "youtube" else None,
     )
     report: dict[str, Any] = {
         "platform": platform,
         "url": url,
-        "proxy": proxy_for(platform) is not None,
+        "proxy": proxy_for(platform, "live") is not None,
         "cookies": platform == "youtube" and cookies_file() is not None,
         "result": "no_data",
     }
