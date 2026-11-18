@@ -226,6 +226,25 @@ Viewer-made Twitch Clips of `env.target_game` as a discovery source (decision D1
 | `vod.concurrency_retry_jitter` | `0.2` | Share (0..1) by which the wait for a free slot is randomly shortened, so deferred jobs do not all wake at once. (fix-stale-processing) |
 | `vod.worker_fresh_s` | `90` | A worker of the normal queue counts as live for the VOD concurrency limit when its heartbeat (written every 30 s) is not older than this many seconds. (fix-stale-processing) |
 
+## Proxy (YouTube video downloads)
+
+Residential proxy (DataImpulse) for the VOD lane only, added 2026-11-18 (migration 0025, `src/sixstars/vod/proxy.py`). Environment: `PROXY_URL`, `PROXY_STICKY_PORT_MIN` / `PROXY_STICKY_PORT_MAX` (one random port per video job; each port is its own sticky exit IP), `POT_PROVIDER_URL` (the `bgutil` compose service).
+
+| Key | Default | Meaning |
+|---|---|---|
+| `proxy.lanes` | `["vod"]` | Lanes that may use `PROXY_URL`: `vod`, `live`, `discovery`, `chat`. Live recording costs about 2.5 GB per stream-hour. |
+| `proxy.max_attempts` | `3` | Attempts of one YouTube video job through the proxy, each on a new port, after a bot check, a 403 on every window or a proxy error. A 401/402/407 from the proxy account is not retried. |
+| `proxy.cookies_mode` | `"fallback"` | `fallback`: one more attempt with `YOUTUBE_COOKIES_FILE` after the attempts without; `first`: every attempt with cookies; `never`. |
+| `proxy.daily_budget_usd` | `3` | Proxy spend per UTC day; when reached, YouTube video jobs wait for the next day (Twitch goes on) and the guardian alerts. 0 = no limit. |
+| `proxy.usd_per_gb` | `1.0` | Price per GB, for `api_usage.cost_usd`. |
+| `proxy.overhead_mb_per_call` | `2.0` | Estimated MB per yt-dlp call on top of the measured media bytes. |
+| `proxy.cycle_gb` | `5` | GB bought this billing cycle; after a top-up set the new total and `proxy.cycle_started_at`. |
+| `proxy.cycle_started_at` | `"2026-11-18T00:00:00+00:00"` | Start of the billing cycle. |
+| `proxy.low_traffic_share` | `0.8` | Share of `proxy.cycle_gb` (our own count) at which the guardian asks for a top-up. |
+| `proxy.health_interval_s` | `900` | Seconds between two guardian probes of the proxy. |
+| `proxy.health` | written by code | Last probe: `{ok, reason, checked_at}`. |
+| `proxy.health_checked_at` | written by code | Time of the last probe. |
+
 ## Clip factory
 
 | Key | Default | Meaning |

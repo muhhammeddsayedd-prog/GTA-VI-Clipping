@@ -65,12 +65,14 @@ def section_for(pad_start_s: float, pad_end_s: float, video_duration_s: float | 
     return Section(start, end)
 
 
-def format_selector(max_height: int) -> str:
+def format_selector(max_height: int, *, strict_cap: bool = False) -> str:
     """Best video up to `max_height` plus best audio, H.264 and AAC first: they can be copied into an MP4
     and decode fast. Falls back to any codec, then to a single combined file, then to a taller format
-    (a source that only has taller formats is still better than no clip)."""
+    (a source that only has taller formats is still better than no clip). With `strict_cap` (downloads
+    through the paid proxy) there is no taller fallback."""
     cap = f"[height<={max_height}]"
-    return f"bv*{cap}[vcodec^=avc1]+ba[ext=m4a]/bv*{cap}[vcodec^=avc1]+ba/bv*{cap}+ba/b{cap}/bv*+ba/b"
+    capped = f"bv*{cap}[vcodec^=avc1]+ba[ext=m4a]/bv*{cap}[vcodec^=avc1]+ba/bv*{cap}+ba/b{cap}"
+    return capped if strict_cap else f"{capped}/bv*+ba/b"
 
 
 def build_arguments(
@@ -81,13 +83,14 @@ def build_arguments(
     *,
     max_height: int,
     exact_cuts: bool = False,
+    strict_cap: bool = False,
 ) -> list[str]:
     """The yt-dlp arguments (after the base command) that download one section to `out_dir/name.mp4`."""
     arguments = [
         "--download-sections",
         section.spec,
         "-f",
-        format_selector(max_height),
+        format_selector(max_height, strict_cap=strict_cap),
         "--merge-output-format",
         CONTAINER,
         "--no-part",
@@ -154,7 +157,15 @@ def download_section(
     if ready is not None:
         log.info("section_reused", name=name, start_s=section.start_s, duration_s=ready.duration_s)
         return ready
-    arguments = build_arguments(url, section, out_dir, name, max_height=max_height, exact_cuts=exact_cuts)
+    arguments = build_arguments(
+        url,
+        section,
+        out_dir,
+        name,
+        max_height=max_height,
+        exact_cuts=exact_cuts,
+        strict_cap=access.proxy is not None,
+    )
     try:
         ytdlp.run(arguments, access=access, timeout_s=timeout_s, what="section", runner=runner)
     except YtDlpError:
@@ -165,13 +176,16 @@ def download_section(
     done = existing(out_dir, name, section, ffprobe=ffprobe)
     if done is None:
         raise YtDlpError(Failure("error", f"yt-dlp finished but {name}.{CONTAINER} is missing or too short"))
+    size_bytes = done.path.stat().st_size
+    if access.proxy and access.meter is not None:
+        access.meter.add_bytes(size_bytes)
     log.info(
         "section_downloaded",
         name=name,
         start_s=section.start_s,
         duration_s=round(done.duration_s, 2),
         height=done.height,
-        size_bytes=done.path.stat().st_size,
+        size_bytes=size_bytes,
     )
     return done
 

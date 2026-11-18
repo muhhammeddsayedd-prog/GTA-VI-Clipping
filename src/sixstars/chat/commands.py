@@ -79,11 +79,11 @@ def dump(source: str, seconds: float) -> int:
     try:
         if youtube_innertube.is_youtube_reference(source):
             stream = youtube_live.stream(
-                source, proxy=proxy_for("youtube"), cookies_file=cookies_file(), max_reconnects=3
+                source, proxy=proxy_for("youtube", "chat"), cookies_file=cookies_file(), max_reconnects=3
             )
             since: float | None = time.time()
         else:
-            stream = twitch_irc.stream(source, proxy=proxy_for("twitch"), max_reconnects=3)
+            stream = twitch_irc.stream(source, proxy=proxy_for("twitch", "chat"), max_reconnects=3)
             since = None
         started = time.monotonic()
         kinds, users = asyncio.run(_dump(stream, seconds, since))
@@ -104,8 +104,8 @@ def _download(source: str) -> ReplayChat | None:
     if not youtube_innertube.is_youtube_reference(source) and (
         _TWITCH_VOD_RE.match(source.strip()) or "twitch.tv/" in source
     ):
-        return twitch_replay.download(source, proxy=proxy_for("twitch"))
-    return youtube_replay.download(source, proxy=proxy_for("youtube"), cookies_file=cookies_file())
+        return twitch_replay.download(source, proxy=proxy_for("twitch", "chat"))
+    return youtube_replay.download(source, proxy=proxy_for("youtube", "chat"), cookies_file=cookies_file())
 
 
 def replay(source: str, output: Path) -> int:

@@ -120,13 +120,14 @@ def test_over_budget_pauses_the_vod_lane_until_the_spend_is_back_under(world: No
         "anthropic": False,
         "transcription": False,
         "apify": False,
+        "proxy": False,
     }
     assert setting("vod.paused_until") is None
 
     usage.record("anthropic", "clip_writer", cost_usd=1.5)
     usage.record("apify", "youtube_search", cost_usd=0.5)
     over = health.check_spend(at, incidents.open_keys())
-    assert over == {"anthropic": True, "transcription": False, "apify": True}
+    assert over == {"anthropic": True, "transcription": False, "apify": True, "proxy": False}
     paused_until = settings.get_dt("vod.paused_until")
     assert paused_until is not None and at < paused_until <= at + timedelta(hours=1)
     assert sorted(titles("warn")) == ["Daily budget reached: anthropic", "Daily budget reached: apify"]

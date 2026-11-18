@@ -3,9 +3,10 @@
 `cookies_file()` is the one place that decides whether YouTube cookies are used: `YOUTUBE_COOKIES_FILE`
 names a file the owner may or may not have mounted, and a path without a file means "no cookies".
 
-No proxy is needed for chat. When `PROXY_URL` is set, an adapter uses it only for the platforms listed in
-the `downloads.proxy_platforms` setting; adapters take the proxy as an argument so they stay usable
-without a database.
+No proxy is needed for chat. When `PROXY_URL` is set, it is used only for the platforms listed in the
+`downloads.proxy_platforms` setting and only by the lanes listed in `proxy.lanes` (default `["vod"]`: the
+proxy is paid per GB, so live recording and discovery stay on the server's own address unless the owner
+adds them); adapters take the proxy as an argument so they stay usable without a database.
 
 The proxy can fail by itself (no balance, suspended account, wrong credentials, a provider policy that
 forbids the target, or it cannot be reached). `proxy_refusal` is the one place that recognises this in the
@@ -18,7 +19,7 @@ import re
 from dataclasses import dataclass
 from http import HTTPStatus
 from pathlib import Path
-from typing import Final
+from typing import Final, Literal
 
 from sixstars import settings
 from sixstars.chat.models import Platform
@@ -35,18 +36,24 @@ def backoff_delay(failures: int) -> float:
     return RECONNECT_BACKOFF_S[index]
 
 
-def proxy_for(platform: Platform) -> str | None:
-    """Return the proxy URL to use for `platform`, or None for a direct connection.
+Lane = Literal["vod", "live", "discovery", "chat"]
+DEFAULT_PROXY_LANES: Final[tuple[str, ...]] = ("vod",)
+
+
+def proxy_for(platform: Platform, lane: Lane = "vod") -> str | None:
+    """Return the proxy URL to use for `platform` in `lane`, or None for a direct connection.
 
     Without `PROXY_URL` the answer is None and the database is not read. With it, the proxy applies only
-    to the platforms in the `downloads.proxy_platforms` setting. The returned URL embeds credentials: never
-    log it.
+    to the platforms in the `downloads.proxy_platforms` setting and the lanes in `proxy.lanes`. The
+    returned URL embeds credentials: never log it.
     """
     secret = env().PROXY_URL
     if secret is None:
         return None
     platforms = settings.get_list("downloads.proxy_platforms")
     if platform not in platforms:
+        return None
+    if lane not in settings.get_list("proxy.lanes", list(DEFAULT_PROXY_LANES)):
         return None
     return secret.get_secret_value()
 

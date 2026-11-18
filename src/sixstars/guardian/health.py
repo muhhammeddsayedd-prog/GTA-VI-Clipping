@@ -18,18 +18,21 @@ Jobs of a dead worker are recovered by `jobs.requeue_stale` (M11); the stuck-job
 that hangs on a worker that is still alive.
 """
 
+import random
 import shutil
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
 from sixstars import db, events, notify, settings
+from sixstars.clients.proxy_probe import ProxyProbe
 from sixstars.config import env
 from sixstars.guardian import incidents
 from sixstars.guardian.config import TRIGGER_PREFIX
 from sixstars.logging import get_logger
+from sixstars.vod import proxy
 
 SERVICE = "guardian"
 WORKER_PREFIX = "worker-"
@@ -41,6 +44,8 @@ BUDGETS: tuple[tuple[str, tuple[str, ...], str, bool], ...] = (
     ("anthropic", ("anthropic",), "ai.daily_budget_usd", True),
     ("transcription", ("openai", "groq"), "transcribe.daily_budget_usd", True),
     ("apify", ("apify",), "discovery.apify_daily_budget_usd", False),
+    # YouTube video jobs pause themselves at this budget (vod/process.py `_gates`); Twitch goes on.
+    ("proxy", ("DataImpulse",), "proxy.daily_budget_usd", False),
 )
 
 
@@ -281,6 +286,62 @@ def check_disk(open_now: set[str], path: Path | None = None) -> float | None:
     return pct
 
 
+def check_proxy(
+    now: datetime,
+    open_now: set[str],
+    probe: ProxyProbe | None = None,
+    rand: Callable[[], float] = random.random,
+) -> dict[str, Any] | None:
+    """The residential proxy of YouTube downloads (only when `PROXY_URL` is set).
+
+    Every `proxy.health_interval_s` one tiny request through a random sticky port; the answer is kept in
+    `proxy.health` (shown by the blocked-downloads alert). A failing proxy -> critical, with what it
+    answered. Then the traffic of the billing cycle: past `proxy.low_traffic_share` of `proxy.cycle_gb`
+    since `proxy.cycle_started_at` -> warn to top up."""
+    secret = env().PROXY_URL
+    if secret is None:
+        return None
+    cfg = proxy.ProxyConfig.load()
+    state = proxy.health_state()
+    checked = settings.get_dt("proxy.health_checked_at", None)
+    if state is None or checked is None or (now - checked).total_seconds() >= cfg.health_interval_s:
+        url = secret.get_secret_value()
+        ports = proxy.sticky_range()
+        if ports is not None:
+            url = proxy.with_port(url, proxy.pick_port(ports[0], ports[1], rand))
+        result = (probe or ProxyProbe()).probe(url)
+        state = {"ok": result.ok, "reason": result.reason, "checked_at": now.isoformat()}
+        settings.set("proxy.health", state)
+        settings.set("proxy.health_checked_at", now.isoformat())
+    name = proxy.provider_name(secret.get_secret_value())
+    reason = str(state.get("reason", "?"))
+    incidents.report(
+        "proxy:failing",
+        not state.get("ok"),
+        severity="critical",
+        title=f"{name} proxy failing: {reason} — top up or check credentials",
+        body="YouTube video downloads wait until the proxy answers again (Twitch is not affected). "
+        "407: wrong credentials or suspended account; 402: no traffic left.",
+        recovered_title=f"{name} proxy works again",
+        data={"reason": reason},
+        open_now=open_now,
+    )
+    used = proxy.used_gb(cfg.cycle_started_at)
+    low = proxy.low_traffic(used, cfg.cycle_gb, cfg.low_traffic_share)
+    incidents.report(
+        "proxy:traffic",
+        low,
+        severity="warn",
+        title=f"{name} traffic running low: top up",
+        body=f"{used:.2f} of {cfg.cycle_gb:g} GB used since {cfg.cycle_started_at:%Y-%m-%d} (our own count). "
+        "After topping up, set proxy.cycle_gb to the new total and proxy.cycle_started_at to now.",
+        recovered_title=f"{name} traffic topped up",
+        data={"used_gb": round(used, 3), "cycle_gb": cfg.cycle_gb},
+        open_now=open_now,
+    )
+    return {"ok": bool(state.get("ok")), "reason": reason, "cycle_used_gb": round(used, 3)}
+
+
 def run_checks(now: datetime) -> dict[str, Any]:
     """All health checks of one pass. One check that fails does not stop the others."""
     log = get_logger(SERVICE)
@@ -292,6 +353,7 @@ def run_checks(now: datetime) -> dict[str, Any]:
         "express_slow": lambda: check_express(open_now),
         "spend_over": lambda: check_spend(now, open_now),
         "disk_pct": lambda: check_disk(open_now),
+        "proxy": lambda: check_proxy(now, open_now),
     }
     for name, check in checks.items():
         try:

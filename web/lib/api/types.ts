@@ -233,7 +233,7 @@ export interface Alert { id: number; created_at: Iso; severity: "info" | "warn" 
 
 export interface Usage {
   totals: { provider: string; usd: number }[];
-  budgets: { anthropic: number | null; transcribe: number | null; apify_daily: number | null; apify_monthly: number | null; month_ceiling: number | null };
+  budgets: { anthropic: number | null; transcribe: number | null; apify_daily: number | null; apify_monthly: number | null; proxy?: number | null; month_ceiling: number | null };
   daily: { day: string; provider: string; usd: number }[];
   operations: { provider: string; operation: string; model: string | null; calls: number; input_tokens: number | null; output_tokens: number | null; units: number | null; usd: number }[];
   quotas: Record<string, number>;

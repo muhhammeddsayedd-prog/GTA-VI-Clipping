@@ -89,6 +89,7 @@ services:
       TZ: UTC
       DATA_DIR: /data
       SERVICE_NAME: worker-express
+      POT_PROVIDER_URL: http://bgutil:4416
     deploy:
       replicas: 2
 
@@ -99,6 +100,7 @@ services:
       TZ: UTC
       DATA_DIR: /data
       SERVICE_NAME: worker-normal
+      POT_PROVIDER_URL: http://bgutil:4416
     deploy:
       replicas: 4
 
@@ -109,6 +111,18 @@ services:
       TZ: UTC
       DATA_DIR: /data
       SERVICE_NAME: scheduler
+
+  # YouTube PO tokens for yt-dlp (bgutil-ytdlp-pot-provider HTTP server; the plugin of the same version is
+  # in the image). Reached only from the compose network; the plugin passes each job's proxy, so a token is
+  # minted from the same address as the download. Pin the plugin (pyproject.toml) and this tag together.
+  bgutil:
+    image: brainicism/bgutil-ytdlp-pot-provider:2.0.2
+    restart: always
+    expose:
+      - "4416"
+    mem_limit: 1g
+    stop_grace_period: 10s
+    logging: *logging
 
 # live-manager, the workers and the scheduler have no container healthcheck: they serve no port, and their
 # liveness is the `heartbeats` table, which the guardian (M13) watches. `restart: always` covers crashes.
