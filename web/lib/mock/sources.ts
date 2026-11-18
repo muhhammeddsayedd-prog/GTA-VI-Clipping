@@ -54,7 +54,7 @@ function discovery(): Discovery {
     },
     apify_last_run: { run_id: "kT9xQ2mPz", started_at: ago(9000), status: "SUCCEEDED", results: 5, cost_usd: 0.21 },
     quotas: {
-      youtube_units_today: 1240, youtube_units_limit: 3000, search_calls_today: 14, search_calls_limit: 60,
+      youtube_units_today: 1240, youtube_units_limit: 9000, search_calls_today: 14, search_calls_limit: 60,
       apify_today_usd: 0.21, apify_daily_budget_usd: 0.4, apify_month_usd: 6.12, apify_monthly_budget_usd: 12,
     },
   };

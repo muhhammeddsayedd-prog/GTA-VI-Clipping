@@ -364,3 +364,91 @@ def test_cli_auth_prints_refresh_token(monkeypatch: pytest.MonkeyPatch) -> None:
     result = runner.invoke(app, ["youtube", "auth", "--no-browser"])
     assert result.exit_code == 0
     assert "YOUTUBE_OAUTH_REFRESH_TOKEN=new-rt" in result.output
+
+
+# ── quota accounting: one unit per HTTP request, whatever the parts or ids ──
+
+
+def _echo_items(request: httpx.Request) -> httpx.Response:
+    ids = request.url.params["id"].split(",")
+    return httpx.Response(200, json={"items": [{"id": item_id} for item_id in ids]})
+
+
+def _record_usage(monkeypatch: pytest.MonkeyPatch) -> list[tuple[str, str, float | None]]:
+    recorded: list[tuple[str, str, float | None]] = []
+    monkeypatch.setattr(
+        youtube.usage,
+        "record",
+        lambda provider, operation, units=None, **_: recorded.append((provider, operation, units)),
+    )
+    return recorded
+
+
+@respx.mock
+def test_120_channel_ids_are_3_requests_and_3_units(monkeypatch: pytest.MonkeyPatch) -> None:
+    recorded = _record_usage(monkeypatch)
+    route = respx.get(f"{youtube.API_BASE}/channels").mock(side_effect=_echo_items)
+    ids = [f"UC{index:022d}" for index in range(120)]
+    items = YouTubeClient(api_key="k").channels_list(ids, parts=("snippet", "statistics", "brandingSettings"))
+    assert len(items) == 120
+    assert route.call_count == 3
+    assert [len(call.request.url.params["id"].split(",")) for call in route.calls] == [50, 50, 20]
+    # One row for the invocation, charged per request: not per id, not per part.
+    assert recorded == [("youtube", "channels.list", 3)]
+
+
+@respx.mock
+def test_videos_list_costs_one_unit_per_request_whatever_the_parts(monkeypatch: pytest.MonkeyPatch) -> None:
+    recorded = _record_usage(monkeypatch)
+    respx.get(f"{youtube.API_BASE}/videos").mock(side_effect=_echo_items)
+    client = YouTubeClient(api_key="k")
+    client.videos_list(["a"], parts=youtube.DEFAULT_VIDEO_PARTS)  # five parts, one id
+    client.videos_list([f"v{index}" for index in range(50)], parts=("snippet",))  # one part, fifty ids
+    assert recorded == [("youtube", "videos.list", 1), ("youtube", "videos.list", 1)]
+
+
+def test_documented_quota_costs() -> None:
+    # https://developers.google.com/youtube/v3/determine_quota_cost (checked 2026-11-18): list methods cost
+    # 1 unit; search.list and videos.insert have their own buckets of 100 calls, 1 per call.
+    assert youtube.QUOTA_LIST == 1
+    assert youtube.QUOTA_SEARCH == 1
+    assert youtube.QUOTA_INSERT == 1
+    assert youtube.QUOTA_DELETE == 50
+
+
+@respx.mock
+def test_get_statuses_batches_50_ids_per_oauth_request(monkeypatch: pytest.MonkeyPatch) -> None:
+    recorded = _record_usage(monkeypatch)
+    respx.post(youtube.TOKEN_URL).mock(return_value=httpx.Response(200, json=ACCESS))
+    route = respx.get(f"{youtube.API_BASE}/videos").mock(
+        side_effect=lambda request: httpx.Response(
+            200,
+            json={
+                "items": [
+                    {"id": video_id, "status": {"uploadStatus": "processed", "privacyStatus": "public"}}
+                    for video_id in request.url.params["id"].split(",")
+                    if video_id != "gone"
+                ]
+            },
+        )
+    )
+    ids = [f"v{index}" for index in range(119)] + ["gone", "v0"]
+    statuses = _oauth_client().get_statuses(ids)
+    assert route.call_count == 3
+    assert route.calls[0].request.headers["Authorization"] == "Bearer at1"
+    assert route.calls[0].request.url.params["part"] == "status,contentDetails"
+    assert len(statuses) == 119 and "gone" not in statuses
+    assert statuses["v7"].upload_status == "processed"
+    assert recorded == [("youtube", "videos.list", 3)]
+
+
+@respx.mock
+def test_get_statuses_records_the_requests_made_before_a_failure(monkeypatch: pytest.MonkeyPatch) -> None:
+    recorded = _record_usage(monkeypatch)
+    respx.post(youtube.TOKEN_URL).mock(return_value=httpx.Response(200, json=ACCESS))
+    respx.get(f"{youtube.API_BASE}/videos").mock(
+        side_effect=[httpx.Response(200, json={"items": []}), httpx.Response(403, json={})]
+    )
+    with pytest.raises(ApiError):
+        _oauth_client().get_statuses([f"v{index}" for index in range(60)])
+    assert recorded == [("youtube", "videos.list", 2)]

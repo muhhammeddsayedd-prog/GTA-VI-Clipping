@@ -19,7 +19,7 @@ from typing import Any, Final
 
 from psycopg.types.json import Jsonb
 
-from sixstars import db, events, jobs
+from sixstars import db, events, jobs, settings
 from sixstars.ai import calls
 from sixstars.ai.schemas import PermissionVerdict
 from sixstars.clients._http import ClientError
@@ -36,6 +36,9 @@ EXCLUDED_REASON: Final = "excluded by settings (discovery.excluded_channels)"
 MANUAL_PREFIX: Final = "manual"
 TITLES_FOR_PROMPT: Final = 8
 CHECK_WORKERS: Final = 12
+CHANNEL_CACHE_TTL_KEY: Final = "discovery.youtube_channel_cache_ttl_s"
+CHANNEL_CACHE_TTL_DEFAULT_S: Final = 3600
+CHANNEL_PARTS: Final = ("snippet", "statistics")  # snippet also carries the thumbnails (avatars)
 
 _log = get_logger("discovery")
 
@@ -235,24 +238,78 @@ def save_channel_facts(facts: Mapping[str, ChannelInfo], creators: Collection[Cr
 # ── channel text ─────────────────────────────────────────────
 
 
+def channel_cache_ttl_s() -> int:
+    """`discovery.youtube_channel_cache_ttl_s`: how long a `channels.list` answer is reused (0: never)."""
+    return settings.get_int(CHANNEL_CACHE_TTL_KEY, CHANNEL_CACHE_TTL_DEFAULT_S)
+
+
+def youtube_channel_items(
+    client: YouTubeClient, channel_ids: Sequence[str], max_age_s: int | None = None
+) -> dict[str, dict[str, Any]]:
+    """Raw `channels.list` items (snippet + statistics) by channel id, from the `youtube_channel_cache`
+    when fetched within `max_age_s` (default `discovery.youtube_channel_cache_ttl_s`), otherwise in one
+    batched `channels.list` (50 ids per request, 1 quota unit each) for the misses only. A channel the API
+    does not return is cached as missing too, so a deleted channel is not asked for again every pass."""
+    wanted = list(dict.fromkeys(cid for cid in channel_ids if cid))
+    if not wanted:
+        return {}
+    ttl = channel_cache_ttl_s() if max_age_s is None else max_age_s
+    try:
+        cached = store.cached_youtube_channels(wanted, ttl)
+    except Exception as exc:  # the cache only saves quota: never let it stop a lookup
+        _log.warning("youtube_channel_cache_read_failed", error=type(exc).__name__, detail=str(exc)[:200])
+        cached = {}
+    misses = [cid for cid in wanted if cid not in cached]
+    if misses:
+        answered = client.channels_list(misses, parts=CHANNEL_PARTS)
+        fetched = {str(item.get("id", "")): item for item in answered}
+        placeholders = [{"id": cid, "missing": True} for cid in misses if cid not in fetched]
+        try:
+            store.save_youtube_channels([*fetched.values(), *placeholders])
+        except Exception as exc:
+            _log.warning(
+                "youtube_channel_cache_write_failed", error=type(exc).__name__, detail=str(exc)[:200]
+            )
+        cached.update(fetched)
+    _log.info("youtube_channel_lookup", wanted=len(wanted), cache_hits=len(wanted) - len(misses))
+    return {cid: item for cid, item in cached.items() if not item.get("missing")}
+
+
+def channel_info_from_item(item: Mapping[str, Any]) -> ChannelInfo:
+    """`ChannelInfo` from a `channels.list` item. A hidden subscriber count is stored as 0 so it is not
+    asked for again."""
+    snippet = item.get("snippet") or {}
+    statistics = item.get("statistics") or {}
+    count = statistics.get("subscriberCount")
+    followers = int(count) if isinstance(count, str | int) and str(count).isdigit() else None
+    if followers is None and statistics.get("hiddenSubscriberCount"):
+        followers = 0
+    return ChannelInfo(
+        name=str(snippet.get("title") or ""),
+        description=str(snippet.get("description") or ""),
+        handle=str(snippet.get("customUrl") or "") or None,
+        followers=followers,
+    )
+
+
 def youtube_channel_info(client: YouTubeClient, channel_ids: Sequence[str]) -> dict[str, ChannelInfo]:
-    """`channels.list` (snippet + statistics, 1 quota unit per 50 channels) as `ChannelInfo` by channel id.
-    A hidden subscriber count is stored as 0 so it is not asked for again."""
-    info: dict[str, ChannelInfo] = {}
-    for item in client.channels_list(list(channel_ids), parts=("snippet", "statistics")):
-        snippet = item.get("snippet") or {}
-        statistics = item.get("statistics") or {}
-        count = statistics.get("subscriberCount")
-        followers = int(count) if isinstance(count, str | int) and str(count).isdigit() else None
-        if followers is None and statistics.get("hiddenSubscriberCount"):
-            followers = 0
-        info[str(item.get("id", ""))] = ChannelInfo(
-            name=str(snippet.get("title") or ""),
-            description=str(snippet.get("description") or ""),
-            handle=str(snippet.get("customUrl") or "") or None,
-            followers=followers,
-        )
-    return info
+    """Channel text and subscriber counts as `ChannelInfo` by channel id (`youtube_channel_items`)."""
+    items = youtube_channel_items(client, channel_ids)
+    return {channel_id: channel_info_from_item(item) for channel_id, item in items.items()}
+
+
+def prefetch_youtube_channels(client: YouTubeClient | None, creators: Collection[Creator]) -> int:
+    """Warm the channel cache for the YouTube creators about to get a `creator.permission` job, in one
+    batched `channels.list`, so each job reads its channel from the cache instead of making its own call.
+    Returns the number of channels asked for. Never raises: a job still fetches on its own."""
+    ids = [c.channel_id for c in creators if c.platform == "youtube"]
+    if not ids or client is None or not client.is_configured():
+        return 0
+    try:
+        youtube_channel_items(client, ids)
+    except Exception as exc:
+        _log.warning("youtube_channel_prefetch_failed", error=type(exc).__name__, detail=str(exc)[:200])
+    return len(ids)
 
 
 def twitch_channel_info(client: TwitchClient, user_ids: Sequence[str]) -> dict[str, ChannelInfo]:

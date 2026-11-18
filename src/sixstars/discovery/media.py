@@ -30,6 +30,7 @@ from sixstars.clients.twitch import IDS_PER_REQUEST_MAX as TWITCH_IDS_MAX
 from sixstars.clients.twitch import VIDEO_THUMB_SIZE, TwitchClient, TwitchUser, fill_thumbnail
 from sixstars.clients.youtube import CHANNEL_THUMB_PREFERENCE, QUOTA_LIST, YouTubeClient, pick_thumbnail
 from sixstars.clients.youtube import IDS_PER_REQUEST_MAX as YOUTUBE_IDS_MAX
+from sixstars.discovery import tiers
 from sixstars.logging import get_logger
 
 _log = get_logger("discovery")
@@ -187,7 +188,8 @@ def fill_avatars(
                 result.errors.append("youtube: quota budget used up")
                 break
             try:
-                items = youtube.channels_list(chunk, parts=("snippet",))
+                # Same parts as the creator lookups, through the shared 60-minute channel cache.
+                items = list(tiers.youtube_channel_items(youtube, chunk).values())
             except ClientError as exc:
                 result.youtube_units += units  # a refused call counts against quota too
                 result.errors.append(f"youtube: {str(exc)[:200]}")

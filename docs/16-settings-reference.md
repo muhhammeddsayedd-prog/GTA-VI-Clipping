@@ -38,7 +38,9 @@ Defaults below are the production values from `supabase/migrations/0002_seed_set
 | `discovery.youtube_recent_sorts` | `["relevance", "views"]` | Sort orders of the recent-video searches: relevance, views, date or rating. (M09) |
 | `discovery.ytdlp_workers` | `6` | yt-dlp searches and RSS reads that run at the same time. (M09) |
 | `discovery.ytdlp_timeout_s` | `25` | Seconds before one yt-dlp search is killed. (M09) |
-| `discovery.youtube_quota_daily_units` | `3000` | YouTube Data API quota units discovery may use per UTC day (the project has 10,000). Over it, discovery scores from the search listing alone. (M09) |
+| `discovery.youtube_quota_daily_units` | `9000` | YouTube Data API quota units discovery may use per quota day (from midnight in `discovery.youtube_quota_timezone`; the project has 10,000). Over it, discovery scores from the search listing alone. (M09; 3000 until migration 0024) |
+| `discovery.youtube_quota_timezone` | `"America/Los_Angeles"` | Time zone whose midnight starts the YouTube quota day (Google resets the quota at midnight Pacific time). Used for the units above and the `search.list` call count; money budgets keep the UTC day. (0024) |
+| `discovery.youtube_channel_cache_ttl_s` | `3600` | Seconds a `channels.list` answer is reused from `youtube_channel_cache` (follower counts, permission checks and jobs, avatars). 0 turns the cache off. (0024) |
 | `discovery.rss_max_channels_per_run` | `50` | Known YouTube creators whose RSS feed is read per run (rotating). (M09; 25 until migration 0010) |
 | `discovery.rss_cursor` | `null` | Written by code: where the RSS rotation continues. (M09) |
 | `discovery.apify_interval_s` | `21600` | Minimum seconds between Apify YouTube searches (they alternate live and recent). 0 switches Apify off. (M09) |
