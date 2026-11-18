@@ -1,10 +1,10 @@
 -- Staging seed: run on the staging project after migrations (safe to re-run).
--- Staging clips GTA 5. It posts through the same Upload-Post profile as production, 'default', on the
+-- Staging clips GTA 6, like production (owner's order of 2026-11-18: GTA 5 is gone everywhere). It posts through the same Upload-Post profile as production, 'default', on the
 -- production accounts (decisions D101, D102): TikTok is SELF_ONLY and YouTube is private. Instagram cannot
 -- post privately, so staging stays in dry run except for the single M15 test post.
-update settings set value = '"Grand Theft Auto V"'::jsonb where key = 'env.target_game';
-update settings set value = '["GTA 5","GTA V","GTA RP","GTA Online"]'::jsonb where key = 'env.search_terms';
-update settings set value = '"2013-09-17T00:00:00Z"'::jsonb where key = 'env.game_release_at';
+update settings set value = '"Grand Theft Auto VI"'::jsonb where key = 'env.target_game';
+update settings set value = '["GTA 6","GTA VI","Grand Theft Auto VI","GTA6"]'::jsonb where key = 'env.search_terms';
+update settings set value = '"2026-11-19T00:00:00Z"'::jsonb where key = 'env.game_release_at';
 update settings set value = '"2000-01-01T00:00:00Z"'::jsonb where key = 'gate.spoiler_block_until';
 update settings set value = '"2026-11-17T00:00:00Z"'::jsonb where key = 'launch.launch_at';
 update settings set value = 'true'::jsonb where key = 'launch.dry_run';
