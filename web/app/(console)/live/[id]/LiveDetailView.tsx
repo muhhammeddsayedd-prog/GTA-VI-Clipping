@@ -8,6 +8,7 @@ import { ClipLink, Timeline, TierLegend, spikeAt, useNow } from "@/components/do
 import { POLL, useApi } from "@/lib/api/client";
 import type { Event, LiveSession, Spike, Trace } from "@/lib/api/types";
 import { fmtDuration, fmtTime } from "@/lib/format";
+import { useSettings } from "@/lib/use-settings";
 
 /** The contract reuses `spikes` for the list on the detail route; accept both shapes. */
 type LiveDetail = Omit<LiveSession, "spikes"> & {
@@ -27,6 +28,7 @@ const spikeCols: Col<Spike>[] = [
 ];
 
 export function LiveDetailView({ id }: { id: string }) {
+  const maxReconnects = useSettings().num("live.max_reconnects");
   const q = useApi<LiveDetail>(`admin/live-sessions/${id}`, undefined, { interval: POLL.detail });
   const now = useNow();
   if (q.error && !q.data) return <><PageHead title="Live session" back="/live" /><ErrorState error={q.error} retry={() => q.refetch()} /></>;
@@ -66,10 +68,10 @@ export function LiveDetailView({ id }: { id: string }) {
           <KV rows={[
             ["Status", <Badge key="s" status={d.status} />],
             ["Assigned", <When key="a" iso={d.assigned_at} />],
-            ["Recording since", <When key="b" iso={d.started_at} />],
+            ["Stream started", <When key="b" iso={d.started_at} />],
             ...(d.ended_at ? [["Ended", <When key="e" iso={d.ended_at} />] as [string, React.ReactNode]] : []),
             ["Trend score", d.trend_score ?? "—"],
-            ["Reconnects", <span key="r" className={d.reconnects >= 3 ? "down" : undefined}>{d.reconnects} of 3</span>],
+            ["Reconnects", <span key="r" className={maxReconnects !== null && d.reconnects >= maxReconnects ? "down" : undefined}>{d.reconnects}{maxReconnects !== null ? ` of ${maxReconnects}` : ""}</span>],
             ["Below cutoff", d.below_cutoff_since ? <When key="bc" iso={d.below_cutoff_since} mode="ago" /> : "no"],
             ["VOD id", d.vod_source_id ? <Mono key="v">{d.vod_source_id}</Mono> : "—"],
             ["Buffer", d.buffer_dir ? <Mono key="bd">{d.buffer_dir}</Mono> : "—"],

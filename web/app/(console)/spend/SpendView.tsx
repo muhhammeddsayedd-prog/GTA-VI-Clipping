@@ -14,7 +14,7 @@ import { fmtCompact, fmtNum, fmtUsd } from "@/lib/format";
 import { useListParams } from "@/lib/use-list";
 
 const COLORS: Record<string, string> = { anthropic: "#5A4AF4", openai: "#9F94FF", groq: "#9F94FF", transcription: "#9F94FF", apify: "#D27A06" };
-const NAMES: Record<string, string> = { anthropic: "Anthropic", openai: "Transcription", groq: "Transcription", transcription: "Transcription", local: "Transcription (local)", apify: "Apify", youtube: "YouTube / other", upload_post: "Upload-Post", twitch: "Twitch" };
+const NAMES: Record<string, string> = { anthropic: "Anthropic", openai: "Transcription", groq: "Transcription", transcription: "Transcription", local: "Local (free)", ytdlp: "yt-dlp (free)", apify: "Apify", youtube: "YouTube / other", upload_post: "Upload-Post", twitch: "Twitch" };
 const TRANSCRIBE = ["openai", "groq", "transcription"];
 const color = (p: string) => COLORS[p] ?? "#E1E1EC";
 
@@ -66,7 +66,7 @@ export function SpendView() {
     <div style={{ marginBottom: 14 }}>
       <div className="flabel">{label}</div>
       <Prog pct={(used / limit) * 100} tone={used / limit > 0.9 ? "red" : used / limit > 0.7 ? "amber" : undefined} label={label} />
-      <div className="muted xs" style={{ marginTop: 6 }}>{fmtNum(used)} of {fmtNum(limit)}{unit} today</div>
+      <div className="muted xs" style={{ marginTop: 6 }}>{fmtNum(used, { maximumFractionDigits: 2 })} of {fmtNum(limit, { maximumFractionDigits: 2 })}{unit}</div>
     </div>
   ) : null;
 
@@ -106,7 +106,8 @@ export function SpendView() {
           <CardHead title="Quotas" hint="Not money, but they stop the pipeline when used up" />
           {quota("YouTube Data API units", qd.youtube_units_today, qd.youtube_units_limit)}
           {quota("Search API calls", qd.search_calls_today, qd.search_calls_limit)}
-          {quota("Local transcription seconds", qd.transcribe_local_s_today, qd.transcribe_local_s_limit, " s")}
+          {quota("Apify spend today ($)", qd.apify_today_usd, qd.apify_daily_budget_usd)}
+          {quota("Apify spend this month ($)", qd.apify_month_usd, qd.apify_monthly_budget_usd)}
           <div className="flabel">Upload-Post plan</div>
           <Banner tone="amber" style={{ margin: 0, padding: "10px 12px", fontSize: 11.5 }} icon={<Info size={14} />}>Monthly allowance unknown — check the Upload-Post dashboard.</Banner>
         </Card>

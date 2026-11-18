@@ -3,43 +3,48 @@
 import type { ReactNode } from "react";
 
 import { Badge, Card, Prog } from "@/components/kit/primitives";
-import { fmtAgo, humanize } from "@/lib/format";
+import { fmtNum, humanize } from "@/lib/format";
 
-/** Health record written by code into settings (discovery/live/vod .source_health). Shape varies by source; read defensively. */
-export type HealthRec = Record<string, unknown>;
+/**
+ * One discovery source as the last pass reported it (`discovery.run` → `data.sources[]`):
+ * `{ name, status: "ok" | "skipped" | "failed" | "blocked" | …, found, detail }`.
+ */
+export interface SourceReport { status: string; found: number | null; detail: string | null }
 
-export function healthState(h: HealthRec | null | undefined): "ok" | "blocked" | "failing" | "n/a" {
+export function healthState(h: SourceReport | null | undefined): "ok" | "blocked" | "failing" | "skipped" | "n/a" {
   if (!h) return "n/a";
-  const until = typeof h.backoff_until === "string" ? h.backoff_until : typeof h.until === "string" ? h.until : null;
-  if (h.status === "blocked" || h.blocked_since || (until && Date.parse(until) > Date.now())) return "blocked";
-  if (h.ok === false || (typeof h.failures === "number" && h.failures > 0)) return "failing";
-  return "ok";
+  if (h.status === "ok") return "ok";
+  if (h.status === "skipped") return "skipped";
+  if (h.status === "blocked") return "blocked";
+  return "failing";
 }
 
 const NAMES: Record<string, [string, string]> = {
-  twitch_helix: ["Twitch Helix", "live streams + archives"],
+  twitch: ["Twitch", "live streams + archives"],
+  twitch_clips: ["Twitch Clips", "clips made by viewers"],
+  youtube_search: ["YouTube search", "yt-dlp search"],
+  youtube_search_api: ["YouTube search API", "fallback search"],
   youtube_rss: ["YouTube RSS", "followed channels"],
-  yt_dlp_search: ["yt-dlp search", "YouTube search"],
-  data_api_search: ["Data API search", "fallback search"],
+  youtube_api: ["YouTube Data API", "video details"],
   apify: ["Apify", "YouTube search actor"],
-  youtube: ["YouTube", "downloads"],
-  twitch: ["Twitch", "downloads"],
 };
 export const sourceName = (k: string): [string, string] => NAMES[k] ?? [humanize(k), "source"];
 
-export function SourceCard({ k, h, meter }: { k: string; h: HealthRec | null; meter?: { pct: number; label: string; tone?: "amber" | "red" } }) {
+export function SourceCard({ k, h, meter }: { k: string; h: SourceReport | null; meter?: { pct: number; label: string; tone?: "amber" | "red" } }) {
   const [name, sub] = sourceName(k);
   const st = healthState(h);
-  const until = (h?.backoff_until ?? h?.until) as string | undefined;
-  let detail: ReactNode = (h?.detail as string | undefined) ?? (h?.last_ok_at ? `last ok ${fmtAgo(h.last_ok_at as string)}` : "—");
-  if (st === "blocked") detail = <>backoff{until ? <> until {fmtAgo(until).replace("in ", "")}</> : null} · {String(h?.failures ?? h?.count ?? "?")} fails</>;
-  if (st === "failing") detail = `${String(h?.failures)} recent failures`;
+  const found: ReactNode = h?.found !== null && h?.found !== undefined ? <>{fmtNum(h.found)} found</> : "—";
   return (
     <Card as="div">
-      <div className="row"><span className="semi">{name}</span><span className="right"><Badge status={st === "failing" ? "warn" : st}>{st === "failing" ? "failing" : undefined}</Badge></span></div>
+      <div className="row">
+        <span className="semi">{name}</span>
+        <span className="right">
+          {st === "skipped" ? <Badge tone="gray">skipped</Badge> : st === "failing" ? <Badge status="warn">{h?.status ? humanize(h.status) : "failing"}</Badge> : <Badge status={st} />}
+        </span>
+      </div>
       <div className="muted xs" style={{ marginTop: 4 }}>{sub}</div>
-      <div className="small semi" style={{ marginTop: 14 }}>{detail}</div>
-      {typeof h?.last_error === "string" && <div className="xs down ellipsis" style={{ marginTop: 6 }} title={h.last_error}>{h.last_error}</div>}
+      <div className="small semi" style={{ marginTop: 14 }}>{found}</div>
+      {h?.detail && <div className={`xs ${st === "failing" || st === "blocked" ? "down" : "muted"}`} style={{ marginTop: 6, lineHeight: 1.45 }} title={h.detail}>{h.detail}</div>}
       {meter && <div className="mt"><Prog pct={meter.pct} tone={meter.tone} thin label={meter.label} /><div className="muted xs" style={{ marginTop: 6 }}>{meter.label}</div></div>}
     </Card>
   );

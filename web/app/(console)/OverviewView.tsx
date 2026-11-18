@@ -189,7 +189,7 @@ function PostingPanel({ items }: { items: QueueItem[] }) {
               <div className="row pc-media" style={{ gap: 18, marginTop: 20, alignItems: "stretch" }}>
                 <div className="pc-thumb" style={{ width: 118, flex: "none" }}><Thumb seed={c.clip_id} hook={c.hook} dur={fmtClock(c.duration_s)} /></div>
                 <div className="g g3 grow" style={{ alignContent: "start" }}>
-                  <div className="glass"><span className="ar"><ArrowUpRight size={14} /></span><div className="v">{c.score ?? "—"}</div><div className="k">Writer score</div></div>
+                  <div className="glass"><span className="ar"><ArrowUpRight size={14} /></span><div className="v">{c.score ?? "—"}</div><div className="k">Score</div></div>
                   <div className="glass"><span className="ar"><ArrowUpRight size={14} /></span><div className="v">{c.rank_score?.toFixed(2) ?? "—"}</div><div className="k">Rank score</div></div>
                   <div className="glass"><span className="ar"><ArrowUpRight size={14} /></span><div className="v">{c.duration_s ? `${Math.round(c.duration_s)} s` : <Dash />}</div><div className="k">Length</div></div>
                   <div className="glass"><div className="v">{fmtDuration(c.age_s)}</div><div className="k">Age</div></div>

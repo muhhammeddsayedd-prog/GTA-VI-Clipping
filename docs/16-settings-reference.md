@@ -242,7 +242,7 @@ Viewer-made Twitch Clips of `env.target_game` as a discovery source (decision D1
 | `factory.font` | `"Montserrat Black"` | Subtitle font. |
 | `factory.hook_seconds` | `3.0` | How long the hook title shows. |
 | `factory.end_card_s` | `1.5` | End card length. |
-| `factory.watermark` | `"@6starsclipping"` | Watermark text. |
+| `factory.watermark` | `"6 Stars Clips"` | Watermark text. The brand name, not a handle: one file goes to all platforms (D111). |
 | `factory.series_label` | `"6 Stars Moments"` | Series label shown on the end card. |
 | `factory.bleep` | `true` | Bleep profanity in audio and mask it in subtitles. |
 | `factory.music_duck_db` | `-18` | Gain applied to segments flagged as music (hourly clips under the music limit). |
@@ -295,7 +295,7 @@ Viewer-made Twitch Clips of `env.target_game` as a discovery source (decision D1
 | `posting.freshness_half_life_h` | `{"live": 6, "vod": 24}` | Freshness decay half-life by source. |
 | `posting.max_clip_age_h` | `72` | Approved clips older than this expire. |
 | `posting.queue_low_watermark` | `12` | Below this many approved hourly clips, guardian widens discovery. |
-| `posting.first_comment` | `"Follow @6starsclipping for the best GTA 6 moments every hour 🎮⭐"` | First comment text. |
+| `posting.first_comment` | `"Follow {handle} for the best GTA 6 moments every hour 🎮⭐"` | First comment text. `{handle}` becomes the posting account's handle (D111). |
 | `posting.base_hashtags` | `["#GTA6", "#GTAVI", "#GTA6Clips", "#Gaming"]` | Hashtags added to every caption. |
 | `posting.youtube_extra_hashtags` | `["#Shorts"]` | Extra hashtags for YouTube. |
 | `posting.platform_max_24h` | `{"tiktok": 15, "instagram": 50, "youtube": 30}` | Hard ceiling of posts per account per rolling 24 h set by Upload-Post. An account cap above it is ignored. |

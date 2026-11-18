@@ -1,0 +1,101 @@
+{
+ "id": "e00ba081-8300-408d-8372-8652c58aa534",
+ "series_no": 48,
+ "spike_id": "b1c1c955-4721-4aea-a3be-70daedebf56c",
+ "creator": {
+  "id": "db1bb7fd-d4b7-4e96-971a-8247681eafa0",
+  "tier": "auto",
+  "handle": "paache_",
+  "platform": "twitch",
+  "display_name": "paache_"
+ },
+ "source_platform": "twitch",
+ "source_type": "vod",
+ "lane": "hourly",
+ "duration_s": null,
+ "hook": "Example writer-rejected clip",
+ "title": "Example writer-rejected clip",
+ "topic": "streamer-dancing-in-game-club",
+ "score": 5.0,
+ "rank_score": null,
+ "music_ratio": null,
+ "status": "rejected",
+ "reject_reason": "writer: Mostly talking about boxing lessons; no clear payoff or visible moment in the transcript",
+ "gate_profile": "hourly",
+ "created_at": "2026-11-17T20:42:12.386117+00:00",
+ "approved_at": null,
+ "posted_at": null,
+ "has_file": false,
+ "caption": null,
+ "hashtags": [
+  "paache",
+  "gtarp",
+  "dancing",
+  "funnymoments"
+ ],
+ "commentary": null,
+ "transcript": null,
+ "keywords": {
+  "11": [
+   "money, money"
+  ],
+  "13": [
+   "embarrassing"
+  ],
+  "21": [
+   "5,000 euros"
+  ]
+ },
+ "safety_flags": {
+  "hate": false,
+  "sexual": true,
+  "gambling": false,
+  "politics": false,
+  "sponsored": false,
+  "personal_info": false,
+  "real_violence": false,
+  "copyrighted_media": false
+ },
+ "score_parts": {
+  "hook": 5,
+  "payoff": 5,
+  "clarity": 4,
+  "rewatch": 4
+ },
+ "spoiler": false,
+ "profanity_count": null,
+ "gate_result": null,
+ "precheck_result": null,
+ "render_ms": null,
+ "file_size_bytes": null,
+ "storage_path": null,
+ "start_s": 5030.0,
+ "end_s": 5090.0,
+ "original_language": "es",
+ "posts": [],
+ "events": [],
+ "trace": {
+  "creator": {
+   "id": "db1bb7fd-d4b7-4e96-971a-8247681eafa0",
+   "label": "paache_",
+   "status": "auto"
+  },
+  "live_session": null,
+  "video": {
+   "id": "bb1a27b9-9875-4271-b92d-af61b6dc3f0e",
+   "label": "🔫GTA A LA NOCHE TEPITO EN ACCIÓN🔫|⬛GANGATHON DIA 13⬛|🔴VOY PUESTISIM0🔴| REVIVIENDO LA WII 458",
+   "status": "done"
+  },
+  "spike": {
+   "id": "b1c1c955-4721-4aea-a3be-70daedebf56c",
+   "label": "replay spike B",
+   "status": "rejected"
+  },
+  "clip": {
+   "id": "e00ba081-8300-408d-8372-8652c58aa534",
+   "label": "#48 He really committed to this dance 😭",
+   "status": "rejected"
+  },
+  "posts": []
+ }
+}

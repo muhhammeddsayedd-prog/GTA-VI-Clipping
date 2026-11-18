@@ -1,0 +1,23 @@
+{
+ "items": [],
+ "next_cursor": null,
+ "counts": {
+  "new": 8,
+  "processing": 0,
+  "done": 75,
+  "failed": 1,
+  "skipped": 0,
+  "all": 84
+ },
+ "meta": {
+  "source_health": {
+   "youtube": {
+    "error": "ERROR: [youtube] Cj7zAN6MDwU: Sign in to confirm you’re not a bot. This helps protect our community. Use --cookies-from-browser or --cookies for the authentication. See  https://github.com/yt-dlp/yt-dlp/wiki/FAQ#how-do-i-pass-cookies-to-yt-dlp  for how to manually pass cookies. Also see  https://git",
+    "since": "2026-11-17T16:23:00.978047+00:00",
+    "access": "PROXY_URL not set, YOUTUBE_COOKIES_FILE not set",
+    "blocks": 19,
+    "last_blocked_at": "2026-11-17T20:55:09.676832+00:00"
+   }
+  }
+ }
+}

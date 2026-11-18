@@ -1,5 +1,9 @@
 /* App-only additions on top of console.css (which mirrors the approved mockups). */
 
+/* Banner text may hold long unbroken error lines: let it shrink so .ellipsis can cut it. */
+.banner .grow { min-width: 0; }
+.banner > svg { flex: none; }
+
 :root {
   /* the mockup grey (#8B8BA1) is 3.4:1 on white; this one passes WCAG AA for small text */
   --mute: #6b6b82;

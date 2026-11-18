@@ -1,0 +1,84 @@
+{
+ "items": [
+  {
+   "id": 21428,
+   "creator_id": "ff7032cd-9627-44ee-99ec-e440e3c221d2",
+   "creator": {
+    "id": "ff7032cd-9627-44ee-99ec-e440e3c221d2",
+    "tier": "auto",
+    "handle": "@vvilsan",
+    "platform": "youtube",
+    "display_name": "Vilsan"
+   },
+   "source_type": "live",
+   "platform": "youtube",
+   "source_id": "ew01vGVFTC8",
+   "url": "https://www.youtube.com/watch?v=ew01vGVFTC8",
+   "title": "🔴GTA5 NG | #gta5 #gta5ng #vilsan",
+   "language": "ru",
+   "viewers": 102,
+   "views": null,
+   "views_per_hour": null,
+   "likes": 31,
+   "comments": 0,
+   "published_at": "2026-11-17T20:12:01+00:00",
+   "started_at": "2026-11-17T20:25:37+00:00",
+   "trend_score": 32.33,
+   "score_parts": {
+    "growth": 0.4366,
+    "origin": "recheck",
+    "history": 0.5,
+    "viewers": 0.4026,
+    "chat_mpm": 1.02,
+    "chat_rate": 0.1018,
+    "global_reach": 0.6,
+    "chat_measured": false
+   },
+   "checked_at": "2026-11-17T20:50:27.850497+00:00",
+   "picked": false
+  },
+  {
+   "id": 21427,
+   "creator_id": "4bd5e326-af70-4b71-a143-250f1119d9d3",
+   "creator": {
+    "id": "4bd5e326-af70-4b71-a143-250f1119d9d3",
+    "tier": "auto",
+    "handle": "@andreilight7",
+    "platform": "youtube",
+    "display_name": "Andrei Light"
+   },
+   "source_type": "live",
+   "platform": "youtube",
+   "source_id": "ogyGWNEiCUc",
+   "url": "https://www.youtube.com/watch?v=ogyGWNEiCUc",
+   "title": "V I N D E M , GORILA?",
+   "language": "ro",
+   "viewers": 741,
+   "views": null,
+   "views_per_hour": null,
+   "likes": 1249,
+   "comments": 0,
+   "published_at": "2026-11-16T19:00:53+00:00",
+   "started_at": "2026-11-17T16:47:06+00:00",
+   "trend_score": 31.67,
+   "score_parts": {
+    "growth": 0.0,
+    "origin": "recheck",
+    "history": 0.5,
+    "viewers": 0.5741,
+    "chat_mpm": 7.41,
+    "chat_rate": 0.3083,
+    "global_reach": 0.6,
+    "chat_measured": false
+   },
+   "checked_at": "2026-11-17T20:50:27.850497+00:00",
+   "picked": false
+  }
+ ],
+ "next_cursor": "MjAyNi0xMS0xN1QyMDo1MDoyNy44NTA0OTcrMDA6MDB8MjE0MjQ",
+ "counts": {
+  "live": 12566,
+  "vod": 8862,
+  "all": 21428
+ }
+}

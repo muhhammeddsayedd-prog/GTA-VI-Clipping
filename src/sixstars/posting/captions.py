@@ -25,6 +25,7 @@ YOUTUBE_CATEGORY_GAMING = "20"
 INSTAGRAM_MEDIA_TYPE = "REELS"
 SOURCE_LABELS = {"twitch": "Twitch", "youtube": "YouTube"}
 ELLIPSIS = "…"
+HANDLE_PLACEHOLDER = "{handle}"  # in `posting.first_comment`: becomes the posting account's handle
 
 FieldValue = str | bool
 
@@ -120,6 +121,15 @@ def youtube_title(clip: Clip) -> str:
     return truncate(cleaned, YOUTUBE_TITLE_MAX)
 
 
+def first_comment_for(account: Account, params: PostingParams) -> str:
+    """The first comment for this account: `{handle}` in the setting becomes the account's own handle, so
+    each platform names its own account. Empty when the setting is empty."""
+    handle = account.handle.strip()
+    if handle and not handle.startswith("@"):
+        handle = "@" + handle
+    return params.first_comment.replace(HANDLE_PLACEHOLDER, handle).strip()
+
+
 def build_fields(clip: Clip, account: Account, params: PostingParams) -> dict[str, FieldValue]:
     """The multipart fields of `POST /api/upload` for this clip on this account.
 
@@ -150,8 +160,9 @@ def build_fields(clip: Clip, account: Account, params: PostingParams) -> dict[st
             "title": build_caption(clip, params, Platform.INSTAGRAM),
             "media_type": INSTAGRAM_MEDIA_TYPE,
         }
-    if params.first_comment.strip():
-        fields["first_comment"] = params.first_comment.strip()
+    comment = first_comment_for(account, params)
+    if comment:
+        fields["first_comment"] = comment
     return fields
 
 

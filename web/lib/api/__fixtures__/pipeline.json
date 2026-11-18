@@ -1,0 +1,165 @@
+{
+ "window": "24h",
+ "nodes": {
+  "discovery": {
+   "candidates": 21428,
+   "picked": 91
+  },
+  "live": {
+   "active": 2,
+   "max_slots": 2,
+   "sessions": 13
+  },
+  "vod": {
+   "new": 8,
+   "processing": 0,
+   "done": 75,
+   "failed": 1,
+   "skipped": 0
+  },
+  "spikes": {
+   "detected": 145,
+   "confirmed": 24,
+   "rejected": 113,
+   "merged": 7
+  },
+  "render": {
+   "rendered": 38,
+   "failed": 0
+  },
+  "gate": {
+   "approved": 1,
+   "rejected": 50
+  },
+  "queue": {
+   "waiting": 1,
+   "expired": 0
+  },
+  "posts": {
+   "published": 0,
+   "failed": 0
+  }
+ },
+ "funnel": [
+  {
+   "tier": "S",
+   "detected": 0,
+   "confirmed": 0,
+   "clipped": 0,
+   "posted": 0
+  },
+  {
+   "tier": "A",
+   "detected": 17,
+   "confirmed": 12,
+   "clipped": 14,
+   "posted": 0
+  },
+  {
+   "tier": "B",
+   "detected": 27,
+   "confirmed": 12,
+   "clipped": 22,
+   "posted": 0
+  }
+ ],
+ "rejects": [
+  {
+   "reason": "score_too_low",
+   "n": 24
+  },
+  {
+   "reason": "music_over_limit",
+   "n": 10
+  },
+  {
+   "reason": "unreadable_subtitles",
+   "n": 2
+  },
+  {
+   "reason": "frozen_video",
+   "n": 1
+  },
+  {
+   "reason": "no_speech",
+   "n": 1
+  },
+  {
+   "reason": "writer: Full character nudity with chat sexual jokes; risks the sexual content topic",
+   "n": 1
+  },
+  {
+   "reason": "writer: Mostly dead air; the payoff happens in a gap with no transcript and is only told afterward",
+   "n": 1
+  },
+  {
+   "reason": "writer: Mostly talking about boxing lessons; no clear payoff or visible moment in the transcript",
+   "n": 1
+  },
+  {
+   "reason": "writer: No clear moment in transcript; fragmented speech, needs stream context",
+   "n": 1
+  },
+  {
+   "reason": "writer: No clear moment in transcript; mostly silence and needs stream context",
+   "n": 1
+  },
+  {
+   "reason": "writer: No clear payoff in the transcript; chat laughs but the action is unclear and needs stream context",
+   "n": 1
+  },
+  {
+   "reason": "writer: Sexual content: strip-club-style dance with sexual talk in the transcript",
+   "n": 1
+  },
+  {
+   "reason": "writer: Sexual innuendo in the peak line ('railed by the police')",
+   "n": 1
+  },
+  {
+   "reason": "writer: Sexual talk about streamer's dating reputation; channel rejects sexual content",
+   "n": 1
+  },
+  {
+   "reason": "writer: Streamer reads a real news story naming private people (personal info); not GTA gameplay and no clear payoff",
+   "n": 1
+  },
+  {
+   "reason": "writer: Streamer singing a commercial song with no real moment or payoff",
+   "n": 1
+  },
+  {
+   "reason": "writer: Unclear what happens; payoff only visible through chat spam, mostly banter",
+   "n": 1
+  }
+ ],
+ "express_stages": [
+  {
+   "stage": "detect",
+   "median_s": null
+  },
+  {
+   "stage": "queue",
+   "median_s": null
+  },
+  {
+   "stage": "render",
+   "median_s": null
+  },
+  {
+   "stage": "gate",
+   "median_s": null
+  },
+  {
+   "stage": "post",
+   "median_s": null
+  }
+ ],
+ "express_series": [],
+ "approved_by_hour": [
+  {
+   "t": "2026-11-17T20:00:00+00:00",
+   "n": 1
+  }
+ ]
+}

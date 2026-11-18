@@ -1,16 +1,14 @@
 "use client";
 
-import { AlertTriangle } from "lucide-react";
-
 import { DataTable, Pager, type Col } from "@/components/kit/data";
-import { Badge, Banner, Card, ErrorState, PageHead, RefreshBtn, Seg, SelectField, SkeletonTable, Two, When, Who } from "@/components/kit/primitives";
+import { BlockBanners, readBlocks } from "@/components/domain/sources/BlockBanner";
+import { Badge, Card, ErrorState, PageHead, RefreshBtn, Seg, SelectField, SkeletonTable, Two, When, Who } from "@/components/kit/primitives";
 import { POLL, useApi } from "@/lib/api/client";
 import type { Page, Video } from "@/lib/api/types";
-import { fmtDuration, fmtNum, fmtTime, humanize } from "@/lib/format";
+import { fmtDuration, fmtNum, humanize } from "@/lib/format";
 import { useListParams } from "@/lib/use-list";
 
-type Health = Record<string, { blocked_since?: string | null; last_error?: string | null; count?: number; next_retry_at?: string | null } | null>;
-type VideoPage = Page<Video> & { meta?: { source_health?: Health } };
+type VideoPage = Page<Video> & { meta?: { source_health?: unknown } };
 
 const STATUSES = ["new", "processing", "done", "failed", "skipped"];
 const KEYS = ["status", "platform"];
@@ -34,20 +32,13 @@ export function VideosView() {
   const lp = useListParams(KEYS);
   const q = useApi<VideoPage>("admin/videos", lp.params, { interval: POLL.list });
   const counts = q.data?.counts ?? {};
-  const health = q.data?.meta?.source_health ?? {};
-  const blocked = Object.entries(health).filter(([, h]) => h?.blocked_since);
+  const blocked = readBlocks(q.data?.meta?.source_health);
 
   return (
     <>
       <PageHead title="VOD queue" sub="Finished streams and uploads · chat-first, transcript fallback when chat is thin"
         actions={<RefreshBtn onClick={() => q.refetch()} spinning={q.isFetching} />} />
-      {blocked.map(([p, h]) => (
-        <Banner key={p} tone="amber" icon={<AlertTriangle size={17} />}>
-          <b>{humanize(p)} downloads are blocked</b> from this server since {fmtTime(h!.blocked_since)} UTC.
-          {" "}Those videos wait instead of failing{h!.next_retry_at ? <> · next retry {fmtTime(h!.next_retry_at)}</> : null}.
-          {h!.last_error ? <div className="xs" style={{ marginTop: 4, opacity: 0.85 }}>Last error: {h!.last_error}</div> : null}
-        </Banner>
-      ))}
+      <BlockBanners blocks={blocked} what="downloads" />
       <div className="filters">
         <span className="lab">Filters <span className="cnt">{KEYS.filter((k) => lp.get(k)).length}</span></span>
         <SelectField label="Platform" value={lp.get("platform")} onChange={(v) => lp.set("platform", v)} width={170}

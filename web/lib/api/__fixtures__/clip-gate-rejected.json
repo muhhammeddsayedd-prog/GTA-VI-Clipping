@@ -1,0 +1,279 @@
+{
+ "id": "bbfb88ad-1e3a-460a-a85d-dda9e452a80d",
+ "series_no": 51,
+ "spike_id": null,
+ "creator": {
+  "id": "a427b555-5271-419a-a20e-435f77dc0471",
+  "tier": "auto",
+  "handle": "darkviperau",
+  "platform": "twitch",
+  "display_name": "DarkViperAU"
+ },
+ "source_platform": "twitch",
+ "source_type": "vod",
+ "lane": "hourly",
+ "duration_s": 60.0,
+ "hook": "The blimp armada takes off 😳",
+ "title": "darkviperau's blimp armada attempt goes sideways",
+ "topic": "streamer-flies-blimp-armada",
+ "score": 3.0,
+ "rank_score": null,
+ "music_ratio": 0.45,
+ "status": "rejected",
+ "reject_reason": "music_over_limit",
+ "gate_profile": "hourly",
+ "created_at": "2026-11-17T20:50:53.724306+00:00",
+ "approved_at": null,
+ "posted_at": null,
+ "has_file": false,
+ "caption": "The last blimp strat did not go the way he planned.",
+ "hashtags": [
+  "blimp",
+  "armada",
+  "darkviperau",
+  "blimpstrat"
+ ],
+ "commentary": null,
+ "transcript": {
+  "words": [
+   {
+    "e": 0.83,
+    "s": 0.72,
+    "w": "Go."
+   },
+   {
+    "e": 3.78,
+    "s": 3.58,
+    "w": "Mush."
+   },
+   {
+    "e": 5.54,
+    "s": 5.06,
+    "w": "Accelerate."
+   },
+   {
+    "e": 8.18,
+    "s": 7.97,
+    "w": "Take"
+   },
+   {
+    "e": 8.5,
+    "s": 8.18,
+    "w": "down"
+   }
+  ]
+ },
+ "keywords": {
+  "8": [
+   "shadows"
+  ],
+  "17": [
+   "I lived"
+  ],
+  "19": [
+   "terrible attempt"
+  ]
+ },
+ "safety_flags": {
+  "hate": false,
+  "sexual": false,
+  "gambling": false,
+  "politics": false,
+  "sponsored": false,
+  "personal_info": false,
+  "real_violence": false,
+  "copyrighted_media": false
+ },
+ "score_parts": {
+  "hook": 4,
+  "payoff": 3,
+  "clarity": 3,
+  "rewatch": 3
+ },
+ "spoiler": false,
+ "profanity_count": 0,
+ "gate_result": {
+  "lane": "hourly",
+  "risk": [
+   "first_clip_of_auto_creator",
+   "music"
+  ],
+  "codes": [
+   "music_over_limit",
+   "score_too_low"
+  ],
+  "checks": {
+   "file": {
+    "ok": true,
+    "limit": {
+     "width": 1080,
+     "height": 1920,
+     "max_file_mb": 100.0,
+     "duration_tolerance_s": 1.0
+    },
+    "value": {
+     "width": 1080,
+     "height": 1920,
+     "has_audio": true,
+     "duration_s": 61.5,
+     "size_bytes": 26977172
+    }
+   },
+   "music": {
+    "ok": false,
+    "codes": [
+     "music_over_limit"
+    ],
+    "limit": 0.1,
+    "value": 0.4333,
+    "reasons": [
+     "music ratio 0.4333 is above the hourly limit 0.1"
+    ]
+   },
+   "score": {
+    "ok": false,
+    "codes": [
+     "score_too_low"
+    ],
+    "limit": 7.0,
+    "value": 3.0,
+    "reasons": [
+     "score 3 is below the hourly minimum 7"
+    ]
+   },
+   "length": {
+    "ok": true,
+    "limit": [
+     20.0,
+     60.0
+    ],
+    "value": 60.0
+   },
+   "safety": {
+    "ok": true,
+    "value": []
+   },
+   "visual": {
+    "ok": true,
+    "limit": {
+     "max_black_s": 4.0,
+     "max_freeze_s": 4.0
+    },
+    "value": {
+     "pause_screen": false,
+     "empty_facecam": false,
+     "longest_black_s": 0.0,
+     "menu_or_loading": false,
+     "longest_freeze_s": 0.0,
+     "unreadable_subtitles": false
+    }
+   },
+   "creator": {
+    "ok": true,
+    "limit": 4,
+    "value": {
+     "tier": "auto",
+     "clips_today": 0
+    }
+   },
+   "spoiler": {
+    "ok": true,
+    "limit": "2000-01-01T00:00:00+00:00",
+    "value": false
+   },
+   "precheck": {
+    "ok": true,
+    "limit": 0.0,
+    "value": {
+     "risk": [
+      "first_clip_of_auto_creator",
+      "music"
+     ],
+     "state": "unavailable"
+    }
+   },
+   "watermark": {
+    "ok": true,
+    "value": {
+     "platform_logos": false,
+     "other_watermark": false
+    }
+   },
+   "source_range": {
+    "ok": true,
+    "limit": 30.0,
+    "value": []
+   },
+   "spoiler_text": {
+    "ok": true,
+    "value": []
+   },
+   "reject_topics": {
+    "ok": true,
+    "value": []
+   },
+   "subtitle_sync": {
+    "ok": true,
+    "limit": 0.3,
+    "value": {
+     "words": 56,
+     "drift_s": null
+    }
+   },
+   "duplicate_topic": {
+    "ok": true,
+    "limit": 48.0,
+    "value": []
+   }
+  },
+  "inputs": {
+   "p5": "skipped: the clip was rejected without it",
+   "file": {
+    "width": 1080,
+    "height": 1920,
+    "has_audio": true,
+    "has_video": true,
+    "duration_s": 61.5,
+    "size_bytes": 26977172,
+    "longest_black_s": 0.0,
+    "longest_freeze_s": 0.0
+   },
+   "visual": null
+  },
+  "passed": false,
+  "demoted": false,
+  "profile": "hourly",
+  "reasons": [
+   "music ratio 0.4333 is above the hourly limit 0.1",
+   "score 3 is below the hourly minimum 7"
+  ],
+  "verdict": "reject",
+  "precheck": "unavailable",
+  "decided_at": "2026-11-17T20:52:31.831060+00:00"
+ },
+ "precheck_result": null,
+ "render_ms": 36879,
+ "file_size_bytes": 26977172,
+ "storage_path": null,
+ "start_s": 7677.0,
+ "end_s": 7737.0,
+ "original_language": "en",
+ "posts": [],
+ "events": [],
+ "trace": {
+  "creator": {
+   "id": "a427b555-5271-419a-a20e-435f77dc0471",
+   "label": "darkviperau",
+   "status": "auto"
+  },
+  "live_session": null,
+  "video": null,
+  "spike": null,
+  "clip": {
+   "id": "bbfb88ad-1e3a-460a-a85d-dda9e452a80d",
+   "label": "#51 The blimp armada takes off 😳",
+   "status": "rejected"
+  },
+  "posts": []
+ }
+}

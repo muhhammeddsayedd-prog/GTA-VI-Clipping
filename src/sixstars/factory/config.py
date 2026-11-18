@@ -31,7 +31,7 @@ OFFLINE_DEFAULTS: dict[str, object] = {
     "factory.font": "Montserrat Black",
     "factory.hook_seconds": 3.0,
     "factory.end_card_s": 1.5,
-    "factory.watermark": "@6starsclipping",
+    "factory.watermark": "6 Stars Clips",
     "factory.series_label": "6 Stars Moments",
     "factory.bleep": True,
     "factory.music_duck_db": -18,

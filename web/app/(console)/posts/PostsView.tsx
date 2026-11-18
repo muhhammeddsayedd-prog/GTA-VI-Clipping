@@ -6,7 +6,7 @@ import { DataTable, ExtLink, Kpi, Pager, Thumb, type Col } from "@/components/ki
 import { Badge, Card, ErrorState, Grid, PageHead, Plat, RefreshBtn, Seg, SelectField, SkeletonTable, When } from "@/components/kit/primitives";
 import { laneTone } from "@/components/domain/clips/ClipBits";
 import { useApi } from "@/lib/api/client";
-import type { Page, Post } from "@/lib/api/types";
+import type { AccountSummary, Page, Post } from "@/lib/api/types";
 import { fmtNum, humanize, series } from "@/lib/format";
 import { useListParams } from "@/lib/use-list";
 
@@ -33,6 +33,7 @@ const COLS: Col<Post>[] = [
 export function PostsView() {
   const lp = useListParams(KEYS, DEFAULTS);
   const q = useApi<Page<Post>>("admin/posts", lp.params);
+  const accounts = useApi<{ items: AccountSummary[] }>("admin/accounts", undefined, { interval: false, staleTime: 10 * 60 * 1000 });
   const counts = q.data?.counts ?? {};
   const status = lp.get("status");
 
@@ -48,7 +49,7 @@ export function PostsView() {
       </Grid>
       <div className="filters" style={{ flexWrap: "wrap" }}>
         <SelectField label="Account" value={lp.get("account_id")} onChange={(v) => lp.set("account_id", v)}
-          options={[{ value: "", label: "All accounts" }, ...["tiktok_main", "tiktok_live", "instagram_main", "youtube_main"].map((a) => ({ value: a, label: a }))]} />
+          options={[{ value: "", label: "All accounts" }, ...(accounts.data?.items ?? []).map((a) => ({ value: a.id, label: a.handle ? `${a.id} · ${a.handle}` : a.id }))]} />
         <SelectField label="Lane" value={lp.get("lane")} onChange={(v) => lp.set("lane", v)} width={140}
           options={[{ value: "", label: "All lanes" }, { value: "hourly", label: "Hourly" }, { value: "spike", label: "Spike" }]} />
         {lp.get("clip_id") && <button type="button" className="chip p" onClick={() => lp.set("clip_id", "")} aria-label="Remove clip filter">One clip only ✕</button>}

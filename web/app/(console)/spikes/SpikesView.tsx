@@ -19,7 +19,7 @@ const cols: Col<Spike>[] = [
   { key: "c", head: "Creator", render: (s) => <Who name={s.creator.handle} p={s.creator.platform} size={28} sub={<ModeBadge mode={s.mode} />} /> },
   { key: "at", head: "At", mobile: "meta", render: (s) => <span className="num">{spikeAt(s)}</span> },
   { key: "z", head: "z", align: "right", mobile: "meta", render: (s) => <b className="num">{s.score_z ?? "—"}</b> },
-  { key: "p", head: "Parts", mobile: "hide", render: (s) => <PartsMini parts={s.parts} /> },
+  { key: "p", head: "Parts", mobile: "hide", render: (s) => <PartsMini parts={s.parts as Record<string, number> | null} /> },
   { key: "cf", head: "Conf.", align: "right", mobile: "meta", render: (s) => (s.claude_confidence !== null ? s.claude_confidence.toFixed(2) : "—") },
   { key: "m", head: "Moment", mobile: "meta", render: (s) => <span className="ink2 clamp2" style={{ maxWidth: 260 }}>{s.claude_reason ?? "—"}</span> },
   { key: "st", head: "Status", render: (s) => <Badge status={s.status} /> },
