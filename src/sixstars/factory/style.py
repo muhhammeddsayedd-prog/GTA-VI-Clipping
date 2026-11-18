@@ -37,6 +37,10 @@ class StyleRules:
     * `sfx_gain_db`: level of every sound effect. `cut_sfx`: whoosh and impact on each punch-in.
       `payoff_fx`: emoji and bass hit at the payoff the clip writer names.
     * `compress`: a compressor before loudness normalisation, for the dense sound of the references.
+    * `facecam_top`: with a facecam, draw it on top and the gameplay below (layout C, decision D112)
+      instead of gameplay on top (layout A).
+    * `captions`: burn in the spoken words (off: a title-only style, docs/27 section 5).
+    * `title_whole_clip`: the title bar stays for the whole clip instead of `factory.hook_seconds`.
     """
 
     caption_words: int = 0
@@ -56,6 +60,9 @@ class StyleRules:
     cut_sfx: bool = False
     payoff_fx: bool = False
     compress: bool = False
+    facecam_top: bool = False
+    captions: bool = True
+    title_whole_clip: bool = False
 
     def __post_init__(self) -> None:
         if self.caption_words < 0 or self.caption_chars < 1:
@@ -135,6 +142,9 @@ class StyleRules:
                 cut_sfx=flag("cut_sfx", base.cut_sfx),
                 payoff_fx=flag("payoff_fx", base.payoff_fx),
                 compress=flag("compress", base.compress),
+                facecam_top=flag("facecam_top", base.facecam_top),
+                captions=flag("captions", base.captions),
+                title_whole_clip=flag("title_whole_clip", base.title_whole_clip),
             )
         except ValueError:
             return base
@@ -159,4 +169,22 @@ VIRAL_STYLE: dict[str, object] = {
     "cut_sfx": True,
     "payoff_fx": True,
     "compress": True,
+}
+
+
+# The styles of migration 0027 (development-plan/M18, docs/27 section 5). `config.OFFLINE_DEFAULTS`, the
+# catalogue's fallback and the tests use them as the reference; the services read `factory.styles`.
+CAM_TOP_VIRAL: dict[str, object] = {**VIRAL_STYLE, "facecam_top": True}
+CAM_TOP_TITLE: dict[str, object] = {
+    "caption_words": 0,
+    "captions": False,
+    "hook_mode": "title_bar",
+    "title_whole_clip": True,
+    "facecam_top": True,
+    "punchin_max": 0,
+    "zoomcut_every_s": 0,
+    "cut_sfx": False,
+    "payoff_fx": False,
+    "compress": True,
+    "sfx_gain_db": -10,
 }

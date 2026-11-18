@@ -73,3 +73,37 @@ def baseline_for(
     if len(trailing) < cfg.min_baseline_buckets:
         return None
     return compute_baseline(trailing, cfg.min_std)
+
+
+def to_json(baseline: Baseline, at: float) -> dict[str, object]:
+    """A baseline as stored in `live_sessions.chat_baseline`."""
+    return {
+        "n": baseline.n,
+        "at": round(at, 1),
+        "mean": {key: round(value, 4) for key, value in baseline.mean.items()},
+        "std": {key: round(value, 4) for key, value in baseline.std.items()},
+    }
+
+
+def median_baseline(stored: Sequence[object], min_std: Mapping[str, float]) -> Baseline | None:
+    """The per-feature median of stored baselines (`to_json` objects; malformed ones are skipped), each
+    deviation raised to its `min_std`. None when none is usable. Pure."""
+    from statistics import median
+
+    usable = [
+        item
+        for item in stored
+        if isinstance(item, Mapping)
+        and isinstance(item.get("mean"), Mapping)
+        and isinstance(item.get("std"), Mapping)
+    ]
+    if not usable:
+        return None
+    mean: dict[str, float] = {}
+    std: dict[str, float] = {}
+    for feature in FEATURES:
+        means = [float(m) for item in usable if isinstance(m := item["mean"].get(feature), int | float)]
+        stds = [float(v) for item in usable if isinstance(v := item["std"].get(feature), int | float)]
+        mean[feature] = float(median(means)) if means else 0.0
+        std[feature] = max(float(median(stds)) if stds else 0.0, float(min_std.get(feature, 0.0)))
+    return Baseline(len(usable), mean, std)

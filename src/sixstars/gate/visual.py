@@ -27,10 +27,10 @@ from sixstars.factory import layout, tools
 from sixstars.gate.models import FileFacts, GateSettings, VisualFindings
 from sixstars.logging import get_logger
 
-# The band, as fractions of the frame height: from 60 px under the hook box to 150 px above the higher of
-# the two subtitle lines (reference canvas 1080x1920).
-BAND_TOP = (layout.HOOK_BOTTOM + 60) / layout.REF_HEIGHT
-BAND_BOTTOM = (min(layout.CAPTION_Y_A, layout.CAPTION_Y_B) - 150) / layout.REF_HEIGHT
+# The band of layouts A and B, as fractions of the frame height: from 60 px under the hook box to 150 px
+# above the higher of the two subtitle lines (reference canvas 1080x1920). Layout C has its own
+# (`layout.gameplay_band`).
+BAND_TOP, BAND_BOTTOM = layout.gameplay_band(None)
 # blackdetect on the whole frame: a pixel darker than this share of full brightness is black (the ffmpeg
 # default, which is what docs/10 means by plain `blackdetect`).
 BLACK_PIXEL_THRESHOLD = 0.10
@@ -79,29 +79,35 @@ def parse_freezedetect(log: str, analysed_s: float) -> list[float]:
     return durations
 
 
-def detect_filter(settings: GateSettings) -> str:
-    """The ffmpeg filter graph: the whole frame with the docs/10 limits, and the gameplay band with the
-    tighter band tolerances. Outputs `[whole]` and `[band]`."""
-    height = BAND_BOTTOM - BAND_TOP
+def detect_filter(settings: GateSettings, band: tuple[float, float] | None = None) -> str:
+    """The ffmpeg filter graph: the whole frame with the docs/10 limits, and the gameplay band (`band`, the
+    top and bottom as fractions of the frame height; by default that of layouts A and B) with the tighter
+    band tolerances. Outputs `[whole]` and `[band]`."""
+    band_top, band_bottom = band if band is not None else (BAND_TOP, BAND_BOTTOM)
+    height = band_bottom - band_top
     black, freeze = f"{settings.max_black_s:g}", f"{settings.max_freeze_s:g}"
     return (
         "[0:v]split=2[a][b];"
         f"[a]blackdetect=d={black}:pix_th={BLACK_PIXEL_THRESHOLD:g},"
         f"freezedetect=n={settings.freeze_noise:g}:d={freeze}[whole];"
-        f"[b]crop=iw:ih*{height:.4f}:0:ih*{BAND_TOP:.4f},"
+        f"[b]crop=iw:ih*{height:.4f}:0:ih*{band_top:.4f},"
         f"blackdetect=d={black}:pix_th={settings.band_black_pixel:g},"
         f"freezedetect=n={settings.band_freeze_noise:g}:d={freeze}[band]"
     )
 
 
 def detect_black_and_freeze(
-    path: Path, clip_duration_s: float, settings: GateSettings, ffmpeg: str = "ffmpeg"
+    path: Path,
+    clip_duration_s: float,
+    settings: GateSettings,
+    ffmpeg: str = "ffmpeg",
+    band: tuple[float, float] | None = None,
 ) -> tuple[float, float]:
     """The longest black and the longest frozen stretch (seconds) in the first `clip_duration_s` of the
     file, on the whole frame or in the gameplay band; 0 when there is none of at least the configured
     length."""
     command = [ffmpeg, "-hide_banner", "-nostdin", "-t", f"{clip_duration_s:.3f}", "-i", str(path)]
-    command += ["-an", "-filter_complex", detect_filter(settings)]
+    command += ["-an", "-filter_complex", detect_filter(settings, band)]
     command += ["-map", "[whole]", "-f", "null", "-", "-map", "[band]", "-f", "null", "-"]
     result = tools.run(command, timeout_s=DETECT_TIMEOUT_S, what="black and freeze detection")
     log = result.stderr.decode("utf-8", errors="replace")
@@ -117,8 +123,10 @@ def measure_file(
     *,
     ffmpeg: str = "ffmpeg",
     ffprobe: str = "ffprobe",
+    layout_kind: layout.LayoutKind | None = None,
 ) -> FileFacts | None:
     """Everything the gate needs to know about the file; None when it does not exist or is empty.
+    `layout_kind` places the gameplay band (None: the band of layouts A and B).
 
     Raises `tools.FfmpegError` when the tools cannot read it (the caller decides between a retry and a
     rejection). Black and freeze detection run on the clip part; without a clip length, on the whole file.
@@ -130,7 +138,9 @@ def measure_file(
     frozen: float | None = None
     analysed = clip_duration_s if clip_duration_s and clip_duration_s > 0 else media.duration_s
     if media.has_video and analysed > 0:
-        black, frozen = detect_black_and_freeze(path, min(analysed, media.duration_s), settings, ffmpeg)
+        black, frozen = detect_black_and_freeze(
+            path, min(analysed, media.duration_s), settings, ffmpeg, layout.gameplay_band(layout_kind)
+        )
     return FileFacts(
         width=media.width,
         height=media.height,

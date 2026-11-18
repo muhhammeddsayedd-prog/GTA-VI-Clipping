@@ -14,6 +14,7 @@ from typing import Any
 from psycopg.types.json import Jsonb
 
 from sixstars import db, events
+from sixstars.factory.layout import LayoutKind
 from sixstars.gate import visual as visuals
 from sixstars.gate.models import (
     EXPRESS,
@@ -47,7 +48,8 @@ select c.id::text as id, c.creator_id::text as creator_id, c.spike_id::text as s
        c.gate_profile, c.source_platform, c.source_id, c.start_s, c.end_s, c.duration_s, c.score,
        c.score_parts, c.music_ratio, c.spoiler, c.safety_flags, c.hook, c.title, c.caption, c.hashtags,
        c.topic, c.commentary,
-       c.transcript, c.local_path, c.storage_path, c.gate_result, c.precheck_video_id, c.created_at
+       c.transcript, c.local_path, c.storage_path, c.gate_result, c.precheck_video_id, c.created_at,
+       c.layout_kind
 from clips c
 """
 
@@ -68,6 +70,11 @@ class ClipRow:
     gate_result: Mapping[str, Any] | None
     precheck_video_id: str | None
     raw: Mapping[str, Any]
+    layout_kind: LayoutKind | None = None  # migration 0027; None for older clips
+
+
+def _layout_kind(value: object) -> LayoutKind | None:
+    return value if value in ("A", "B", "C") else None
 
 
 def _float(value: object) -> float | None:
@@ -124,6 +131,7 @@ def get_clip(clip_id: str) -> ClipRow | None:
         gate_result=result if isinstance(result, Mapping) else None,
         precheck_video_id=row["precheck_video_id"],
         raw=row,
+        layout_kind=_layout_kind(row.get("layout_kind")),
     )
 
 
@@ -380,8 +388,11 @@ def store_decision(
     now: datetime,
     *,
     boosted: bool = False,
+    rank_bonus: float = 0.0,
 ) -> bool:
     """Write the verdict on the clip and its event. Call inside `decision_lock()`.
+
+    `rank_bonus` (the first-time boost's rank points) is added to `rank_score`.
 
     The ranking stub of M07: `rank_score` is the clip's score, or the posting engine's demotion rank when
     the clip came from the spike lane (`boosted`), so that it goes to the top of the hourly queue.
@@ -389,7 +400,7 @@ def store_decision(
     """
     score = _float(row.raw["score"])
     if decision.verdict is Verdict.APPROVE:
-        rank = None if score is None else (demoted_rank(score) if boosted else score)
+        rank = None if score is None else (demoted_rank(score) if boosted else score) + rank_bonus
         changed = db.execute(
             """
             update clips set status = 'approved', approved_at = %s, lane = %s, gate_profile = %s,

@@ -48,6 +48,7 @@ class WriterInput:
     profanity_hint: Sequence[str] = ()
     clip_id: str | None = None
     snap: SnapRules = SnapRules()
+    cut_guidance: str = ""
 
     @property
     def effective_min_len_s(self) -> float:
@@ -80,6 +81,7 @@ def build_context(item: WriterInput) -> ClipContext:
         verdict=item.verdict,
         profanity_hint=tuple(item.profanity_hint),
         clip_id=item.clip_id,
+        cut_guidance=item.cut_guidance,
     )
 
 

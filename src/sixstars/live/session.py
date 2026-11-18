@@ -48,7 +48,11 @@ from sixstars.live import buffer, store
 from sixstars.live.config import LiveConfig
 from sixstars.live.recorder import Failure, Recorder, Spawn, stream_url
 from sixstars.logging import get_logger
+from sixstars.scoring import config as scoring_config
+from sixstars.scoring.percentile import Strength, spike_percentile
 from sixstars.spikes import DetectedSpike, LiveSpikeDetector, SpikeConfig, persist_spike
+from sixstars.spikes.baseline import Baseline, median_baseline
+from sixstars.spikes.baseline import to_json as baseline_json
 from sixstars.spikes.buckets import tokenise
 from sixstars.vod.ytdlp import BLOCKED_MARKERS, normalise
 
@@ -246,9 +250,47 @@ def render_input(
     )
 
 
+def prior_baseline(row: store.SessionRow) -> Baseline | None:
+    """The creator's stored chat baseline (median of recent sessions) when `warmup.v2` is on."""
+    flag = scoring_config.flag("warmup.v2")
+    if flag is None or not row.creator_id:
+        return None
+    try:
+        stored = store.prior_chat_baselines(
+            row.creator_id, row.platform, row.id, int(scoring_config.number(flag, "prior_sessions", 5.0))
+        )
+        return median_baseline(stored, SpikeConfig.from_settings().min_std)
+    except Exception as exc:  # noqa: BLE001 - without a prior the stream waits for its own baseline
+        get_logger("live").warning("live_prior_baseline_failed", error=f"{type(exc).__name__}: {exc}"[:200])
+        return None
+
+
 def looks_blocked(text: str) -> bool:
     lowered = normalise(text)
     return any(marker in lowered for marker in BLOCKED_MARKERS) or proxy_refusal(text) is not None
+
+
+@dataclass(slots=True)
+class _SpikeHandle:
+    """A live spike being handled, so a stronger one inside the merge gap can cancel it
+    (`merge.keep_stronger`)."""
+
+    spike_id: str
+    cancelled: threading.Event = field(default_factory=threading.Event)
+    job_id: int | None = None
+    merged_into: str | None = None
+
+
+def fast_path_reason(spike: DetectedSpike, strength: Strength, flag: Mapping[str, Any] | None) -> str | None:
+    """Why a live spike takes the fast path (`fastpath.live`), or None. Pure."""
+    if flag is None:
+        return None
+    percentile = scoring_config.number(flag, "percentile", 97.0)
+    if strength.at_least(percentile):
+        return f"p{strength.percentile:g} of {strength.basis}"
+    if flag.get("include_s_tier") is True and spike.tier == "S":
+        return "provisional tier S"
+    return None
 
 
 # ── the session ──────────────────────────────────────────────
@@ -307,7 +349,11 @@ class LiveSession:
             ffmpeg=self.deps.ffmpeg,
             spawn=self.deps.spawn,
         )
-        self.detector = LiveSpikeDetector(self._platform, started, bot_names=row.bot_names)
+        self.detector = LiveSpikeDetector(
+            self._platform, started, bot_names=row.bot_names, prior=prior_baseline(row)
+        )
+        self._baseline_saved_at = self._created
+        self._recent_spikes: dict[float, _SpikeHandle] = {}
 
     @property
     def _platform(self) -> Platform:
@@ -469,12 +515,28 @@ class LiveSession:
             if learned and not self._bots_saved:
                 self._bots_saved = True
                 store.save_bots(self.row.id, bots)
+            self._maybe_save_baseline(now)
         except Exception as exc:  # noqa: BLE001 - one bad step (database hiccup) must not end detection
             self._log.error("live_tick_failed", error=type(exc).__name__, exc_info=True)
             return step
         for spike in spikes:
             self.handle_spike_async(spike)
         return max(step, 1.0)
+
+    def _maybe_save_baseline(self, now: float) -> None:
+        """Store the session's chat baseline every `warmup.v2.save_every_s` (default 300 s), so the next
+        stream of this creator can start with it. Saved whatever the flag: it is data, not behaviour."""
+        every = scoring_config.number(scoring_config.section("warmup.v2"), "save_every_s", 300.0)
+        if now - self._baseline_saved_at < max(every, 30.0):
+            return
+        self._baseline_saved_at = now
+        try:
+            with self._lock:
+                baseline = self.detector.current_baseline(now - CHAT_LAG_S.get(self.row.platform, 5.0))
+            if baseline is not None:
+                store.save_chat_baseline(self.row.id, baseline_json(baseline, now))
+        except Exception as exc:  # noqa: BLE001 - never lose the tick's spikes over the stored baseline
+            self._log.warning("live_baseline_save_failed", error=f"{type(exc).__name__}: {exc}"[:200])
 
     async def _read_chat(self) -> None:
         open_chat: OpenChat = self.deps.open_chat or (
@@ -560,19 +622,67 @@ class LiveSession:
                 )
                 raise
 
+    def _supersede(self, spike: DetectedSpike, spike_id: str) -> None:
+        """`merge.keep_stronger`: this confirmed spike replaces a weaker one inside the merge gap. The weaker
+        one is cancelled if its render has not started; otherwise both go on and the gate's duplicate
+        checks decide."""
+        for peak in [peak for peak in self._recent_spikes if peak < spike.peak_t - 600]:
+            del self._recent_spikes[peak]
+        if spike.supersedes_peak_t is None:
+            return
+        earlier = self._recent_spikes.get(spike.supersedes_peak_t)
+        if earlier is None or earlier.spike_id == spike_id:
+            return
+        earlier.merged_into = spike_id
+        earlier.cancelled.set()
+        if earlier.job_id is not None and store.cancel_queued_job(earlier.job_id):
+            store.merge_spike(earlier.spike_id, spike_id, "replaced by a stronger spike inside the merge gap")
+        self._log.info("live_spike_superseded", earlier=earlier.spike_id, job_id=earlier.job_id)
+
     def _confirm_cut_queue(
         self, spike: DetectedSpike, spike_id: str, timings: SpikeTimings, detected_at: float
     ) -> int | None:
+        handle = _SpikeHandle(spike_id)
+        self._recent_spikes[spike.peak_t] = handle
         started = time.monotonic()
+        strength = spike_percentile(self.row.creator_id, spike.score_z, spike_id)
+        fast_flag = scoring_config.flag("fastpath.live")
+        fast_why = fast_path_reason(spike, strength, fast_flag)
         context = spike_context(spike_id, spike, self.row.handle, self.row.platform, self.row.title)
         verdict = calls.confirm_spikes([context], lane="express", client=self.deps.ai_client)[0]
         timings.confirm_ms = int((time.monotonic() - started) * 1000)
-        decision = spike_confirm.apply(spike_id, spike.tier, verdict)
+        decision = spike_confirm.apply(
+            spike_id,
+            spike.tier,
+            verdict,
+            fast=None
+            if fast_why is None or fast_flag is None
+            else (scoring_config.strings(fast_flag, "keep_reject_terms"), fast_why),
+            creator_id=self.row.creator_id,
+            sub_scores={
+                "mode": "live",
+                "score_z": spike.score_z,
+                "parts": spike.parts,
+                "msgs": spike.msgs,
+                "uniq": spike.uniq,
+                "reaction_count": spike.reaction_count,
+                "percentile": strength.percentile,
+                "percentile_basis": strength.basis,
+                "percentile_history": strength.history,
+                "prior_baseline_steps": self.detector.prior_used,
+                "supersedes": spike.supersedes_peak_t is not None,
+            },
+        )
         self._log.info(
-            "live_spike_judged", status=decision.status, tier=decision.tier, confidence=decision.confidence
+            "live_spike_judged",
+            status=decision.status,
+            tier=decision.tier,
+            confidence=decision.confidence,
+            fast_path=fast_why,
         )
         if decision.status != "confirmed":
             return None
+        self._supersede(spike, spike_id)
         route = route_for(decision.tier, self.cfg, emergency_stop=store.emergency_stop())
         if route is None:
             store.close_spike(
@@ -617,6 +727,11 @@ class LiveSession:
             raise buffer.BufferCutError(
                 f"the buffer holds only {item.window_end_s - item.window_start_s:.1f} s of the window"
             )
+        if handle.cancelled.is_set() and handle.merged_into:
+            store.merge_spike(
+                spike_id, handle.merged_into, "replaced by a stronger spike inside the merge gap"
+            )
+            return None
         queued_at = self.deps.clock()
         live = {
             "session_id": self.row.id,
@@ -636,6 +751,7 @@ class LiveSession:
             priority=route.priority,
             dedupe_key=f"{route.job_type}:{spike_id}",
         )
+        handle.job_id = job_id
         self._counters.queued += 1
         store.emit(
             "live.spike_queued",

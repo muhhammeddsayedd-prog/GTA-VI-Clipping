@@ -85,9 +85,11 @@ class RenderSpec:
     compress: bool = False
     watermark_y: int | None = None
     # docs/27 title bar: a PNG drawn on the 1080x1920 reference canvas, centred, its top at `title_top`
-    # (reference pixels), shown for the whole clip.
+    # (reference pixels), shown for the first `factory.hook_seconds`, or for the whole clip with
+    # `title_whole_clip` (the persistent title of the docs/27 section 5 styles).
     title_png: PurePath | None = None
     title_top: int = 0
+    title_whole_clip: bool = False
 
     @property
     def _active_tracks(self) -> tuple[SfxTrack, ...]:
@@ -144,9 +146,11 @@ def build_video_filters(spec: RenderSpec) -> list[str]:
     # it never crosses the streamer's face; in layout B it sits at the bottom of the safe zone.
     bar_source, bar_y = "v_layout", None
     if isinstance(spec.layout, LayoutA):
-        chains.append(f"[v_layout]{seam_filter(geometry, SEAM_TRACK_COLOR, enable=shown)}[v_seam]")
+        seam_y = geometry.seam_y(spec.layout.kind)
+        seam = seam_filter(geometry, SEAM_TRACK_COLOR, enable=shown, y=seam_y)
+        chains.append(f"[v_layout]{seam}[v_seam]")
         bar_source = "v_seam"
-        bar_y = geometry.a_seam_y - max(0, (geometry.progress_h - geometry.a_seam_h) // 2)
+        bar_y = seam_y - max(0, (geometry.progress_h - geometry.a_seam_h) // 2)
     chains += progress_filters(
         geometry=geometry,
         accent_color=params.accent_color,
@@ -158,7 +162,7 @@ def build_video_filters(spec: RenderSpec) -> list[str]:
         enable=shown,
     )
     text_source = "v_progress"
-    if spec.title_png is not None and params.hook_seconds > 0:
+    if spec.title_png is not None and (params.hook_seconds > 0 or spec.title_whole_clip):
         chains += title_filters(spec, geometry, source="v_progress", out="v_titled")
         text_source = "v_titled"
     text_chain = [ass_filter(spec.ass_path, spec.fonts.fonts_dir)]
@@ -197,9 +201,12 @@ def build_video_filters(spec: RenderSpec) -> list[str]:
 def title_filters(spec: RenderSpec, geometry: Geometry, *, source: str, out: str) -> list[str]:
     """The title bar PNG read with `movie`, scaled from the reference canvas to the output, laid over
     `source` centred with its top at `spec.title_top` (one still frame, shown for the first
-    `factory.hook_seconds` of the clip, then gone so the content has the frame)."""
+    `factory.hook_seconds` of the clip, then gone so the content has the frame; with
+    `spec.title_whole_clip` shown for the whole clip)."""
     assert spec.title_png is not None
-    hook_end = min(spec.params.hook_seconds, spec.clip_duration_s)
+    hook_end = (
+        spec.clip_duration_s if spec.title_whole_clip else min(spec.params.hook_seconds, spec.clip_duration_s)
+    )
     scale = geometry.width / REF_WIDTH
     image = [
         render_filter("movie", [("filename", normalize_filter_path(str(spec.title_png)))]),

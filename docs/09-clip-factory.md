@@ -40,6 +40,16 @@ Times are relative to the **window start** (context pad included; the writer's t
 | Facecam | Crop `facecam_box`, crop-to-fill 1080×770, at y = 1150 |
 | Seam | 6 px accent-colour line at y = 1147 |
 
+**C — facecam found, facecam on top** (decision D112; the layout of every design style since migration 0027):
+| Region | Placement |
+|---|---|
+| Facecam | Crop `facecam_box`, crop-to-fill 1080×672, at y = 0 |
+| Gameplay | Crop like layout A to aspect 1080:1248, at y = 672 |
+| Seam | 6 px line at y = 669; the progress bar runs along it |
+| Text | Captions centred on y = 1400; the title bar's bottom 20 px below the seam; payoff emoji at y = 1000 |
+
+The style (`factory.styles` → `rules.facecam_top`) decides between A and C; detection only decides whether there is a facecam.
+
 **B — no facecam**:
 | Region | Placement |
 |---|---|
@@ -99,3 +109,7 @@ Grab one frame at the window middle; send to the writer model with vision; it re
 ## 10. Editing style (`factory.style`)
 
 Sections 4 to 6 describe the classic look. With the setting `factory.style` (migration 0021) the factory edits like the viral references of docs/27: captions of one or two words in Anton capitals that pop in on the seam, the hook as a title bar for the whole clip, hard punch-ins to a full-frame facecam on the loudest moments (an extra `ebur128` pass over the window audio places them), a step zoom on the gameplay every 2.5 s, whoosh/impact on each punch-in and an emoji with a bass hit at the clip writer's `payoff_s`, a compressor before loudnorm, and no end card. Layout A keeps gameplay on top. Every decision is logged as `clip_edit_effects`. Without the setting the classic look is unchanged.
+
+## 11. Design styles (development-plan/M18)
+
+Since migration 0027 the look comes from a catalogue of styles (`factory.styles`, docs/27 section 5): each is a set of the section 10 rules plus `facecam_top`, `captions` and `title_whole_clip`. Before the render the style director (`factory/director.py`) gives each enabled platform account a style; the clip is rendered in the reference account's style (`clips.style_id`, `clips.layout_kind`, `clips.style_plan`) and recorded in `clip_renders`. When other accounts got other styles, the clip's span of the source is copied to `$DATA_DIR/variants/<clip_id>/` (the source itself can be deleted as soon as the render ends) and the job `clip.variants` renders those styles after the gate approved the clip, to `$DATA_DIR/ready/<clip_id>.<style>.mp4`, checks each file (frame size, length, black and frozen picture in the style's gameplay band, docs/10) and uploads it. The publisher sends each account the ready render of its style, otherwise the first render (`posts.render_id`). `sixstars clip render-file --style <id>` renders a local file in one style.

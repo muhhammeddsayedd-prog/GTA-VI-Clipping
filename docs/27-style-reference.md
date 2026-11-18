@@ -30,7 +30,7 @@ Common rules: interesting from frame one, a visual change every 1–3 s, big tex
 | Sound effects | Whoosh 0.3 s before each punch-in, impact on its first frame, boom on the payoff, keyword pops except within 0.4 s of another effect; all at −10 dB. Files are generated (CC0, `assets/sfx/LICENSES.md`). | `cut_sfx`, `sfx_gain_db` |
 | Loudness | Compressor (−20 dB threshold, 4:1, 5/80 ms, +2 dB) before the two-pass loudnorm; target −12 LUFS, true peak −1.5 dB. | `compress`, `factory.loudness_lufs` |
 | End card | Off: the clip ends on the payoff and loops. | `factory.end_card_s` = 0 |
-| Layout | Unchanged: gameplay on top, facecam below, captions on the seam (owner's choice). | — |
+| Layout | Unchanged: gameplay on top, facecam below, captions on the seam (owner's choice). Superseded by D112: see section 5. | — |
 
 Without `factory.style` (or with an invalid value) the factory renders the classic look of docs/09, so a database without migration 0021 behaves exactly as before.
 
@@ -43,3 +43,16 @@ Without `factory.style` (or with an invalid value) the factory renders the class
 - V1's generated explainer graphics (logo cards, "40 HOURS" counters) and V2's face stickers of the other person: they need image sourcing and carry rights risk.
 - Speaker-coloured captions (V2's magenta for the second speaker): needs diarisation.
 - Meme stings (V3): only royalty-free sounds may be used; the current boom is generated.
+
+## 5. Design styles (development-plan/M18, decisions D112-D115)
+
+The owner's second set of references (ten Instagram reels, development-plan/M18 section 1) showed that the facecam goes on top and that calm, title-only clips perform as well as the fast edit above. Since migration 0027 the factory has a catalogue of styles (`factory.styles`) instead of one look, and picks one per platform account (`factory/director.py`, `factory.style_director`).
+
+| Style | Layout | Text | Pacing |
+|---|---|---|---|
+| `cam_top_viral` | C: facecam 1080x672 on top, gameplay 1080x1248 below, seam and progress bar between them | the section 2 captions in the lower gameplay (y 1400), title bar on the seam for `factory.hook_seconds` | punch-ins, zoom cuts, sound effects, compressor |
+| `cam_top_title` | C | no spoken captions; the hook plus the payoff emoji as a title bar on the seam for the whole clip (references R02-R04, R07) | calm: no punch-ins, no zoom cuts, no sound effects |
+
+Without a facecam both styles use layout B. The director gives each account a style the catalogue allows for the lane, not the one of the account's last clip, and different from the other accounts of the same clip where possible; the pick is seeded with the clip id. The first render is made in the style of the reference account; each other style of the plan is rendered by the job `clip.variants` once the gate has approved the clip (`factory/variants.py`), checked like the gate checks a file, and uploaded to Storage as `<clip key>.<style>.mp4`. The console's clip page lists the renders and plays each one.
+
+Phase B adds `headline_card`, `pov_fullframe` and `cam_top_question`; Phase C the one-word captions and story cuts (development-plan/M18).

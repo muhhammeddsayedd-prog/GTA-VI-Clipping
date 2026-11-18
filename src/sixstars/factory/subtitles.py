@@ -18,8 +18,10 @@ from sixstars.factory.layout import (
     BADGE_Y,
     CAPTION_Y_A,
     CAPTION_Y_B,
+    CAPTION_Y_C,
     HOOK_BOTTOM,
     HOOK_TOP,
+    PAYOFF_Y_C,
     REF_HEIGHT,
     REF_WIDTH,
     LayoutKind,
@@ -120,12 +122,12 @@ def safe_zone(params: FactoryParams) -> SafeZone:
 def caption_bottom(layout: LayoutKind, params: FactoryParams, style: SubtitleStyle | None = None) -> float:
     """Y of the caption's bottom edge (captions are bottom-anchored, so a wrapped line grows upwards).
 
-    A one-line caption is centred on y=1150 (layout A) or y=1450 (layout B), then pushed up if its outline
-    and shadow would cross the bottom of the safe zone.
+    A one-line caption is centred on y=1150 (layout A), y=1450 (layout B) or y=1400 (layout C), then pushed
+    up if its outline and shadow would cross the bottom of the safe zone.
     """
     style = style or SubtitleStyle()
     zone = safe_zone(params)
-    centre = CAPTION_Y_A if layout == "A" else CAPTION_Y_B
+    centre = {"A": CAPTION_Y_A, "B": CAPTION_Y_B, "C": CAPTION_Y_C}[layout]
     bottom = min(centre + style.size / 2, zone.bottom - style.outline - style.shadow)
     return max(bottom, zone.top + style.size + style.outline)
 
@@ -304,7 +306,7 @@ def payoff_events(emoji: str, *, payoff_s: float, duration_s: float, layout: Lay
     text = " ".join(emoji.split())
     if not text or not 0 <= payoff_s < duration_s:
         return []
-    centre_y = A_GAMEPLAY_H // 2 if layout == "A" else B_GAMEPLAY_Y + B_GAMEPLAY_H // 2
+    centre_y = {"A": A_GAMEPLAY_H // 2, "B": B_GAMEPLAY_Y + B_GAMEPLAY_H // 2, "C": PAYOFF_Y_C}[layout]
     end = min(payoff_s + PAYOFF_EMOJI_S, duration_s)
     tags = f"{{\\an5\\pos({REF_WIDTH // 2},{centre_y})\\fs{PAYOFF_EMOJI_SIZE}{PAYOFF_POP}}}"
     return [dialogue(LAYER_PAYOFF, payoff_s, end, "Caption", tags + ass_text_emoji(text))]
@@ -393,35 +395,42 @@ def build_ass(
     payoff_s: float | None = None,
     payoff_emoji: str | None = None,
     caption_measure: TextMeasurer | None = None,
+    captions: bool = True,
+    hook_top: float | None = None,
+    hook_whole_clip: bool = False,
 ) -> str:
     """The complete `.ass` file for one clip: captions plus hook box, LIVE badge, creator credit and the
     payoff emoji.
 
     `duration_s` is the clip length without the end card; nothing is drawn after it. On spike-lane clips
     (`live_badge`) the hook box moves down so it clears the badge. The hook shows for the first
-    `factory.hook_seconds` in every `hook_mode`. `payoff_s` is in clip time.
+    `factory.hook_seconds` in every `hook_mode` (the whole clip with `hook_whole_clip`), its box at
+    `hook_top` when given. `payoff_s` is in clip time. Without `captions` the spoken words are not shown (a
+    title-only style).
     """
     style = style or SubtitleStyle()
     zone = safe_zone(params)
     badge_top = max(float(BADGE_Y), zone.top)
-    hook_top = hook_box_top(params, live_badge=live_badge)
+    if hook_top is None:
+        hook_top = hook_box_top(params, live_badge=live_badge)
     events: list[str] = []
     if creator:
         events += credit_events(creator, end_s=duration_s, bottom=credit_bottom(layout, params, style))
-    events += caption_events(
-        lines,
-        layout=layout,
-        params=params,
-        duration_s=duration_s,
-        keywords=keywords,
-        profanity=profanity,
-        style=style,
-        measure=caption_measure or measure,
-    )
+    if captions:
+        events += caption_events(
+            lines,
+            layout=layout,
+            params=params,
+            duration_s=duration_s,
+            keywords=keywords,
+            profanity=profanity,
+            style=style,
+            measure=caption_measure or measure,
+        )
     if live_badge:
         events += badge_events(end_s=duration_s, top=badge_top, measure=measure)
     if hook:
-        hook_end = min(params.hook_seconds, duration_s)
+        hook_end = duration_s if hook_whole_clip else min(params.hook_seconds, duration_s)
         events += hook_events(hook, end_s=hook_end, top=hook_top, measure=measure)
     if payoff_s is not None and payoff_emoji:
         events += payoff_events(payoff_emoji, payoff_s=payoff_s, duration_s=duration_s, layout=layout)

@@ -160,6 +160,7 @@ def render_file(
     no_music: bool = False,
     payoff_s: float | None = None,
     payoff_emoji: str = "",
+    style_id: str = "",
 ) -> int:
     """Render a local video file without writing a clip row.
 
@@ -222,6 +223,9 @@ def render_file(
             lane=ai_lane,
         )
 
+    if style_id and cfg.catalog.get(style_id) is None:
+        typer.echo(f"unknown style {style_id!r}; known: {', '.join(cfg.catalog.ids)}", err=True)
+        return 2
     target = output or video.with_name(f"{video.stem}_{lane}_{mode}.mp4")
     scratch = Path(tempfile.mkdtemp(prefix="sixstars-render-"))
     try:
@@ -234,6 +238,8 @@ def render_file(
             series_no=series_no,
             choose_writing=choose_writing,
             choose_layout=choose_layout,
+            style=cfg.catalog.rules_for(style_id) if style_id else None,
+            style_id=style_id,
         )
     except ClipSkippedError as skipped:
         typer.echo(f"no clip: {skipped.reason}", err=True)

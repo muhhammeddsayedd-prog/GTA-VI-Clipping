@@ -4,6 +4,10 @@ M06.
 Positions come from docs/09 sections 3 to 5 and are written for the 1080x1920 reference canvas. ASS files
 always use that canvas (libass scales them); the ffmpeg filters use `Geometry`, the same numbers scaled to
 the configured output size.
+
+Three frames exist (`LayoutKind`): "A" gameplay on top and the facecam below (docs/09), "C" the facecam on
+top and the gameplay below (decision D112, docs/27 section 5, the look of the owner's references) and "B"
+no facecam. A and C are both `LayoutA` (a facecam was found); the style decides which one is drawn.
 """
 
 from dataclasses import dataclass
@@ -12,7 +16,7 @@ from typing import Literal
 from sixstars.factory.escape import render_filter
 from sixstars.factory.window import ZOOM_MAX, zoom_start_s
 
-LayoutKind = Literal["A", "B"]
+LayoutKind = Literal["A", "B", "C"]
 
 REF_WIDTH = 1080
 REF_HEIGHT = 1920
@@ -21,6 +25,10 @@ REF_HEIGHT = 1920
 A_GAMEPLAY_H = 1150
 A_SEAM_Y = 1147
 A_SEAM_H = 6
+# Layout C (D112): facecam 1080x672 at y=0 (about 35% of the frame, as in the references), gameplay
+# 1080x1248 below it, 6 px seam at y=669.
+C_FACECAM_H = 672
+C_SEAM_H = 6
 # Layout B: blurred cover background darkened 30%, 4:5 gameplay 1080x1350 at y=285.
 B_GAMEPLAY_H = 1350
 B_GAMEPLAY_Y = 285
@@ -32,6 +40,13 @@ B_DARKEN = 0.3
 # Subtitle line centre per layout.
 CAPTION_Y_A = 1150
 CAPTION_Y_B = 1450
+# Layout C: captions in the lower half of the gameplay (the title sits on the seam), the payoff emoji in its
+# upper half.
+CAPTION_Y_C = 1400
+PAYOFF_Y_C = 1000
+# Layout C: the title's bottom edge sits this far below the seam, so the pill straddles the facecam's
+# bottom edge like the references.
+C_TITLE_OVERLAP = 20
 # Overlays.
 HOOK_TOP = 260
 HOOK_BOTTOM = 420
@@ -59,14 +74,16 @@ class Box:
 
 @dataclass(frozen=True, slots=True)
 class LayoutA:
-    """Facecam found: gameplay on top, facecam below. `gameplay_box` None means the whole frame."""
+    """Facecam found: gameplay on top and facecam below (kind "A"), or with `cam_top` the facecam on top
+    and the gameplay below (kind "C"). `gameplay_box` None means the whole frame."""
 
     facecam_box: Box
     gameplay_box: Box | None = None
+    cam_top: bool = False
 
     @property
     def kind(self) -> LayoutKind:
-        return "A"
+        return "C" if self.cam_top else "A"
 
 
 @dataclass(frozen=True, slots=True)
@@ -95,6 +112,9 @@ class Geometry:
     a_facecam_h: int
     a_seam_y: int
     a_seam_h: int
+    c_facecam_h: int
+    c_gameplay_h: int
+    c_seam_y: int
     b_gameplay_h: int
     b_gameplay_y: int
     b_blur_radius: int
@@ -108,6 +128,7 @@ class Geometry:
         sx, sy = width / REF_WIDTH, height / REF_HEIGHT
         a_gameplay_h = _even(A_GAMEPLAY_H * sy)
         b_gameplay_h = min(_even(B_GAMEPLAY_H * sy), height)
+        c_facecam_h = _even(C_FACECAM_H * sy)
         return cls(
             width=width,
             height=height,
@@ -115,6 +136,9 @@ class Geometry:
             a_facecam_h=height - a_gameplay_h,
             a_seam_y=a_gameplay_h - max(1, round(A_SEAM_H * sy / 2)),
             a_seam_h=max(2, round(A_SEAM_H * sy)),
+            c_facecam_h=c_facecam_h,
+            c_gameplay_h=height - c_facecam_h,
+            c_seam_y=c_facecam_h - max(1, round(C_SEAM_H * sy / 2)),
             b_gameplay_h=b_gameplay_h,
             b_gameplay_y=min(round(B_GAMEPLAY_Y * sy), height - b_gameplay_h),
             b_blur_radius=max(1, round(B_BLUR_RADIUS * sy)),
@@ -123,6 +147,20 @@ class Geometry:
             watermark_right=round(WATERMARK_RIGHT * sx),
             watermark_y=round(WATERMARK_Y * sy),
         )
+
+    def seam_y(self, kind: LayoutKind) -> int:
+        """Top row of the seam between gameplay and facecam (layouts A and C)."""
+        return self.c_seam_y if kind == "C" else self.a_seam_y
+
+
+def gameplay_band(kind: LayoutKind | None) -> tuple[float, float]:
+    """The part of the frame (fractions of its height, top and bottom) that shows nothing but moving
+    gameplay: the gate looks there for a frozen or black source (`gate.visual`). Below the hook or title
+    and above the captions and the credit line of the layout. None (a clip rendered before layout C
+    existed) gives the band of layouts A and B."""
+    if kind == "C":
+        return (C_FACECAM_H + 60) / REF_HEIGHT, (CAPTION_Y_C - 250) / REF_HEIGHT
+    return (HOOK_BOTTOM + 60) / REF_HEIGHT, (min(CAPTION_Y_A, CAPTION_Y_B) - 150) / REF_HEIGHT
 
 
 def fit_crop(box: Box, aspect_w: int, aspect_h: int, source_w: int, source_h: int) -> Box:
@@ -268,18 +306,21 @@ def layout_filters(
     head = f"[{source}]{render_filter('fps', [('fps', str(fps))])},split={branches}"
     base_out = f"{out}_base" if punch is not None else out
     if isinstance(layout, LayoutA):
-        game = gameplay_crop(layout, g.width, g.a_gameplay_h, source_w, source_h)
-        face = fit_crop(layout.facecam_box, g.width, g.a_facecam_h, source_w, source_h)
+        game_h = g.c_gameplay_h if layout.cam_top else g.a_gameplay_h
+        face_h = g.c_facecam_h if layout.cam_top else g.a_facecam_h
+        game = gameplay_crop(layout, g.width, game_h, source_w, source_h)
+        face = fit_crop(layout.facecam_box, g.width, face_h, source_w, source_h)
         game_chain = [
             _crop(game),
-            *scale_filters(g.width, g.a_gameplay_h, duration_s, zoom=zoom, zoom_cut=zoom_cut),
+            *scale_filters(g.width, game_h, duration_s, zoom=zoom, zoom_cut=zoom_cut),
         ]
-        face_chain = [_crop(face), *scale_filters(g.width, g.a_facecam_h, duration_s, zoom=False)]
+        face_chain = [_crop(face), *scale_filters(g.width, face_h, duration_s, zoom=False)]
+        stack = "[v_face][v_game]" if layout.cam_top else "[v_game][v_face]"
         chains = [
             f"{head}[v_game_in][v_face_in]" + ("[v_punch_in]" if punch else ""),
             f"[v_game_in]{','.join(game_chain)}[v_game]",
             f"[v_face_in]{','.join(face_chain)}[v_face]",
-            f"[v_game][v_face]vstack=inputs=2[{base_out}]",
+            f"{stack}vstack=inputs=2[{base_out}]",
         ]
         if punch is not None:
             close_up = fit_crop(layout.facecam_box, g.width, g.height, source_w, source_h)

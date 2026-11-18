@@ -414,3 +414,32 @@ FakeUploadPostClient()                 .uploads .deleted .upload_error .platform
 ### Open issues / next
 
 - Only clips rendered after the deploy are affected. Clips already rendered or posted keep the title for the whole clip.
+
+## M18 Phase A — Design styles, one per platform account (2026-11-19)
+
+### What was built
+
+- Plan: `development-plan/M18-design-styles.md` (owner decisions D112-D115, reference study of ten Instagram reels, phases A-E).
+- Layout C (D112): facecam 1080x672 on top, gameplay 1080x1248 below, seam and progress bar at y 669, captions at y 1400, title bar on the seam, payoff emoji at y 1000 (`factory/layout.py`, `subtitles.py`, `render.py`, `pipeline.render_file`). Layout A/B unchanged.
+- `StyleRules` gains `facecam_top`, `captions`, `title_whole_clip`. Catalogue `factory.styles` (`factory/styles.py`) with `cam_top_viral` (the docs/27 edit, facecam on top) and `cam_top_title` (persistent title with the payoff emoji, no spoken captions, calm). Without the setting: the single `factory.style`, as before.
+- Style director (`factory/director.py`, setting `factory.style_director`): one style per enabled account, no repeat of the account's last style, different styles across the accounts of a clip, weighted pick seeded with the clip id.
+- Per-account renders (`factory/variants.py`, job `clip.variants`): the clip is rendered in the reference account's style; the clip's span of the source is copied (near-lossless) with a JSON recipe; after the gate approves, each other style is rendered, checked (size, length, black/frozen picture in its own band) and uploaded as `<clip key>.<style>.mp4`. Rejected clips skip it; the copy is deleted.
+- Posting sends each account the ready render of its style, else the first render (`posts.render_id`).
+- Gate: the black/freeze band follows the clip's layout (`layout.gameplay_band`, `clips.layout_kind`); P5 knows the facecam may be on top and that some styles have no captions.
+- Migration 0027: `factory.styles`, `factory.style_director`, `clips.style_id/layout_kind/style_plan`, table `clip_renders`, `posts.render_id`.
+- Console: clip page "Design styles" card (each render, its accounts, play button), style column in the clip's posts; API `GET /v1/admin/clips/{id}` returns `renders`, `GET /v1/admin/clips/{id}/media?render=<id>` signs one render.
+- `sixstars clip render-file --style <id>`.
+- Tests: `tests/unit/factory/test_design_styles.py` (19), `tests/integration/test_design_styles.py` (4, the last renders with ffmpeg), admin route test for renders.
+
+### Deviations
+
+- The burned-in watermark stays the brand name (D111), not each account's handle: per-account handles would need a render per account even when two accounts share a style. Easy to add as a style rule later.
+- Spike posts go to every spike-lane account right after the gate, before `clip.variants` has run, so spike posts use the first render; hourly posts get their own style.
+- `clip.variants` checks only the technical rules; P5 and the score ran once on the first render (same source, same cut).
+- Catalogue order is by style id (a `jsonb` setting does not keep key order).
+
+### Open issues / next
+
+- Measure render time and disk on the staging server (variants add one render per extra style per approved clip, plus a temporary source copy).
+- Pre-existing: on a machine with ffmpeg, 57 integration tests fail on `main` as well (stale end-card and gate expectations from before migration 0021); CI skips them because it has no ffmpeg.
+- Phase B: `headline_card`, `pov_fullframe`, `cam_top_question`, P2 `moment_type` and text variants.

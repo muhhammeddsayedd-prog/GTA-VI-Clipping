@@ -30,7 +30,7 @@ from sixstars.clients.anthropic_client import AnthropicClient, BudgetKind
 from sixstars.clients.upload_post import UploadPostClient
 from sixstars.clients.youtube import YouTubeClient
 from sixstars.factory import pipeline, tools
-from sixstars.gate import profiles, rescore, store
+from sixstars.gate import overhaul, profiles, rescore, store
 from sixstars.gate import visual as visuals
 from sixstars.gate.decision import decide
 from sixstars.gate.models import (
@@ -121,7 +121,12 @@ def _measure(row: store.ClipRow, settings: GateSettings, deps: GateDeps) -> File
         return None
     try:
         return visuals.measure_file(
-            Path(row.local_path), row.duration_s, settings, ffmpeg=deps.ffmpeg, ffprobe=deps.ffprobe
+            Path(row.local_path),
+            row.duration_s,
+            settings,
+            ffmpeg=deps.ffmpeg,
+            ffprobe=deps.ffprobe,
+            layout_kind=row.layout_kind,
         )
     except tools.FfmpegError as exc:
         get_logger("gate").warning("gate_file_unreadable", error=str(exc)[:300])
@@ -177,6 +182,7 @@ def _finish(
     *,
     frames: tuple[bool, ...] | None,
     p5_skipped: bool = False,
+    notes: overhaul.Adjustments | None = None,
 ) -> GateOutcome:
     """Decide under the lock, store, then do what follows the verdict. `state` None means "ask now".
     `frames` are the per-second music flags of the clip (they do not change after the render).
@@ -197,14 +203,18 @@ def _finish(
         if p5_skipped and decision.verdict is not Verdict.REJECT:
             raise _VisualNeededError
         document = store.result_document(decision, file, visual, now, p5_skipped=p5_skipped)
+        if notes is not None:
+            document["scoring"] = notes.as_dict()
         # A clip that was moved to the hourly lane before its pre-check keeps that mark and its boost.
         earlier = row.gate_result or {}
         boosted = decision.demoted or earlier.get("demoted") is True
         if boosted and not decision.demoted:
             document["demoted"] = True
             document["express"] = earlier.get("express")
-        if not store.store_decision(row, decision, document, now, boosted=boosted):
+        rank_bonus = notes.rank_bonus if notes is not None else 0.0
+        if not store.store_decision(row, decision, document, now, boosted=boosted, rank_bonus=rank_bonus):
             return GateOutcome(row.id, row.status, skipped="status changed")
+        overhaul.record(row, decision, notes or overhaul.Adjustments())
         if decision.verdict is Verdict.HOLD:
             precheck_job = jobs.enqueue(
                 "normal", JOB_PRECHECK, {"clip_id": row.id}, dedupe_key=f"{JOB_PRECHECK}:{row.id}"
@@ -300,7 +310,8 @@ def run_gate(clip_id: str, *, deps: GateDeps | None = None) -> GateOutcome:
         if row.status != store.STATUS_GATING:
             get_logger("gate").info("gate_skipped", status=row.status)
             return GateOutcome(clip_id, row.status, skipped=f"status is {row.status}")
-        settings = profiles.load()
+        notes = overhaul.Adjustments()
+        settings = overhaul.adjust_settings(row, profiles.load(), notes)
         file = _measure(row, settings, deps)
         # Would the clip be rejected even if the pictures were fine? Then P5 is not asked.
         now = deps.clock()
@@ -313,13 +324,24 @@ def run_gate(clip_id: str, *, deps: GateDeps | None = None) -> GateOutcome:
             best = _decide(rescore.with_top_score(row), file, _NOTHING_SEEN, state, settings, now, frames)
             if best.verdict is not Verdict.REJECT:
                 row, shots = rescore.run(row, client=deps.ai_client, ffmpeg=deps.ffmpeg)
+        row = overhaul.boost_row(row, notes)
         optimistic = _decide(row, file, _NOTHING_SEEN, state, settings, now, frames)
         if optimistic.verdict is Verdict.REJECT:
             try:
-                return _finish(row, file, _NOTHING_SEEN, None, settings, deps, frames=frames, p5_skipped=True)
+                return _finish(
+                    row,
+                    file,
+                    _NOTHING_SEEN,
+                    None,
+                    settings,
+                    deps,
+                    frames=frames,
+                    p5_skipped=True,
+                    notes=notes,
+                )
             except _VisualNeededError:
                 get_logger("gate").info("gate_p5_needed_after_all")
-        return _finish(row, file, _look(row, deps, shots), None, settings, deps, frames=frames)
+        return _finish(row, file, _look(row, deps, shots), None, settings, deps, frames=frames, notes=notes)
 
 
 def resolve_precheck(clip_id: str, state: PrecheckState, *, deps: GateDeps | None = None) -> GateOutcome:
@@ -335,12 +357,16 @@ def resolve_precheck(clip_id: str, state: PrecheckState, *, deps: GateDeps | Non
             return GateOutcome(clip_id, row.status, skipped=f"status is {row.status}")
         if state is PrecheckState.AVAILABLE:
             raise ValueError("resolve_precheck needs the outcome of the pre-check, not 'available'")
-        settings = profiles.load()
+        notes = overhaul.Adjustments()
+        settings = overhaul.adjust_settings(row, profiles.load(), notes)
+        row = overhaul.boost_row(row, notes)
         inputs = (row.gate_result or {}).get("inputs")
         stored = inputs if isinstance(inputs, dict) else {}
         file = store.file_from_json(stored.get("file")) or _measure(row, settings, deps)
         visual = visuals.findings_from_json(stored.get("visual"))
-        return _finish(row, file, visual, state, settings, deps, frames=store.music_frames(row.id))
+        return _finish(
+            row, file, visual, state, settings, deps, frames=store.music_frames(row.id), notes=notes
+        )
 
 
 # ── Factory hook and job handlers ────────────────────────────
