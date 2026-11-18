@@ -293,6 +293,7 @@ Viewer-made Twitch Clips of `env.target_game` as a discovery source (decision D1
 | `posting.skip_hourly_after_spike_s` | `1800` | Skip an hourly slot if a spike posted within this many seconds before it. |
 | `posting.spike_max_wait_s` | `900` | A spike may wait this long for the min gap; after that it is demoted. |
 | `posting.spike_max_age_s` | `1800` | Spike clips older than this lose spike status. |
+| `posting.spike_hold_s` | `420` | Holding window (R12, docs/11): the spike lane waits this long after the first waiting spike clip was approved, then posts the best-ranked clip of the batch first; never later than 2 min before a clip reaches `posting.spike_max_age_s`. `0` or absent: each spike clip posts as soon as it is ready. Added by migration 0023. |
 | `posting.freshness_half_life_h` | `{"live": 6, "vod": 24}` | Freshness decay half-life by source. |
 | `posting.max_clip_age_h` | `72` | Approved clips older than this expire. |
 | `posting.queue_low_watermark` | `12` | Below this many approved hourly clips, guardian widens discovery. |
