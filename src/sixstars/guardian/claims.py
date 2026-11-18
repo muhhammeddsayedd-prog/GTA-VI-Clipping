@@ -256,8 +256,10 @@ def observe_youtube(
     )
     if todo and youtube.has_oauth():
         try:
+            # One OAuth videos.list per 50 videos instead of one per post.
+            statuses = youtube.get_statuses([video_id for _, video_id in todo])
             for post, video_id in todo:
-                observations.append(youtube_observation(post, youtube.get_status(video_id), "youtube_oauth"))
+                observations.append(youtube_observation(post, statuses.get(video_id), "youtube_oauth"))
             return observations, []
         except Exception as exc:  # a revoked token must not stop the check: use the API key instead
             log.warning("youtube_oauth_check_failed", error=type(exc).__name__)

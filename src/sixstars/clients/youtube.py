@@ -509,6 +509,29 @@ class YouTubeClient:
         items = response.json().get("items") or []
         return parse_video_status(items[0]) if items else None
 
+    def get_statuses(self, video_ids: Sequence[str]) -> dict[str, YouTubeVideoStatus]:
+        """`get_status` for many of our own videos: one OAuth `videos.list` per 50 ids (comma-separated
+        `id`, 1 quota unit per request), recorded as one `videos.list` row. Videos that do not exist are
+        missing from the result."""
+        endpoint = "GET /youtube/v3/videos"
+        unique = list(dict.fromkeys(video_id for video_id in video_ids if video_id))
+        found: dict[str, YouTubeVideoStatus] = {}
+        requests = 0
+        try:
+            for start in range(0, len(unique), IDS_PER_REQUEST_MAX):
+                chunk = unique[start : start + IDS_PER_REQUEST_MAX]
+                params = {"part": "status,contentDetails", "id": ",".join(chunk), "maxResults": len(chunk)}
+                response = self._oauth_request("GET", f"{API_BASE}/videos", endpoint, params=params)
+                requests += 1
+                _http.raise_for_status(SERVICE, endpoint, response)
+                for item in response.json().get("items") or []:
+                    status = parse_video_status(item)
+                    found[status.video_id] = status
+        finally:
+            if requests:
+                usage.record(SERVICE, "videos.list", units=requests * QUOTA_LIST)
+        return found
+
     def delete_video(self, video_id: str) -> bool:
         """Delete one of our own videos. Returns False when it was already gone."""
         endpoint = "DELETE /youtube/v3/videos"
