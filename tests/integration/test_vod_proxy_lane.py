@@ -134,6 +134,23 @@ def test_after_the_proxy_alone_cookies_are_tried_once_then_the_video_waits(
     assert len(queued("vod.process")) == 1  # waiting, not failed
 
 
+def test_one_video_refused_on_every_port_does_not_hold_the_others(lane: Lane, sticky: None) -> None:
+    """Each job has its own exit IPs: the platform is not blocked because one video was refused."""
+    settings.set("vod.confirm_with_captions", False)
+    settings.set("vod.download_workers", 1)
+    stubborn = lane.video("vodtest0001")
+    lane.ytdlp.section_results = [(1, "", BOT_CHECK)] * 3
+    lane.enqueue(stubborn)
+    assert lane.run_next().kind == "download_blocked"
+    no_platform_block = db.fetch_all("select 1 from events where type = 'vod.download_blocked'")
+    assert no_platform_block == []
+
+    other = lane.video("vodtest0002")
+    lane.enqueue(other)
+    assert lane.run_next().status == "done"  # not deferred by a platform-wide back-off
+    assert video_row(stubborn)["status"] == "new"  # the refused one still waits its 30 min
+
+
 def test_cookies_order_is_a_setting(
     lane: Lane, sticky: None, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
