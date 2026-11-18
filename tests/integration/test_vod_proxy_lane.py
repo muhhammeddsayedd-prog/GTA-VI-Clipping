@@ -83,11 +83,12 @@ def test_one_job_uses_one_sticky_port_for_every_request(lane: Lane, sticky: None
     assert all("[height<=1080]" in str(option(c, "-f")) for c in commands if "-f" in c)
     assert not any("/bv*+ba/b" in str(option(c, "-f")) for c in commands)  # no taller fallback
     assert [(a["attempt"], a["ok"], a["port"]) for a in attempts()] == [(1, True, port_of(commands[0]))]
-    # Traffic: the window files (and any caption file), plus 2 MB of overhead per call.
+    # Traffic: the window files, the chat replay (downloaded through the job's session) and any caption
+    # file, plus 2 MB of overhead per call.
     [row] = usage_rows()
     assert row["operation"] == "youtube_download" and row["ref_id"] == video_id
     overhead = len(commands) * 2_000_000
-    assert overhead / 1e9 < float(row["units"]) < (overhead + 100_000) / 1e9
+    assert overhead / 1e9 < float(row["units"]) < (overhead + 1_000_000) / 1e9
     assert float(row["cost_usd"]) == pytest.approx(float(row["units"]) * 1.0, abs=1e-6)
 
 
@@ -126,7 +127,8 @@ def test_after_the_proxy_alone_cookies_are_tried_once_then_the_video_waits(
     assert [a["cookies"] for a in tries] == [False, False, False, True]
     assert len({a["port"] for a in tries}) == 4
     commands = proxied(lane)
-    assert ["--cookies" in c for c in commands] == [False, False, False, True]
+    with_cookie = {port_of(c) for c in commands if "--cookies" in c}
+    assert with_cookie == {tries[3]["port"]}  # only the last attempt sends cookies
     video = video_row(video_id)
     assert video["status"] == "new" and str(video["skip_reason"]).startswith("download_blocked")
     assert len(queued("vod.process")) == 1  # waiting, not failed
