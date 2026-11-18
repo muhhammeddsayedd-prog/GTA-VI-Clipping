@@ -185,8 +185,14 @@ def production(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
     use_env(monkeypatch, "production")
     clean_posting_tables()
     seed("production")
+    # The lane tests describe posting the moment a spike clip is ready; the R12 holding window
+    # (`posting.spike_hold_s`, migration 0023) has its own test, which switches it on.
+    hold = settings.get("posting.spike_hold_s", None)
+    settings.set("posting.spike_hold_s", 0)
     yield
     clean_posting_tables()
+    if hold is not None:
+        settings.set("posting.spike_hold_s", hold)
 
 
 @pytest.fixture

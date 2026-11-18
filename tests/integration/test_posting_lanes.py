@@ -462,6 +462,34 @@ def test_two_spikes_ready_together_post_in_rank_order_and_the_second_waits(
     assert [j["payload"]["clip_id"] for j in waiting] == [low]  # type: ignore[index]
 
 
+def test_the_holding_window_posts_the_best_spike_of_the_batch(production: None, video: Path) -> None:
+    # R12: a 7 is approved first; a 10 is approved 5 minutes later, inside the 7-minute hold. Nothing
+    # posts before the hold ends; then the 10 takes the spike post and the 7 moves to the hourly queue.
+    go_live()
+    settings.set("posting.spike_hold_s", 420)
+    hold_end = NOW + timedelta(minutes=7)
+    early = add_spike_clip(add_creator("Early"), video, spike_wall=SPIKE_AT, rank=7.0)
+    client = FakeUploadPostClient()
+
+    held = try_post_spike(early, client, clock=fixed())
+
+    assert held.post_ids == () and client.calls == [] and not held.demoted
+    assert {d.code for d in held.decisions if d.account_id in (IG, YT)} == {Reason.SPIKE_HOLD}
+    assert held.deferred_until == hold_end
+    (job,) = [j for j in job_rows(RETRY_JOB_TYPE) if j["payload"]["kind"] == "spike"]  # type: ignore[index]
+    assert job["run_after"] == hold_end + timedelta(seconds=1)
+
+    late = add_spike_clip(add_creator("Late"), video, spike_wall=NOW + timedelta(minutes=1), rank=10.0)
+    db.execute("update clips set approved_at = %s where id = %s", (NOW + timedelta(minutes=5), late))
+    assert try_post_spike(late, client, clock=fixed(NOW + timedelta(minutes=5))).post_ids == ()
+
+    released = try_post_spike(early, client, clock=fixed(hold_end))
+
+    assert {r["clip"] for r in posts("lane = 'spike'")} == {late}
+    assert clip_row(late)["status"] == "posted"
+    assert released.demoted and clip_row(early)["lane"] == "hourly"
+
+
 def test_an_unknown_spike_clip_is_reported_and_nothing_happens(production: None) -> None:
     go_live()
     run = try_post_spike("00000000-0000-0000-0000-000000000000", FakeUploadPostClient(), clock=fixed())
