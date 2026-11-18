@@ -34,7 +34,7 @@ export function CreatorDetailView({ id }: { id: string }) {
   return (
     <>
       <PageHead back="/creators"
-        title={<span className="row" style={{ gap: 14 }}><Avatar name={name} size={52} />{name}</span>}
+        title={<span className="row" style={{ gap: 14 }}><Avatar name={name} size={52} src={c.avatar_url} />{name}</span>}
         sub={<span className="row" style={{ gap: 6, flexWrap: "wrap" }}><Plat p={c.platform} /> {platformName(c.platform)} · {c.language?.toUpperCase() ?? "language unknown"} · discovered {fmtDay(c.discovered_at)} · <Badge status={c.tier} /></span>}
         actions={<><Btn href={channel} external icon={<ArrowUpRight size={15} />}>Open channel</Btn><Btn kind="p" href={`/events?entity_type=creator&entity_id=${c.id}`} icon={<List size={15} />}>Creator events</Btn></>}
       />

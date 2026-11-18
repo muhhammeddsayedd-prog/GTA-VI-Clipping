@@ -15,7 +15,7 @@ const DEFAULTS = {};
 const STATUSES = ["published", "pending", "failed", "removed", "remove_failed", "skipped"];
 
 const COLS: Col<Post>[] = [
-  { key: "clip", head: "Clip", render: (p) => <div className="row"><div style={{ width: 30, flex: "none" }}><Thumb seed={p.clip_id} /></div><div style={{ minWidth: 0 }}><div className="semi pc">{series(p.clip_series_no)}</div><div className="sub ellipsis" style={{ maxWidth: 200 }}>{p.clip_hook ?? ""}</div></div></div> },
+  { key: "clip", head: "Clip", render: (p) => <div className="row"><div style={{ width: 30, flex: "none" }}><Thumb seed={p.clip_id} src={p.clip_thumb_url} /></div><div style={{ minWidth: 0 }}><div className="semi pc">{series(p.clip_series_no)}</div><div className="sub ellipsis" style={{ maxWidth: 200 }}>{p.clip_hook ?? ""}</div></div></div> },
   { key: "acc", head: "Account", render: (p) => <span className="row" style={{ gap: 8 }}><Plat p={p.platform} /><span className="semi">{p.account_id}</span></span> },
   { key: "lane", head: "Lane", mobile: "hide", render: (p) => <Badge tone={laneTone(p.lane)}>{p.lane}</Badge> },
   { key: "st", head: "Status", mobile: "aside", render: (p) => <Badge status={p.status} /> },

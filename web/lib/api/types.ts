@@ -22,7 +22,7 @@ export interface Trace {
   creator: Ref | null; live_session: Ref | null; video: Ref | null; spike: Ref | null; clip: Ref | null; posts: Ref[];
 }
 
-export interface CreatorRef { id: string; handle: string; display_name: string | null; platform: Platform; tier: Tier }
+export interface CreatorRef { id: string; handle: string; display_name: string | null; platform: Platform; tier: Tier; avatar_url?: string | null }
 
 export interface Event {
   id: number; created_at: Iso; level: Level; type: string; service: string | null;
@@ -33,6 +33,7 @@ export interface Incident { key: string; title: string; opened_at: Iso; data: Re
 export interface QueueItem {
   clip_id: string; series_no: number | null; hook: string | null; title: string | null; creator: CreatorRef; lane: Lane;
   score: number | null; rank_score: number | null; duration_s: number | null; created_at: Iso; age_s: number; expires_at: Iso | null;
+  thumb_url?: string | null;
 }
 
 export interface AccountSummary {
@@ -94,6 +95,7 @@ export interface LiveSession {
   id: string; creator: CreatorRef; platform: Platform; status: string; trend_score: number | null; url: string | null;
   channel_login: string | null; reconnects: number; assigned_at: Iso | null; started_at: Iso | null; ended_at: Iso | null;
   below_cutoff_since: Iso | null; spikes: { S: number; A: number; B: number }; clips: number;
+  thumbnail_url?: string | null;
 }
 export interface LiveSessionDetail extends LiveSession {
   bot_names: string[] | null; clipped_ranges: { start_wall: Iso; end_wall: Iso; clip_id: string }[] | null;
@@ -104,6 +106,7 @@ export interface Video {
   id: string; creator: CreatorRef; platform: Platform; source_id: string; url: string | null; title: string | null;
   duration_s: number | null; published_at: Iso | null; trend_score: number | null; has_chat: boolean | null; status: string;
   skip_reason: string | null; attempts: number; created_at: Iso; updated_at: Iso; clips: number;
+  thumbnail_url?: string | null;
 }
 export interface Job {
   id: number; queue: string; type: string; priority: number; status: string; attempts: number; max_attempts: number;
@@ -134,6 +137,8 @@ export interface Clip {
   source_type: "live" | "vod"; lane: Lane; duration_s: number | null; hook: string | null; title: string | null; topic: string | null;
   score: number | null; rank_score: number | null; music_ratio: number | null; status: string; reject_reason: string | null;
   gate_profile: string | null; created_at: Iso; approved_at: Iso | null; posted_at: Iso | null; has_file: boolean;
+  /** Signed URL of a frame of the rendered clip ("frame"), or the source video's thumbnail ("source"). */
+  thumb_url?: string | null; thumb_kind?: "frame" | "source" | null;
 }
 export interface GateCheck { ok?: boolean; value?: Json; limit?: Json; codes?: string[]; reasons?: string[] }
 export interface GateResult {
@@ -159,6 +164,7 @@ export interface Post {
   lane: Lane; slot_at: Iso | null; status: string; dry_run: boolean; post_url: string | null; platform_post_id: string | null;
   published_at: Iso | null; views: number | null; likes: number | null; comments: number | null; shares: number | null;
   claim_status: string | null; error: string | null; attempts: number; created_at: Iso;
+  clip_thumb_url?: string | null;
 }
 export interface PostDetail extends Post {
   upload_request_id: string | null; idempotency_key: string; stats_updated_at: Iso | null; claim_checked_at: Iso | null;
@@ -174,7 +180,7 @@ export interface QueueView {
 export interface Creator {
   id: string; platform: Platform; channel_id: string; handle: string | null; display_name: string | null; language: string | null;
   tier: Tier; tier_reason: string | null; follower_count: number | null; avg_clip_views: number | null; claims_count: number;
-  description_checked_at: Iso | null; discovered_at: Iso; clips_posted: number;
+  description_checked_at: Iso | null; discovered_at: Iso; clips_posted: number; avatar_url?: string | null;
 }
 export interface CreatorDetail extends Creator {
   layout: { source_width: number | null; source_height: number | null; facecam_box: { x: number; y: number; w: number; h: number } | null; gameplay_box: { x: number; y: number; w: number; h: number } | null; confidence: number | null; detected_at: Iso | null; expires_at: Iso | null } | null;

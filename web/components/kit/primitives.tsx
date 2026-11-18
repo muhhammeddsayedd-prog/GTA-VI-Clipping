@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import type { ComponentProps, CSSProperties, ReactNode } from "react";
+import { useState, type ComponentProps, type CSSProperties, type ReactNode } from "react";
 import { AlertTriangle, ArrowLeft, Info, RefreshCw } from "lucide-react";
 
 import { cn } from "@/lib/utils";
@@ -30,13 +30,29 @@ export function Chip({ children, accent, className }: { children: ReactNode; acc
 
 const GLYPH: Record<string, string> = { tiktok: "♪", instagram: "◎", youtube: "▶", twitch: "◆" };
 const PLAT_NAME: Record<string, string> = { tiktok: "TikTok", instagram: "Instagram", youtube: "YouTube", twitch: "Twitch" };
+/** Official platform marks live in /public/brand; unknown platforms fall back to a coloured glyph. */
+const LOGO: Record<string, string> = { tiktok: "/brand/tiktok.png", instagram: "/brand/instagram.png", youtube: "/brand/youtube.png", twitch: "/brand/twitch.svg" };
 export function Plat({ p, lg }: { p: Platform | PostPlatform | string; lg?: boolean }) {
-  return <span className={cn("plat", p, lg && "lg")} role="img" aria-label={PLAT_NAME[p] ?? p} title={PLAT_NAME[p] ?? p}>{GLYPH[p] ?? "•"}</span>;
+  const logo = LOGO[p];
+  return (
+    <span className={cn("plat", p, lg && "lg", logo && "logo")} role="img" aria-label={PLAT_NAME[p] ?? p} title={PLAT_NAME[p] ?? p}>
+      {logo ? <img src={logo} alt="" width={lg ? 38 : 22} height={lg ? 38 : 22} loading="lazy" decoding="async" /> : GLYPH[p] ?? "•"}
+    </span>
+  );
 }
 export const platformName = (p: string) => PLAT_NAME[p] ?? p;
 
 const AV = ["#7C6EFF,#4B3BDF", "#FF8A65,#E5484D", "#34D399,#059669", "#FBBF24,#D97706", "#60A5FA,#2563EB", "#F472B6,#DB2777", "#A78BFA,#7C3AED", "#2DD4BF,#0D9488", "#94A3B8,#475569"];
-export function Avatar({ name, size = 36, i }: { name: string; size?: number; i?: number }) {
+/** Creator photo when the platform gave us one; initials on a gradient otherwise (or if the image fails). */
+export function Avatar({ name, size = 36, i, src }: { name: string; size?: number; i?: number; src?: string | null }) {
+  const [broken, setBroken] = useState<string | null>(null);
+  if (src && broken !== src) {
+    return (
+      <span aria-hidden className="avatar photo" style={{ width: size, height: size }}>
+        <img src={src} alt="" width={size} height={size} loading="lazy" decoding="async" referrerPolicy="no-referrer" onError={() => setBroken(src)} />
+      </span>
+    );
+  }
   const idx = i ?? [...name].reduce((a, c) => a + c.charCodeAt(0), 0) % AV.length;
   const [a, b] = AV[idx].split(",");
   const ini = name.replace(/[_.@]/g, " ").trim().split(/\s+/).slice(0, 2).map((w) => w[0]).join("").toUpperCase() || "?";
@@ -47,10 +63,10 @@ export function Avatar({ name, size = 36, i }: { name: string; size?: number; i?
   );
 }
 
-export function Who({ name, sub, p, size = 32, href }: { name: string; sub?: ReactNode; p?: string; size?: number; href?: string }) {
+export function Who({ name, sub, p, size = 32, href, avatar }: { name: string; sub?: ReactNode; p?: string; size?: number; href?: string; avatar?: string | null }) {
   const inner = (
     <div className="row">
-      <Avatar name={name} size={size} />
+      <Avatar name={name} size={size} src={avatar} />
       <div style={{ minWidth: 0 }}>
         <div className="semi row" style={{ gap: 6 }}><span className="ellipsis">{name}</span>{p && <Plat p={p} />}</div>
         {sub && <div className="sub">{sub}</div>}

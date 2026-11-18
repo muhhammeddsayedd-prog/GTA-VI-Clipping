@@ -52,7 +52,7 @@ export function LoginForm({ next, expired, env }: { next: string; expired: boole
       </div>
       <div className="row muted xs" style={{ marginTop: "auto", paddingTop: 40 }}>
         <span className={`envchip${env === "staging" ? " stg" : ""}`} style={{ padding: "5px 9px" }}>{env === "production" ? "PROD" : env === "staging" ? "STAGING" : "DEV"}</span>
-        6 Stars Clips console
+        VI Stars Clippy console
       </div>
     </div>
   );

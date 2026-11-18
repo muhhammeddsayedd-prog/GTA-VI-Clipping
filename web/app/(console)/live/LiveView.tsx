@@ -48,7 +48,7 @@ export function LiveView() {
   const shown = filter === "all" ? ended : ended.filter((s) => s.status === filter);
 
   const cols: Col<LiveSession>[] = [
-    { key: "c", head: "Creator", render: (s) => <Who name={s.creator.handle} p={s.platform} size={28} /> },
+    { key: "c", head: "Creator", render: (s) => <Who name={s.creator.handle} avatar={s.creator.avatar_url} p={s.platform} size={28} /> },
     { key: "st", head: "Status", render: (s) => <Badge status={s.status} /> },
     { key: "start", head: "Started", render: (s) => <When iso={s.started_at} /> },
     { key: "dur", head: "Duration", render: (s) => (s.started_at ? fmtDuration(((s.ended_at ? Date.parse(s.ended_at) : now) - Date.parse(s.started_at)) / 1000) : "—") },
@@ -109,8 +109,9 @@ function SlotCard({ s, now, releaseMin }: { s: LiveSession; now: number; release
   return (
     <Link href={`/live/${s.id}`} aria-label={`${s.creator.handle}: ${s.status}`}>
       <Card as="div" className="hover-lift">
+        {s.thumbnail_url && <img className="live-prev" src={s.thumbnail_url} alt="" loading="lazy" decoding="async" referrerPolicy="no-referrer" />}
         <div className="row">
-          <Avatar name={s.creator.handle} size={40} />
+          <Avatar name={s.creator.handle} size={40} src={s.creator.avatar_url} />
           <div style={{ minWidth: 0 }}>
             <div className="semi row" style={{ gap: 6 }}><span className="ellipsis">{s.creator.handle}</span><Plat p={s.platform} /></div>
             <div className="muted xs">{up ? `stream up ${up}` : "stream start unknown"}{s.reconnects ? ` · ${s.reconnects} reconnects` : ""}</div>
