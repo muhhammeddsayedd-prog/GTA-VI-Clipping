@@ -10,6 +10,7 @@ import { hourCells, pauseNote } from "@/components/domain/sources/AccountBig";
 import { POLL, useApi } from "@/lib/api/client";
 import type { AccountDetail, Post } from "@/lib/api/types";
 import { ageSeconds, fmtAgo, fmtCompact, fmtDay, fmtNum, fmtTime, series } from "@/lib/format";
+import { accountLabel } from "@/lib/use-accounts";
 
 const POST_COLS: Col<Post>[] = [
   { key: "clip", head: "Clip", render: (p) => <span className="semi pc">{series(p.clip_series_no)}</span> },
@@ -41,7 +42,7 @@ export function AccountDetailView({ id }: { id: string }) {
   return (
     <>
       <PageHead back="/accounts"
-        title={<span className="row" style={{ gap: 14 }}><Plat p={a.platform} lg />{a.id}</span>}
+        title={<span className="row" style={{ gap: 14 }}><Plat p={a.platform} lg /><span title={a.id}>{accountLabel(a, a.id)}</span></span>}
         sub={<>{a.handle} · {PLAT_LABEL[a.platform] ?? a.platform} · <Badge status={st} /></>}
         actions={<Btn kind="p" href={`/events?entity_type=account&entity_id=${a.id}`} icon={<List size={15} />}>Account events</Btn>} />
 

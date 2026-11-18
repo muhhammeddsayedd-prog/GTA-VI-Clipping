@@ -10,11 +10,13 @@ import { Badge, Banner, Btn, Card, CardHead, ErrorState, KV, PageHead, Plat, Ske
 import { POLL, useApi } from "@/lib/api/client";
 import type { Post, TakedownDetail } from "@/lib/api/types";
 import { fmtDay, fmtTime, humanize, series } from "@/lib/format";
+import { useAccounts } from "@/lib/use-accounts";
 import { readTakedownActions, type TakedownAction } from "@/lib/takedown";
+import { AccountName } from "@/components/domain/AccountName";
 
 const POST_COLS: Col<Post>[] = [
   { key: "post", head: "Post", render: (p) => <span className="row" style={{ gap: 6 }}><Plat p={p.platform} /><span className="semi">{series(p.clip_series_no)}</span></span> },
-  { key: "acc", head: "Account", render: (p) => p.account_id },
+  { key: "acc", head: "Account", render: (p) => <AccountName id={p.account_id} /> },
   { key: "status", head: "Status", render: (p) => <Badge status={p.status} /> },
 ];
 
@@ -24,7 +26,7 @@ const ACTION_TITLE: Record<string, string> = {
   block_creator: "Creator blocked", cancel_pending: "Pending posts cancelled", remove_post: "Post removal", strike: "Strike counted", notify: "Telegram alert",
 };
 
-function actionStep(a: Action) {
+function actionStep(a: Action, accountName: (id: string) => string = (id) => id) {
   const bad = a.outcome === "manual" || a.outcome === "failed";
   if (a.action === "block_creator") {
     const sub = `${a.creator ?? "creator"}${a.newly_blocked === false ? " (was blocked already)" : ""} · ${a.clips_dropped ?? 0} waiting clip(s) dropped · ${a.pending_posts_cancelled ?? 0} pending post(s) cancelled`;
@@ -35,10 +37,11 @@ function actionStep(a: Action) {
     : ACTION_TITLE[a.action ?? ""] ?? humanize(a.action);
   const icon = a.action === "block_creator" ? <Ban size={14} /> : a.action === "remove_post" ? (bad ? <X size={14} /> : <Trash2 size={14} />)
     : a.action === "strike" ? <AlertTriangle size={14} /> : a.action === "notify" ? <Send size={14} /> : <Check size={14} />;
-  return { state: bad ? ("fail" as const) : ("done" as const), title, sub: a.detail ?? (a.account_id ? `${a.account_id} · ${humanize(a.outcome)}` : humanize(a.outcome)), time: a.at ? fmtTime(a.at) : undefined, icon };
+  return { state: bad ? ("fail" as const) : ("done" as const), title, sub: a.detail ?? (a.account_id ? `${accountName(a.account_id)} · ${humanize(a.outcome)}` : humanize(a.outcome)), time: a.at ? fmtTime(a.at) : undefined, icon };
 }
 
 export function TakedownView({ id }: { id: string }) {
+  const accounts = useAccounts();
   const q = useApi<TakedownDetail>(`admin/takedowns/${encodeURIComponent(id)}`, undefined, { interval: POLL.list });
   const [raw, setRaw] = useState(false);
   if (q.error && !q.data) return <><PageHead title="Takedown" back="/guardian" /><ErrorState error={q.error} retry={() => q.refetch()} /></>;
@@ -85,7 +88,7 @@ export function TakedownView({ id }: { id: string }) {
       <div className="g mt collapse-md" style={{ gridTemplateColumns: "1.3fr 1fr" }}>
         <Card>
           <CardHead title="What the guardian did" hint="Automatically, without waiting for approval" />
-          {acts.length ? <Steps steps={acts.map(actionStep)} /> : <div className="muted small" role="status">{t.status === "ignored" ? "Nothing — this email was not a takedown." : "No actions taken yet."}</div>}
+          {acts.length ? <Steps steps={acts.map((x) => actionStep(x, accounts.label))} /> : <div className="muted small" role="status">{t.status === "ignored" ? "Nothing — this email was not a takedown." : "No actions taken yet."}</div>}
         </Card>
         <div className="col">
           <Card>
