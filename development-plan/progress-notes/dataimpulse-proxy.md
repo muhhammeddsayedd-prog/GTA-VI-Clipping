@@ -47,6 +47,12 @@ proxy, every port of 10000–20000 a sticky exit IP held ~30 min (port 823 rotat
 - "8 waiting" were mostly GTA 5 videos closed by the GTA 6 switch; one was waiting.
 - `YOUTUBE_COOKIES_FILE` is set but the file is absent on the server, so the cookies attempt never runs.
 
+## Production settings changed by hand
+
+- `proxy.daily_budget_usd` 3 → 1.5 (15:3x UTC, `setting.changed` event): the owner asked for caps sized
+  to the posting target. ~45 MB per YouTube clip (50.6 MB per video, 1.12 clips per video) × 24 clips a
+  day (the whole hourly lane) ≈ 1.1 GB/day; 1.5 leaves margin. Twitch alone already makes ~100 clips a day.
+
 ## Open issues
 
 - `replay.scan` of a live session whose YouTube stream is still live fails after 3 attempts ("its chat is
