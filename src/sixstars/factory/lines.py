@@ -129,6 +129,78 @@ def _rebalance(groups: list[list[Word]], forced: list[bool], rules: LineRules) -
         groups[i] = [previous.pop(), *group]
 
 
+@dataclass(frozen=True, slots=True)
+class Chunk:
+    """A caption chunk: one or two words shown together (docs/27). `words` are positions in the line's
+    word list; `repeat` is how many times the same chunk was said in a row (shown as `X2`, `X3`)."""
+
+    line_index: int
+    words: tuple[int, ...]
+    start_s: float
+    end_s: float
+    repeat: int = 1
+
+
+# A chunk ends before a word that follows a pause this long, even when it has room for the word.
+CHUNK_PAUSE_S = 0.25
+
+
+def chunk_line(line: Line, max_words: int, max_chars: int, pause_s: float = CHUNK_PAUSE_S) -> list[Chunk]:
+    """Splits a subtitle line into caption chunks of at most `max_words` words and `max_chars` characters
+    (a single longer word is a chunk on its own). A chunk also ends after punctuation, before a pause and
+    before a word that repeats the one before it (so `collapse_repeats` can show it as `X2`)."""
+    if max_words < 1:
+        raise ValueError("max_words must be at least 1")
+    chunks: list[list[int]] = []
+    current: list[int] = []
+    for i, word in enumerate(line.words):
+        if current:
+            last = line.words[current[-1]]
+            chars = sum(len(line.words[j].text) for j in current) + len(current) + len(word.text)
+            if (
+                len(current) >= max_words
+                or chars > max_chars
+                or word.start_s - last.end_s > pause_s
+                or _ends_phrase(last.text)
+                or _word_key(word.text) == _word_key(last.text)
+                or (current[-1] > 0 and _word_key(last.text) == _word_key(line.words[current[-1] - 1].text))
+            ):
+                chunks.append(current)
+                current = []
+        current.append(i)
+    if current:
+        chunks.append(current)
+    return [
+        Chunk(line.index, tuple(group), line.words[group[0]].start_s, line.words[group[-1]].end_s)
+        for group in chunks
+    ]
+
+
+def _word_key(text: str) -> str:
+    return "".join(ch for ch in text.lower() if ch.isalnum() or ch == "'")
+
+
+def _chunk_key(line: Line, chunk: Chunk) -> str:
+    return " ".join(_word_key(line.words[i].text) for i in chunk.words)
+
+
+def collapse_repeats(lines: Sequence[Line], chunks: Sequence[Chunk]) -> list[Chunk]:
+    """Merges a chunk said again straight after itself into one chunk with a repeat count, so "come here
+    come here" shows as `COME HERE X2`. `chunks` must be in time order; each refers to a line in `lines`."""
+    by_index = {line.index: line for line in lines}
+    out: list[Chunk] = []
+    previous_key = ""
+    for chunk in chunks:
+        key = _chunk_key(by_index[chunk.line_index], chunk)
+        if out and key and key == previous_key:
+            last = out[-1]
+            out[-1] = Chunk(last.line_index, last.words, last.start_s, chunk.end_s, last.repeat + 1)
+            continue
+        out.append(chunk)
+        previous_key = key
+    return out
+
+
 def clip_lines(lines: Sequence[Line], window: ClipWindow) -> list[Line]:
     """Keeps the words that start inside `window` and shifts them so the window start is time zero.
 

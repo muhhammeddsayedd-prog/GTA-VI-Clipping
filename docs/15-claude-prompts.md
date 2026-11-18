@@ -56,6 +56,8 @@ Rules given in the prompt:
   "commentary": null,
   "topic": "",
   "keywords": [{"line": 0, "words": [""]}],
+  "payoff_s": 0.0,          // optional: when the payoff lands (window-file clock) or null; docs/27
+  "payoff_emoji": "💀",     // optional: one emoji shown at payoff_s, or null
   "spoiler": false,
   "safety": {"politics": false, "gambling": false, "sponsored": false, "real_violence": false,
              "sexual": false, "personal_info": false, "hate": false, "copyrighted_media": false},

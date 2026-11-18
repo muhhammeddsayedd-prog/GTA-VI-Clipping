@@ -177,16 +177,57 @@ def _crop(box: Box) -> str:
     return render_filter("crop", [("w", str(box.w)), ("h", str(box.h)), ("x", str(box.x)), ("y", str(box.y))])
 
 
-def scale_filters(width: int, height: int, duration_s: float, *, zoom: bool) -> list[str]:
-    """Scale to `width`x`height`; with `zoom`, grow from 100% to 108% over the last 40% of the clip.
+@dataclass(frozen=True, slots=True)
+class ZoomCut:
+    """docs/27 step zoom: the frame alternates between 100% and `scale` every `every_s` seconds."""
+
+    every_s: float
+    scale: float
+
+    def __post_init__(self) -> None:
+        if self.every_s <= 0 or self.scale < 1:
+            raise ValueError("a zoom cut needs every_s > 0 and scale >= 1")
+
+
+@dataclass(frozen=True, slots=True)
+class PunchIns:
+    """docs/27 punch-ins: hard cuts to a full-frame close-up during `spans` (clip time, seconds).
+
+    The close-up is the facecam in layout A and the centre of the source in layout B, cropped to the frame's
+    aspect and enlarged by `zoom`.
+    """
+
+    spans: tuple[tuple[float, float], ...]
+    zoom: float = 1.0
+
+    def __post_init__(self) -> None:
+        if self.zoom < 1:
+            raise ValueError("punch-in zoom must be at least 1")
+        if any(end <= start for start, end in self.spans):
+            raise ValueError("punch-in spans must have end > start")
+
+    def expression(self) -> str:
+        """An ffmpeg expression that is non-zero during any punch-in."""
+        return "+".join(f"between(t,{_number(start)},{_number(end)})" for start, end in self.spans)
+
+
+def scale_filters(
+    width: int, height: int, duration_s: float, *, zoom: bool, zoom_cut: ZoomCut | None = None
+) -> list[str]:
+    """Scale to `width`x`height`. With `zoom`, grow from 100% to 108% over the last 40% of the clip, or
+    with `zoom_cut`, step between 100% and its scale every `every_s` seconds.
 
     The zoom scales each frame slightly larger and crops the centre back to the target size.
     """
     if not zoom:
         return [render_filter("scale", [("w", str(width)), ("h", str(height))]), "setsar=1"]
-    start = zoom_start_s(duration_s)
-    span = max(duration_s - start, 0.001)
-    factor = f"(1+{_number(ZOOM_MAX - 1)}*clip((t-{_number(start)})/{_number(span)},0,1))"
+    if zoom_cut is not None:
+        step = _number(zoom_cut.scale - 1)
+        factor = f"(1+{step}*mod(floor(t/{_number(zoom_cut.every_s)}),2))"
+    else:
+        start = zoom_start_s(duration_s)
+        span = max(duration_s - start, 0.001)
+        factor = f"(1+{_number(ZOOM_MAX - 1)}*clip((t-{_number(start)})/{_number(span)},0,1))"
     zoomed_w, zoomed_h = f"2*trunc({width}*{factor}/2)", f"2*trunc({height}*{factor}/2)"
     return [
         render_filter("scale", [("w", zoomed_w), ("h", zoomed_h), ("eval", "frame")]),
@@ -214,21 +255,36 @@ def layout_filters(
     zoom: bool = True,
     source: str = "0:v",
     out: str = "v_layout",
+    zoom_cut: ZoomCut | None = None,
+    punch_ins: PunchIns | None = None,
 ) -> list[str]:
-    """Filter chains from the source video link to a `geometry.width`x`geometry.height` frame."""
+    """Filter chains from the source video link to a `geometry.width`x`geometry.height` frame.
+
+    With `punch_ins`, a full-frame close-up is cut in over the layout during each span.
+    """
     g = geometry
-    head = f"[{source}]{render_filter('fps', [('fps', str(fps))])},split=2"
+    punch = punch_ins if punch_ins is not None and punch_ins.spans else None
+    branches = 3 if punch is not None else 2
+    head = f"[{source}]{render_filter('fps', [('fps', str(fps))])},split={branches}"
+    base_out = f"{out}_base" if punch is not None else out
     if isinstance(layout, LayoutA):
         game = gameplay_crop(layout, g.width, g.a_gameplay_h, source_w, source_h)
         face = fit_crop(layout.facecam_box, g.width, g.a_facecam_h, source_w, source_h)
-        game_chain = [_crop(game), *scale_filters(g.width, g.a_gameplay_h, duration_s, zoom=zoom)]
+        game_chain = [
+            _crop(game),
+            *scale_filters(g.width, g.a_gameplay_h, duration_s, zoom=zoom, zoom_cut=zoom_cut),
+        ]
         face_chain = [_crop(face), *scale_filters(g.width, g.a_facecam_h, duration_s, zoom=False)]
-        return [
-            f"{head}[v_game_in][v_face_in]",
+        chains = [
+            f"{head}[v_game_in][v_face_in]" + ("[v_punch_in]" if punch else ""),
             f"[v_game_in]{','.join(game_chain)}[v_game]",
             f"[v_face_in]{','.join(face_chain)}[v_face]",
-            f"[v_game][v_face]vstack=inputs=2[{out}]",
+            f"[v_game][v_face]vstack=inputs=2[{base_out}]",
         ]
+        if punch is not None:
+            close_up = fit_crop(layout.facecam_box, g.width, g.height, source_w, source_h)
+            chains += _punch_filters(close_up, punch, g, base_out, out)
+        return chains
     game = fit_crop(Box(0, 0, source_w, source_h), g.width, g.b_gameplay_h, source_w, source_h)
     small_w, small_h = _even(g.width / B_BLUR_DOWNSCALE), _even(g.height / B_BLUR_DOWNSCALE)
     background = [
@@ -250,10 +306,35 @@ def layout_filters(
         render_filter("scale", [("w", str(g.width)), ("h", str(g.height)), ("flags", "bilinear")]),
         "setsar=1",
     ]
-    game_chain = [_crop(game), *scale_filters(g.width, g.b_gameplay_h, duration_s, zoom=zoom)]
-    return [
-        f"{head}[v_bg_in][v_game_in]",
+    game_chain = [
+        _crop(game),
+        *scale_filters(g.width, g.b_gameplay_h, duration_s, zoom=zoom, zoom_cut=zoom_cut),
+    ]
+    overlay = render_filter("overlay", [("x", "0"), ("y", str(g.b_gameplay_y))])
+    chains = [
+        f"{head}[v_bg_in][v_game_in]" + ("[v_punch_in]" if punch else ""),
         f"[v_bg_in]{','.join(background)}[v_bg]",
         f"[v_game_in]{','.join(game_chain)}[v_game]",
-        f"[v_bg][v_game]{render_filter('overlay', [('x', '0'), ('y', str(g.b_gameplay_y))])}[{out}]",
+        f"[v_bg][v_game]{overlay}[{base_out}]",
+    ]
+    if punch is not None:
+        close_up = fit_crop(Box(0, 0, source_w, source_h), g.width, g.height, source_w, source_h)
+        chains += _punch_filters(close_up, punch, g, base_out, out)
+    return chains
+
+
+def _punch_filters(close_up: Box, punch: PunchIns, geometry: Geometry, base: str, out: str) -> list[str]:
+    """The close-up branch, cropped and enlarged to fill the frame, laid over `base` during the punch-ins."""
+    w, h = geometry.width, geometry.height
+    big_w, big_h = _even(w * punch.zoom), _even(h * punch.zoom)
+    chain = [
+        _crop(close_up),
+        render_filter("scale", [("w", str(big_w)), ("h", str(big_h))]),
+        render_filter("crop", [("w", str(w)), ("h", str(h))]),
+        "setsar=1",
+    ]
+    overlay = render_filter("overlay", [("x", "0"), ("y", "0"), ("enable", punch.expression())])
+    return [
+        f"[v_punch_in]{','.join(chain)}[v_punch]",
+        f"[{base}][v_punch]{overlay}[{out}]",
     ]
