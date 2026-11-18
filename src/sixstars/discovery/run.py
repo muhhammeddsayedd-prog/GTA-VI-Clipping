@@ -11,11 +11,13 @@ database. Implemented in M09.
    other new or stale creators;
 5. store every observation in `candidates`;
 6. plan live slots and queue videos for the VOD lane;
-7. queue the best viewer-made Twitch Clips of the game (`viewer_clips.source`, decision D110);
-8. heartbeat `trigger:discovery`, event `discovery.run`, return the summary.
+7. console media: store the sources' platform thumbnails and look up the creator pictures that are due
+   (`discovery.media`, docs/26; display only, never fails the pass);
+8. queue the best viewer-made Twitch Clips of the game (`viewer_clips.source`, decision D110);
+9. heartbeat `trigger:discovery`, event `discovery.run`, return the summary.
 
 Discovery never posts anything, so `control.emergency_stop` and `launch.dry_run` do not change steps 1
-to 6. Step 7 queues render work directly, so it does nothing while `control.emergency_stop` is set.
+to 7. Step 8 queues render work directly, so it does nothing while `control.emergency_stop` is set.
 """
 
 import time
@@ -31,7 +33,7 @@ from sixstars.clients.anthropic_client import AnthropicClient
 from sixstars.clients.apify import ApifyClient
 from sixstars.clients.twitch import TwitchClient
 from sixstars.clients.youtube import YouTubeClient
-from sixstars.discovery import assign, blocked, health, scoring, sources, store, tiers
+from sixstars.discovery import assign, blocked, health, media, scoring, sources, store, tiers
 from sixstars.discovery.blocked import Queue
 from sixstars.discovery.config import DiscoveryConfig
 from sixstars.discovery.models import Candidate, Creator, Scored
@@ -115,6 +117,8 @@ class DiscoverySummary:
     # Twitch Clips source: `eligible`, `queued`, `skipped` by reason, permission checks; and its best ten
     twitch_clips: dict[str, Any] = field(default_factory=dict)
     top_clips: list[dict[str, Any]] = field(default_factory=list)
+    # Console media: profile pictures looked up and found per platform, quota spent (`discovery.media`)
+    avatars: dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
         """JSON-serialisable form."""
@@ -593,6 +597,31 @@ def queue_videos(
     return queued
 
 
+def console_media(
+    clients: DiscoveryClients,
+    config: DiscoveryConfig,
+    candidates: Sequence[Candidate],
+    now: datetime,
+) -> dict[str, Any]:
+    """Source thumbnails of this pass onto their `videos` / `live_sessions` rows, then the profile pictures
+    that are due (`discovery.media`). Display only: never raises, a failure is only logged."""
+    try:
+        store.save_thumbnails(candidates)
+    except Exception as exc:
+        _log.warning("discovery_thumbnails_failed", error=type(exc).__name__)
+
+    def quota_ok(units: int) -> bool:  # every call is recorded in api_usage as it is made
+        return store.youtube_units_today() + units <= config.youtube_quota_daily_units
+
+    try:
+        result = media.fill_avatars(clients.twitch, clients.youtube, now, quota_ok=quota_ok)
+    except Exception as exc:
+        _log.warning("discovery_avatars_failed", error=type(exc).__name__, detail=str(exc)[:200])
+        return {"error": type(exc).__name__}
+    # Its quota units are reported in `avatars.youtube_units`, apart from the discovery sources' own.
+    return result.as_dict()
+
+
 # ── the pass ─────────────────────────────────────────────────
 
 
@@ -675,6 +704,9 @@ def _run(clients: DiscoveryClients | None, now: datetime) -> DiscoverySummary:
             blocked.vod_note(platform, since, held.get(platform, 0), probes, queues.get(platform, Queue()))
         )
     timed("store_and_assign")
+
+    summary.avatars = console_media(clients, config, candidates, now)
+    timed("console_media")
 
     clips = clips_source.run(clients.twitch, config, now, clients.anthropic)
     gathered.reports.append(SourceReport(**clips.as_source()))

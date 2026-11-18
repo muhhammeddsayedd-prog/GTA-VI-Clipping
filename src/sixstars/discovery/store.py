@@ -5,7 +5,7 @@ Writes for many rows go to Postgres as one statement fed by a JSON array (`jsonb
 with a few hundred candidates costs a handful of round trips.
 """
 
-from collections.abc import Collection, Mapping, Sequence
+from collections.abc import Collection, Iterable, Mapping, Sequence
 from datetime import datetime, timedelta
 from typing import Any
 
@@ -14,7 +14,7 @@ from psycopg.types.json import Jsonb
 from sixstars import db, events, jobs
 from sixstars.discovery.assign import ACTIVE_STATUSES, Session, SlotPlan
 from sixstars.discovery.blocked import BLOCKED_REASON_PREFIX, BlockedVideo, Queue
-from sixstars.discovery.models import FORBIDDEN_TIERS, Creator, Scored
+from sixstars.discovery.models import FORBIDDEN_TIERS, Candidate, Creator, Scored
 
 VOD_JOB_TYPE = "vod.process"
 VOD_JOB_PRIORITY = 30
@@ -485,13 +485,15 @@ def queue_video(item: Scored) -> str | None:
         row = db.fetch_one(
             """
             insert into videos
-              (creator_id, platform, source_id, url, title, duration_s, published_at, trend_score, has_chat)
-            values (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+              (creator_id, platform, source_id, url, title, duration_s, published_at, trend_score, has_chat,
+               thumbnail_url)
+            values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             on conflict (platform, source_id) do nothing
             returning id::text as id
             """,
             (item.creator.id, candidate.platform, candidate.source_id, candidate.url, candidate.title)
-            + (candidate.duration_s, candidate.published_at, item.score, candidate.has_chat),
+            + (candidate.duration_s, candidate.published_at, item.score, candidate.has_chat)
+            + (candidate.thumbnail_url,),
         )
         if row is None:
             return None
@@ -504,6 +506,40 @@ def queue_video(item: Scored) -> str | None:
             dedupe_key=f"vod:{video_id}",
         )
         return video_id
+
+
+def thumbnail_rows(candidates: Iterable[Candidate]) -> list[dict[str, str]]:
+    """`{platform, source_id, url}` for every candidate that carries a thumbnail, one per source (the
+    last one seen wins)."""
+    rows: dict[tuple[str, str], dict[str, str]] = {}
+    for candidate in candidates:
+        if candidate.thumbnail_url:
+            rows[candidate.key] = {
+                "platform": candidate.platform,
+                "source_id": candidate.source_id,
+                "url": candidate.thumbnail_url,
+            }
+    return list(rows.values())
+
+
+def save_thumbnails(candidates: Iterable[Candidate]) -> int:
+    """Store the platform thumbnail of every source seen in this pass on its `videos` and `live_sessions`
+    rows (console media). Only rows whose URL changes are written. Returns the rows updated."""
+    rows = thumbnail_rows(candidates)
+    if not rows:
+        return 0
+    updated = 0
+    for table in ("videos", "live_sessions"):
+        updated += db.execute(
+            f"""
+            update {table} t set thumbnail_url = k.url
+            from jsonb_to_recordset(%s) as k(platform text, source_id text, url text)
+            where t.platform = k.platform and t.source_id = k.source_id
+              and t.thumbnail_url is distinct from k.url
+            """,  # noqa: S608 - the table name is one of two literals
+            (Jsonb(rows),),
+        )
+    return updated
 
 
 def retire_creator_work(creator_id: str) -> int:

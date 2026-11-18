@@ -13,7 +13,7 @@ import base64
 import binascii
 import re
 import uuid
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
@@ -278,6 +278,78 @@ def number(value: Any) -> float | None:
     return float(value)
 
 
+# ── console media (thumbnails) ───────────────────────────────
+
+# Private columns a query selects for a clip picture; `resolve_thumbs` replaces them before the answer.
+THUMB_PATH = "_thumb_path"  # clips.thumb_path of a clip row -> thumb_url, thumb_kind
+SOURCE_THUMB = "_source_thumb"
+CLIP_THUMB_PATH = "_clip_thumb_path"  # ... of a post row's clip -> clip_thumb_url
+CLIP_SOURCE_THUMB = "_clip_source_thumb"
+
+
+def choose_thumb(signed: str | None, source: str | None) -> tuple[str | None, str | None]:
+    """`(thumb_url, thumb_kind)`: the signed frame of the rendered clip, else the platform thumbnail of
+    its source, else nothing."""
+    if signed:
+        return signed, "frame"
+    if source:
+        return source, "source"
+    return None, None
+
+
+def _dicts(value: Any) -> Iterator[dict[str, Any]]:
+    """Every dict inside an answer body, depth first."""
+    if isinstance(value, dict):
+        yield value
+        for item in value.values():
+            yield from _dicts(item)
+    elif isinstance(value, list | tuple):
+        for item in value:
+            yield from _dicts(item)
+
+
+def thumb_keys(data: Any) -> list[str]:
+    """The storage keys of every clip frame named in an answer body, each once."""
+    keys: dict[str, None] = {}
+    for row in _dicts(data):
+        for name in (THUMB_PATH, CLIP_THUMB_PATH):
+            key = row.get(name)
+            if isinstance(key, str) and key:
+                keys[key] = None
+    return list(keys)
+
+
+def resolve_thumbs(data: Any, signed: Mapping[str, str | None]) -> None:
+    """Replace the private thumbnail columns of every row in `data` (in place) with the public fields:
+    clip rows get `thumb_url` and `thumb_kind`, post rows `clip_thumb_url`. `signed` maps storage keys to
+    signed URLs; a key missing from it (signing failed) falls back to the source thumbnail."""
+    for row in list(_dicts(data)):
+        if THUMB_PATH in row or SOURCE_THUMB in row:
+            key = row.pop(THUMB_PATH, None)
+            url, kind = choose_thumb(signed.get(key) if key else None, row.pop(SOURCE_THUMB, None))
+            row["thumb_url"] = url
+            row["thumb_kind"] = kind
+        if CLIP_THUMB_PATH in row or CLIP_SOURCE_THUMB in row:
+            key = row.pop(CLIP_THUMB_PATH, None)
+            url, _kind = choose_thumb(signed.get(key) if key else None, row.pop(CLIP_SOURCE_THUMB, None))
+            row["clip_thumb_url"] = url
+
+
+def source_thumb_sql(alias: str) -> str:
+    """The platform thumbnail of a clip's source: the viewer clip it was made from (same id), the video of
+    its spike, the video it was cut from, or the YouTube live session of its spike. Twitch live previews
+    are left out: they show the stream now, not the moment."""
+    return f"""coalesce(
+  (select vc.thumbnail_url from viewer_clips vc where vc.id = {alias}.id),
+  (select xv.thumbnail_url from spikes xs join videos xv on xv.id = xs.video_id
+    where xs.id = {alias}.spike_id),
+  (select xv.thumbnail_url from videos xv
+    where xv.platform = {alias}.source_platform and xv.source_id = {alias}.source_id limit 1),
+  (select xl.thumbnail_url from spikes xs join live_sessions xl on xl.id = xs.live_session_id
+    where xs.id = {alias}.spike_id and xl.platform = 'youtube')
+)"""
+
+
 # ── statement-level helpers ──────────────────────────────────
 
 
@@ -289,9 +361,11 @@ def _event_columns(alias: str = "e") -> str:
 
 
 def creator_json(alias: str = "cr", nullable: bool = False) -> str:
+    """The embedded creator ref `{id, handle, display_name, platform, tier, avatar_url}`."""
     obj = (
         f"jsonb_build_object('id', {alias}.id, 'handle', {alias}.handle, 'display_name', "
-        f"{alias}.display_name, 'platform', {alias}.platform, 'tier', {alias}.tier)"
+        f"{alias}.display_name, 'platform', {alias}.platform, 'tier', {alias}.tier, "
+        f"'avatar_url', {alias}.avatar_url)"
     )
     return f"case when {alias}.id is null then null else {obj} end" if nullable else obj
 
@@ -418,20 +492,22 @@ CLIP_COLUMNS = f"""
 c.id::text as id, c.series_no, c.spike_id::text as spike_id, {creator_json()} as creator, c.source_platform,
 c.source_type, c.lane, c.duration_s, c.hook, c.title, c.topic, c.score, c.rank_score, c.music_ratio,
 c.status, c.reject_reason, c.gate_profile, c.created_at, c.approved_at, c.posted_at,
-(c.storage_path is not null) as has_file
+(c.storage_path is not null) as has_file,
+c.thumb_path as {THUMB_PATH}, {source_thumb_sql("c")} as {SOURCE_THUMB}
 """
 CLIP_SOURCE = "clips c join creators cr on cr.id = c.creator_id"
 
-POST_COLUMNS = """
+POST_COLUMNS = f"""
 p.id::text as id, p.clip_id::text as clip_id, pc.series_no as clip_series_no, pc.hook as clip_hook,
 p.account_id, p.platform, p.lane, p.slot_at, p.status, p.dry_run, p.post_url, p.platform_post_id,
-p.published_at, p.views, p.likes, p.comments, p.shares, p.claim_status, p.error, p.attempts, p.created_at
+p.published_at, p.views, p.likes, p.comments, p.shares, p.claim_status, p.error, p.attempts, p.created_at,
+pc.thumb_path as {CLIP_THUMB_PATH}, {source_thumb_sql("pc")} as {CLIP_SOURCE_THUMB}
 """
 POST_SOURCE = "posts p join clips pc on pc.id = p.clip_id"
 
 LIVE_COLUMNS = f"""
 s.id::text as id, {creator_json()} as creator, s.platform, s.status, s.trend_score, s.url, s.channel_login,
-s.reconnects, s.assigned_at, s.started_at, s.ended_at, s.below_cutoff_since,
+s.reconnects, s.assigned_at, s.started_at, s.ended_at, s.below_cutoff_since, s.thumbnail_url,
 (select jsonb_build_object('S', count(*) filter (where x.tier = 'S'),
                            'A', count(*) filter (where x.tier = 'A'),
                            'B', count(*) filter (where x.tier = 'B'))
@@ -443,6 +519,7 @@ LIVE_SOURCE = "live_sessions s join creators cr on cr.id = s.creator_id"
 VIDEO_COLUMNS = f"""
 v.id::text as id, {creator_json()} as creator, v.platform, v.source_id, v.url, v.title, v.duration_s,
 v.published_at, v.trend_score, v.has_chat, v.status, v.skip_reason, v.attempts, v.created_at, v.updated_at,
+v.thumbnail_url,
 (select count(*) from clips xc join spikes x on x.id = xc.spike_id where x.video_id = v.id) as clips
 """
 VIDEO_SOURCE = "videos v join creators cr on cr.id = v.creator_id"
@@ -450,7 +527,7 @@ VIDEO_SOURCE = "videos v join creators cr on cr.id = v.creator_id"
 CREATOR_COLUMNS = """
 cr.id::text as id, cr.platform, cr.channel_id, cr.handle, cr.display_name, cr.language, cr.tier,
 cr.tier_reason, cr.follower_count, cr.avg_clip_views, cr.claims_count, cr.description_checked_at,
-cr.discovered_at,
+cr.discovered_at, cr.avatar_url, cr.avatar_checked_at,
 (select count(*) from clips xc where xc.creator_id = cr.id and xc.status = 'posted') as clips_posted
 """
 
@@ -786,7 +863,8 @@ def account_summaries(view: PostingView) -> list[dict[str, Any]]:
 
 QUEUE_COLUMNS = f"""
 c.id::text as clip_id, c.series_no, c.hook, c.title, {creator_json()} as creator, c.lane, c.score,
-c.rank_score, c.duration_s, c.created_at, c.approved_at, s.spike_wall
+c.rank_score, c.duration_s, c.created_at, c.approved_at, s.spike_wall,
+c.thumb_path as {THUMB_PATH}, {source_thumb_sql("c")} as {SOURCE_THUMB}
 """
 
 
@@ -838,6 +916,9 @@ def ranked_queue(view: PostingView) -> dict[str, list[dict[str, Any]]]:
             "created_at": row["created_at"],
             "age_s": max(0, round((view.now - row["created_at"]).total_seconds())),
             "expires_at": expires_at,
+            # replaced by thumb_url / thumb_kind when the answer is sent (`resolve_thumbs`)
+            THUMB_PATH: row[THUMB_PATH],
+            SOURCE_THUMB: row[SOURCE_THUMB],
         }
 
     return {

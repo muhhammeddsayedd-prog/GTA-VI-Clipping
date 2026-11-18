@@ -164,14 +164,14 @@ def queue(item: Ranked, creator_id: str) -> str | None:
             """
             insert into viewer_clips
               (platform, source_id, creator_id, url, title, clipped_by, language, view_count, duration_s,
-               clip_created_at, vod_id, vod_offset_s, rank_score, rank_parts)
-            values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+               clip_created_at, vod_id, vod_offset_s, rank_score, rank_parts, thumbnail_url)
+            values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             on conflict (platform, source_id) do nothing
             returning id::text as id
             """,
             (PLATFORM, clip.id, creator_id, clip.url, clip.title, clip.creator_name or None)
             + (clip.language or None, clip.view_count, clip.duration_s, clip.created_at)
-            + (clip.video_id, clip.vod_offset_s, item.rank, Jsonb(item.parts)),
+            + (clip.video_id, clip.vod_offset_s, item.rank, Jsonb(item.parts), clip.thumbnail_url or None),
         )
         if row is None:
             return None

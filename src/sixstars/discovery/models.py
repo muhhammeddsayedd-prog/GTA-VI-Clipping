@@ -38,6 +38,7 @@ class Candidate:
     has_chat: bool | None = None  # a chat replay exists (Twitch archive, YouTube past live stream)
     followers: int | None = None  # only when the source reports it (Apify)
     language_signal: str | None = None  # why `language` was set to "und" (script:title, term:hindi, ...)
+    thumbnail_url: str | None = None  # public picture of the source (console media), size filled in
 
     @property
     def key(self) -> tuple[str, str]:
