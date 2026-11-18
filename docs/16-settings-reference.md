@@ -235,18 +235,19 @@ Viewer-made Twitch Clips of `env.target_game` as a discovery source (decision D1
 | `factory.preset_normal` | `"veryfast"` | x264 preset for normal renders. |
 | `factory.preset_express` | `"superfast"` | x264 preset for express renders. |
 | `factory.use_nvenc` | `false` | Use NVIDIA encoder if a GPU is present. |
-| `factory.loudness_lufs` | `-14` | Target loudness. |
+| `factory.loudness_lufs` | `-12` | Target loudness (was `-14`; migration 0021, with the compressor of `factory.style`). |
 | `factory.safe_top_px` | `220` | No text above this. |
 | `factory.safe_bottom_px` | `420` | No text in the bottom N px. |
-| `factory.accent_color` | `"#FFD400"` | Accent colour (word highlight, keywords). |
+| `factory.accent_color` | `"#FF2BD6"` | Accent colour (keywords, progress bar). Magenta since migration 0021 (was `"#FFD400"`). |
 | `factory.font` | `"Montserrat Black"` | Subtitle font. |
 | `factory.hook_seconds` | `3.0` | How long the hook title shows. |
-| `factory.end_card_s` | `1.5` | End card length. |
+| `factory.end_card_s` | `0` | End card length; `0` is no end card, so the clip ends on the payoff and loops (migration 0021, was `1.5`). The gate reads it for the expected file length. |
 | `factory.watermark` | `"6 Stars Clips"` | Watermark text. The brand name, not a handle: one file goes to all platforms (D111). |
 | `factory.series_label` | `"6 Stars Moments"` | Series label shown on the end card. |
 | `factory.bleep` | `true` | Bleep profanity in audio and mask it in subtitles. |
 | `factory.music_duck_db` | `-18` | Gain applied to segments flagged as music (hourly clips under the music limit). |
 | `factory.cut_snap` | `{"pause_s": 0.4, "start_back_s": 4.0, "start_forward_s": 2.0, "end_forward_s": 3.0, "end_back_s": 2.0, "vad": true, "punctuate_below": 0.02}` | Snap the cut to a pause, so a clip does not open or close mid-sentence. A gap between words of `pause_s` seconds or more, or a sentence-ending mark, is a phrase boundary. The clip start moves back to the nearest one within `start_back_s`, else forward within `start_forward_s` (never past the spike floor); the end moves forward within `end_forward_s`, else back within `end_back_s`. A sentence end is preferred to a bare pause; the clip length limits always hold. `vad`: find the pauses Whisper hides inside stretched words with voice activity detection. `punctuate_below`: when a smaller share of the transcript's words than this ends a sentence (Whisper left the punctuation out), the fast model is asked where the sentences end (prompt P10, $0.0002 to $0.001 per window); `0` switches that off. `pause_s` `0` switches the whole rule off. Added by migration 0011. |
+| `factory.style` | `{"caption_words": 2, "caption_chars": 14, "caption_font": "Anton", "caption_size": 150, "caption_caps": true, "hook_mode": "title_bar", "punchin_max": 4, "punchin_zoom": 1.25, "punchin_len_s": 1.2, "punchin_min_gap_s": 2.5, "punchin_db": 5, "zoomcut_every_s": 2.5, "zoomcut_scale": 1.08, "sfx_gain_db": -10, "cut_sfx": true, "payoff_fx": true, "compress": true}` | The editing style (docs/27). `caption_words` / `caption_chars`: most words and characters on screen at once (`0` words: whole lines with the spoken word highlighted, the classic look). `caption_font` / `caption_size` / `caption_caps`: caption font (empty: `factory.font`), size on the 1080x1920 canvas, capitals. `hook_mode`: `box` shows the hook for `factory.hook_seconds`, `title_bar` for the whole clip. `punchin_*`: up to `punchin_max` hard cuts to a full-frame close-up (facecam in layout A, centre of the source in layout B), `punchin_len_s` long, enlarged `punchin_zoom`, where the momentary loudness is `punchin_db` dB over the clip median, `punchin_min_gap_s` apart (`0`: off). `zoomcut_every_s` / `zoomcut_scale`: the gameplay alternates between 100% and the scale (`0`: the classic slow zoom over the last 40%). `sfx_gain_db`: level of every sound effect. `cut_sfx`: whoosh and impact on each punch-in. `payoff_fx`: emoji and bass hit at the clip writer's `payoff_s`. `compress`: compressor before loudness normalisation. A missing or invalid value gives the classic look. Added by migration 0021. |
 
 ## AI
 
@@ -361,3 +362,15 @@ Viewer-made Twitch Clips of `env.target_game` as a discovery source (decision D1
 | `admin.list_max_limit` | `200` | Largest page an admin console list returns; the default page is 50. (M17) |
 | `admin.month_ceiling_usd` | `840` | Monthly spend ceiling shown on the Spend page (top of the docs/23 cost model). Display only. (M17) |
 | `admin.noisy_event_types` | `["post.dry_run", "post.link_updated", "stats.collected", "clip.scored", "job.recovered"]` | Event types left out of the overview's recent events. (M17) |
+
+## Console media
+
+Clip thumbnails and creator profile pictures for the admin console (docs/26, migration 0022).
+
+| Key | Default | Meaning |
+|---|---|---|
+| `console.thumb_frame_s` | `1.5` | The clip thumbnail is the frame this many seconds into the rendered clip (the middle of a shorter clip). |
+| `console.thumb_width_px` | `540` | Width of the clip thumbnail JPEG; the height keeps the 9:16 shape. |
+| `console.thumb_jpeg_qscale` | `5` | ffmpeg JPEG quality of the thumbnail (`-q:v`, 2 best to 31 worst; 5 is about JPEG quality 80). |
+| `console.avatar_refresh_days` | `7` | A creator's profile picture is looked up again after this many days. |
+| `console.avatars_per_pass` | `100` | Creators whose picture is looked up per discovery pass, at most (Twitch: 100 per request; YouTube: 50 per request, 1 quota unit each, inside `discovery.youtube_quota_daily_units`). |

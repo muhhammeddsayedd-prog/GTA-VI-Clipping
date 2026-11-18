@@ -14,6 +14,13 @@ Sources (checked 2026-11-17):
   filters, omitted returns all. `video_id` is "" and `vod_offset` null when the broadcast's video is not
   available (or, for `vod_offset`, not written yet: "typically minutes"). `duration` is seconds with 0.1
   precision; `language` is ISO 639-1 or "other".
+- thumbnails and pictures (checked 2026-11-18, console media): Get Videos `thumbnail_url` "you must
+  replace the '%{width}' and '%{height}' placeholders ... Due to current limitations, '${width}' must be
+  320 and '${height}' must be 180"; `id` takes at most 100 ids and excludes `user_id` / `game_id`. Get
+  Streams `thumbnail_url` is "an image of a frame from the last 5 minutes of the stream. Replace the width
+  and height placeholders in the URL ('{width}x{height}')". Get Clips `thumbnail_url` is "A URL to a
+  thumbnail image of the clip" (no placeholders); `id` repeats, at most 100. Get Users
+  `profile_image_url` is "A URL to the user's profile image"; at most 100 ids.
 - rate limit: https://dev.twitch.tv/docs/api/guide/#twitch-rate-limits . One point per request from a
   per-minute bucket (header `Ratelimit-Limit`, 800 in the docs' example); 429 when it is empty, which
   the shared retry code backs off on.
@@ -44,6 +51,10 @@ API_BASE = "https://api.twitch.tv/helix"
 TOKEN_REFRESH_MARGIN_S = 300.0
 PAGE_SIZE_MAX = 100
 IDS_PER_REQUEST_MAX = 100
+# Get Videos thumbnail_url: "Due to current limitations, ${width} must be 320 and ${height} must be 180."
+VIDEO_THUMB_SIZE = (320, 180)
+# Get Streams thumbnail_url: any size in pixels; 16:9 like the stream.
+STREAM_THUMB_SIZE = (640, 360)
 
 _DURATION_RE = re.compile(r"^(?:(\d+)h)?(?:(\d+)m)?(?:(\d+)s)?$")
 
@@ -220,6 +231,22 @@ def _clip(item: dict[str, Any]) -> TwitchClip:
     )
 
 
+_SIZE_PLACEHOLDER = re.compile(r"[%$]?\{(width|height)\}")
+
+
+def fill_thumbnail(template: str, width: int, height: int) -> str | None:
+    """A Helix `thumbnail_url` with its size placeholders filled in, or None for an empty one.
+
+    Get Videos documents `%{width}` / `%{height}` (and must be 320x180, VIDEO_THUMB_SIZE), Get Streams
+    `{width}x{height}`; the Get Videos page also writes `${width}` once, so all three spellings are
+    replaced. A URL without placeholders (Get Clips) is returned as it is."""
+    url = template.strip()
+    if not url:
+        return None
+    sizes = {"width": str(int(width)), "height": str(int(height))}
+    return _SIZE_PLACEHOLDER.sub(lambda match: sizes[match.group(1)], url)
+
+
 def rfc3339(value: datetime) -> str:
     """A time as Twitch wants it in a query, in UTC: `2026-11-17T10:00:00Z`."""
     return value.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -377,6 +404,28 @@ class TwitchClient:
         if is_featured is not None:
             params.append(("is_featured", "true" if is_featured else "false"))
         return [_clip(item) for item in self._paginate("get_clips", "/clips", params, max_items)]
+
+    def _by_ids(self, operation: str, path: str, ids: Sequence[str]) -> list[dict[str, Any]]:
+        """GET `path` with `id=` repeated, 100 ids per request; unknown ids are simply absent."""
+        items: list[dict[str, Any]] = []
+        unique = [item for item in dict.fromkeys(ids) if item]
+        requests = 0
+        for start in range(0, len(unique), IDS_PER_REQUEST_MAX):
+            chunk = unique[start : start + IDS_PER_REQUEST_MAX]
+            body = self._get(path, [("id", item_id) for item_id in chunk])
+            requests += 1
+            items.extend(body.get("data") or [])
+        if requests:
+            usage.record(SERVICE, operation, units=requests)
+        return items
+
+    def get_videos_by_id(self, ids: Sequence[str]) -> list[TwitchVideo]:
+        """Videos by id, 100 per request (deleted or unknown ids are left out)."""
+        return [_video(item) for item in self._by_ids("get_videos_by_id", "/videos", ids)]
+
+    def get_clips_by_id(self, ids: Sequence[str]) -> list[TwitchClip]:
+        """Clips by id (slug), 100 per request (unknown ids are left out)."""
+        return [_clip(item) for item in self._by_ids("get_clips_by_id", "/clips", ids)]
 
     def get_users(self, ids: Sequence[str]) -> list[TwitchUser]:
         """Users by id (description and profile image), 100 ids per request."""

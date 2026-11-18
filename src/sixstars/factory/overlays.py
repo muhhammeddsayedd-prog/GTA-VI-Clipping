@@ -246,19 +246,20 @@ def _seconds(value: float) -> str:
     return f"{value:.3f}".rstrip("0").rstrip(".") or "0"
 
 
-def seam_filter(geometry: Geometry, accent_color: str) -> str:
-    """Layout A seam: accent line across the frame where gameplay meets facecam."""
-    return render_filter(
-        "drawbox",
-        [
-            ("x", "0"),
-            ("y", str(geometry.a_seam_y)),
-            ("w", str(geometry.width)),
-            ("h", str(geometry.a_seam_h)),
-            ("color", ffmpeg_color(accent_color)),
-            ("thickness", "fill"),
-        ],
-    )
+def seam_filter(geometry: Geometry, accent_color: str, *, enable: str | None = None) -> str:
+    """Layout A seam: accent line across the frame where gameplay meets facecam, drawn while `enable` (an
+    ffmpeg expression) is non-zero, or always."""
+    options = [
+        ("x", "0"),
+        ("y", str(geometry.a_seam_y)),
+        ("w", str(geometry.width)),
+        ("h", str(geometry.a_seam_h)),
+        ("color", ffmpeg_color(accent_color)),
+        ("thickness", "fill"),
+    ]
+    if enable:
+        options.append(("enable", enable))
+    return render_filter("drawbox", options)
 
 
 def ass_filter(ass_path: PurePath | str, fonts_dir: PurePath | str | None = None) -> str:
@@ -301,9 +302,16 @@ def drawtext_filter(
 
 
 def watermark_filter(
-    text: str, *, geometry: Geometry, font_name: str, fonts: FontFiles, start_s: float
+    text: str,
+    *,
+    geometry: Geometry,
+    font_name: str,
+    fonts: FontFiles,
+    start_s: float,
+    y: int | None = None,
 ) -> str | None:
-    """Watermark, right-aligned at (1040, 240), 60% white, shown once the hook has gone. None if empty."""
+    """Watermark, right-aligned at (1040, 240) or at output row `y`, 60% white, shown from `start_s` (once
+    the hook has gone). None if empty."""
     if not single_line(text):
         return None
     scale = geometry.height / REF_HEIGHT
@@ -317,7 +325,7 @@ def watermark_filter(
         size=max(8, round(WATERMARK_SIZE * scale)),
         color=f"white@{WATERMARK_OPACITY:g}",
         x=f"{geometry.watermark_right}-text_w",
-        y=str(geometry.watermark_y),
+        y=str(geometry.watermark_y if y is None else y),
         extra=extra,
     )
 
@@ -331,9 +339,10 @@ def progress_filters(
     source: str,
     out: str,
     y: int | None = None,
+    enable: str | None = None,
 ) -> list[str]:
     """Progress bar: an accent strip that slides in from the left over the clip, at y=1500 unless `y`
-    is given."""
+    is given; shown while `enable` (an ffmpeg expression) is non-zero, or always."""
     length = _seconds(duration_s)
     bar = render_filter(
         "color",
@@ -350,6 +359,7 @@ def progress_filters(
             ("x", f"-w+w*t/{length}"),
             ("y", str(geometry.progress_y if y is None else y)),
             ("eof_action", "pass"),
+            *([("enable", enable)] if enable else []),
         ],
     )
     return [f"{bar}[{out}_bar]", f"[{source}][{out}_bar]{overlay}[{out}]"]

@@ -24,6 +24,8 @@ _GRAPH_SPECIALS = frozenset("\\',;[]")
 EMOJI_FONT = "Noto Emoji"
 _EMOJI = "\U0001f000-\U0001faff⌀-⏿☀-➿⬀-⯿"
 _EMOJI_RUN = re.compile(f"[{_EMOJI}][{_EMOJI}‍️]*")
+# Public name for code that lays emoji out itself (the title bar image).
+EMOJI_RUN = _EMOJI_RUN
 
 
 def _strip_controls(text: str) -> str:

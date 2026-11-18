@@ -74,8 +74,9 @@ ENV TZ=UTC \
 # libicu72: TwitchDownloaderCLI (.NET globalization). fontconfig: font lookup for libass and drawtext.
 # The service user has uid/gid 1000, the same as `deploy` on the servers, so the bind-mounted /data and
 # /secrets directories are readable and writable without extra permissions.
+# fonts-noto-color-emoji: colour emoji in the title bar (docs/27), drawn with Pillow (SIL OFL 1.1).
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends ca-certificates curl fontconfig libicu72 tini \
+    && apt-get install -y --no-install-recommends ca-certificates curl fontconfig fonts-noto-color-emoji libicu72 tini \
     && rm -rf /var/lib/apt/lists/* \
     && groupadd --gid 1000 sixstars \
     && useradd --uid 1000 --gid 1000 --create-home --home-dir /home/sixstars --shell /usr/sbin/nologin sixstars \

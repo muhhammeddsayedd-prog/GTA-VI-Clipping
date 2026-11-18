@@ -32,33 +32,39 @@ from sixstars.ai.schemas import ClipWriting, SpikeVerdict
 from sixstars.clients.anthropic_client import AnthropicClient, BudgetKind
 from sixstars.clients.transcribe import Mode, Transcriber
 from sixstars.config import env
-from sixstars.factory import facecam, music, tools, writer
+from sixstars.factory import effects, facecam, music, thumbs, tools, writer
 from sixstars.factory import transcript as transcripts
 from sixstars.factory.assets import FactoryAssets, load_assets
-from sixstars.factory.audio import parse_loudnorm_report
+from sixstars.factory.audio import SfxTrack, parse_loudnorm_report
 from sixstars.factory.bleep import Span, bleep_spans
 from sixstars.factory.config import FactoryConfig
-from sixstars.factory.layout import Layout
+from sixstars.factory.layout import REF_HEIGHT, Layout, PunchIns, ZoomCut
 from sixstars.factory.lines import Line, clip_lines, group_lines
 from sixstars.factory.params import FactoryParams
 from sixstars.factory.presets import RenderMode, uses_nvenc
 from sixstars.factory.render import (
     RenderSpec,
     SourceInfo,
+    build_envelope_command,
     build_loudnorm_measure_command,
     build_render_command,
 )
-from sixstars.factory.subtitles import build_ass
+from sixstars.factory.style import StyleRules
+from sixstars.factory.subtitles import SubtitleStyle, build_ass, hook_box_bottom, title_bar_top
 from sixstars.factory.textfit import TextMeasurer, estimate_text_width, pillow_measurer
+from sixstars.factory.titlebar import TitleBar, draw_title_bar
 from sixstars.factory.window import ClipWindow, padded_window
 from sixstars.logging import get_logger
 
 JOB_CLIP_RENDER = "clip.render"
 JOB_EXPRESS_RENDER = "express.render"
 ASS_NAME = "clip.ass"
+TITLE_PNG = "title.png"
 SCRATCH_OUTPUT = "render.mp4"
 # The finished file may differ from the planned length by this much (container rounding).
 DURATION_TOLERANCE_S = 0.2
+# docs/27 title-bar hook: the watermark sits this far below the hook box (reference canvas pixels).
+WATERMARK_HOOK_GAP = 14
 # A job deferred because the daily AI budget is used up runs again this long after 00:00 UTC.
 BUDGET_RETRY_MARGIN_S = 120
 LANES = ("spike", "hourly")
@@ -245,6 +251,10 @@ class RenderJob:
     hook: str | None = None
     keywords: Mapping[int, Sequence[str]] = field(default_factory=dict)
     duck: Sequence[Span] = ()
+    style: StyleRules = field(default_factory=StyleRules)
+    # docs/27 payoff, in clip time (the writer's `payoff_s` shifted to the final cut).
+    payoff_s: float | None = None
+    payoff_emoji: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -284,6 +294,57 @@ WritingHook = Callable[[ClipWriting, transcripts.WindowTranscript], None]
 
 def _measurer(assets: FactoryAssets) -> TextMeasurer:
     return pillow_measurer(assets.font_file) if assets.font_file is not None else estimate_text_width
+
+
+def _caption_measurer(assets: FactoryAssets) -> TextMeasurer:
+    font = assets.caption_font_file
+    return pillow_measurer(font) if font is not None else _measurer(assets)
+
+
+def _punch_spans(spec: RenderSpec, job: RenderJob, payoff_s: float | None, ffmpeg: str) -> tuple[Span, ...]:
+    """docs/27 punch-ins at the loudest moments of the clip's source audio. An envelope that cannot be
+    measured means no punch-ins, never a failed render."""
+    if not job.style.punchins or not job.media.has_audio:
+        return ()
+    try:
+        result = tools.run(
+            build_envelope_command(spec, ffmpeg=ffmpeg), timeout_s=tools.RENDER_TIMEOUT_S, what="envelope"
+        )
+    except tools.FfmpegError as exc:
+        get_logger("factory").warning("punchin_envelope_failed", error=str(exc)[:200])
+        return ()
+    envelope = effects.parse_momentary(result.stderr.decode("utf-8", errors="replace"))
+    avoid = () if payoff_s is None else (payoff_s,)
+    return effects.select_punchins(envelope, spec.clip_duration_s, job.style, avoid_s=avoid)
+
+
+def _title_bar(job: RenderJob, live_badge: bool) -> TitleBar | None:
+    """docs/27 title bar PNG for the hook, in the scratch directory. None when the title font is missing
+    or drawing fails: the hook box of the subtitle file is used instead, never a failed render."""
+    font = job.assets.title_font_file
+    if not job.hook or font is None:
+        return None
+    try:
+        return draw_title_bar(
+            job.hook,
+            job.scratch_dir / TITLE_PNG,
+            font_file=font,
+            emoji_font=job.assets.emoji_font_file,
+            emoji_colour=job.assets.emoji_colour,
+        )
+    except OSError as exc:
+        get_logger("factory").warning("title_bar_failed", error=str(exc)[:200])
+        return None
+
+
+def _sfx_tracks(cues: Sequence[effects.SfxCue], assets: FactoryAssets) -> tuple[SfxTrack, ...]:
+    """One track per effect file that has cues (the keyword pop goes through `RenderSpec.sfx_path`)."""
+    tracks: list[SfxTrack] = []
+    for kind, path in sorted(assets.sfx.items()):
+        times = tuple(cue.time_s for cue in cues if cue.kind == kind)
+        if times:
+            tracks.append(SfxTrack(path, times))
+    return tuple(tracks)
 
 
 def _move_into_place(finished: Path, destination: Path) -> None:
@@ -331,12 +392,60 @@ def render_file(job: RenderJob, *, ffmpeg: str = "ffmpeg", ffprobe: str = "ffpro
         hook_shown=bool(job.hook),
     )
     duration = spec.clip_duration_s
+    style = job.style
+    live_badge = job.lane == "spike"
     bleeps = tuple(bleep_spans(words, profane, duration)) if params.bleep else ()
-    sfx_times: tuple[float, ...] = ()
+    pop_times: tuple[float, ...] = ()
     if job.assets.sfx_pop is not None:
-        sfx_times = writer.outside_spans(writer.keyword_times(job.lines, job.keywords), bleeps)
+        pop_times = writer.outside_spans(writer.keyword_times(job.lines, job.keywords), bleeps)
+    payoff_s = job.payoff_s
+    if not style.payoff_fx or payoff_s is None or not 0 <= payoff_s < duration:
+        payoff_s = None
+    punch_spans = _punch_spans(spec, job, payoff_s, ffmpeg)
+    cues = effects.plan_sfx(
+        duration_s=duration, keyword_times=pop_times, punchins=punch_spans, payoff_s=payoff_s, rules=style
+    )
+    sfx_times = tuple(cue.time_s for cue in cues if cue.kind == "pop")
+    log.info(
+        "clip_edit_effects",
+        punchins=[[span.start_s, span.end_s] for span in punch_spans],
+        payoff_s=payoff_s,
+        sfx={
+            kind: [cue.time_s for cue in cues if cue.kind == kind] for kind in sorted({c.kind for c in cues})
+        },
+        sfx_files=sorted(job.assets.sfx),
+    )
     nvenc = params.use_nvenc and job.mode == "express" and tools.nvenc_available(ffmpeg)
-    spec = replace(spec, bleeps=bleeps, sfx_times_s=sfx_times, nvenc_available=nvenc)
+    title_bar = bool(job.hook) and style.hook_mode == "title_bar"
+    watermark_y = None
+    bar = _title_bar(job, live_badge) if title_bar else None
+    title_top = title_bar_top(params, live_badge=live_badge)
+    if bar is not None:
+        # The TikTok-style bar (an image) replaces the hook box of the subtitle file.
+        watermark_y = round((title_top + bar.height + WATERMARK_HOOK_GAP) * params.height / REF_HEIGHT)
+    elif title_bar:
+        # No title font: the hook box stays for the whole clip, the watermark just below it.
+        box_bottom = hook_box_bottom(params, live_badge=live_badge) + WATERMARK_HOOK_GAP
+        watermark_y = round(box_bottom * params.height / REF_HEIGHT)
+    spec = replace(
+        spec,
+        bleeps=bleeps,
+        sfx_times_s=sfx_times,
+        nvenc_available=nvenc,
+        sfx_tracks=_sfx_tracks(cues, job.assets),
+        sfx_gain_db=style.sfx_gain_db,
+        compress=style.compress,
+        zoom_cut=ZoomCut(style.zoomcut_every_s, style.zoomcut_scale) if style.zoomcuts else None,
+        punch_ins=(
+            PunchIns(tuple((s.start_s, s.end_s) for s in punch_spans), style.punchin_zoom)
+            if punch_spans
+            else None
+        ),
+        hook_shown=bool(job.hook) and not title_bar,
+        watermark_y=watermark_y,
+        title_png=bar.path if bar is not None else None,
+        title_top=title_top,
+    )
     ass = build_ass(
         job.lines,
         layout=job.layout.kind,
@@ -344,10 +453,15 @@ def render_file(job: RenderJob, *, ffmpeg: str = "ffmpeg", ffprobe: str = "ffpro
         duration_s=duration,
         keywords=job.keywords,
         profanity=matcher,
-        hook=job.hook,
+        hook=None if bar is not None else job.hook,
         creator=job.creator or None,
-        live_badge=job.lane == "spike",
+        live_badge=live_badge,
+        style=SubtitleStyle.from_rules(style),
         measure=_measurer(job.assets),
+        caption_measure=_caption_measurer(job.assets),
+        hook_mode=style.hook_mode,
+        payoff_s=payoff_s,
+        payoff_emoji=job.payoff_emoji,
     )
     job.scratch_dir.mkdir(parents=True, exist_ok=True)
     Path(spec.ass_path).write_text(ass, encoding="utf-8", newline="\n")
@@ -465,7 +579,7 @@ def produce(
     def timed(name: str, started: float) -> None:
         timings[name] = int((time.monotonic() - started) * 1000)
 
-    assets = deps.assets or load_assets(cfg.params.font)
+    assets = deps.assets or load_assets(cfg.params.font, caption_font=cfg.style.caption_font)
     media = tools.probe(item.source_path, deps.ffprobe)
     if not media.has_video or media.width < 2 or media.height < 2 or media.duration_s <= 0:
         raise tools.FfmpegError(f"{item.source_path.name} has no usable video stream")
@@ -572,6 +686,9 @@ def produce(
             hook=writing.hook,
             keywords=writing.keyword_map(),
             duck=music.duck_spans(analysis, cfg.max_music_ratio, window.duration_s),
+            style=cfg.style,
+            payoff_s=None if writing.payoff_s is None else writing.payoff_s - window_w.start_s,
+            payoff_emoji=writing.payoff_emoji,
         ),
         ffmpeg=deps.ffmpeg,
         ffprobe=deps.ffprobe,
@@ -871,6 +988,16 @@ def render_clip(item: RenderInput, *, deps: Deps | None = None, force: bool = Fa
         finally:
             shutil.rmtree(scratch, ignore_errors=True)
         _finish(row.id, item, cfg, produced)
+        # The console's frame of the clip, made before the gate so a rejected clip has one too. Never
+        # raises: a missing thumbnail must not fail the render.
+        thumbs.try_make_thumb(
+            row.id,
+            str(produced.outcome.output_path),
+            created_at=None,
+            duration_s=produced.outcome.clip_duration_s,
+            storage=deps.storage,
+            ffmpeg=deps.ffmpeg,
+        )
         if item.upload:
             upload_clip(row.id, storage=deps.storage)
         return row.id

@@ -102,6 +102,18 @@ def scheduler() -> None:
         scheduler_service.run()
 
 
+@app.command("console-media-backfill")
+def console_media_backfill(
+    limit: int = typer.Option(200, "--limit", min=1, help="Rows per step (creators: per round)."),
+) -> None:
+    """Fill clip thumbnails, source thumbnails and creator pictures for rows made before them (docs/26)."""
+    from sixstars import console_media
+
+    with _database():
+        result = console_media.backfill(limit)
+    typer.echo(json.dumps(result, indent=2, default=str))
+
+
 @discovery_app.command("run-once")
 def discovery_run_once(
     as_json: bool = typer.Option(False, "--json", help="Print the full summary as JSON."),
@@ -280,6 +292,8 @@ def clip_render_file(
     ),
     stills: str = typer.Option("", "--stills", help="Directory for stills at 1 s, 5 s, middle, end card."),
     no_music: bool = typer.Option(False, "--no-music", help="Skip music detection."),
+    payoff: float = typer.Option(-1.0, "--payoff", help="Payoff time in the file, seconds (without --ai)."),
+    payoff_emoji: str = typer.Option("", "--payoff-emoji", help="Payoff emoji (without --ai)."),
 ) -> None:
     """Render a clip from a local video without writing a clip row (for design iteration)."""
     from pathlib import Path
@@ -306,6 +320,8 @@ def clip_render_file(
             set_pairs=set_pairs,
             stills_dir=Path(stills) if stills else None,
             no_music=no_music,
+            payoff_s=payoff if payoff >= 0 else None,
+            payoff_emoji=payoff_emoji,
         )
 
     if not ai:

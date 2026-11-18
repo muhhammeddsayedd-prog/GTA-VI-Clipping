@@ -367,6 +367,62 @@ def test_clip_media(client: TestClient, world: dict[str, str], monkeypatch: pyte
     get(client, f"clips/{MISSING}/media", 404)
 
 
+def test_console_media_fields(
+    client: TestClient, world: dict[str, str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fake = FakeClipStorage()
+    monkeypatch.setattr(routes_admin, "storage_factory", lambda: fake)
+    thumb = f"clips/thumbs/test/2026/11/20/{world['clip']}.jpg"
+    db.execute("update clips set thumb_path = %s where id = %s", (thumb, world["clip"]))
+    db.execute(
+        "update creators set avatar_url = 'https://p.test/a.png', avatar_checked_at = now() where id = %s",
+        (world["creator"],),
+    )
+    db.execute(
+        "update videos set thumbnail_url = 'https://t.test/vod-320x180.jpg' where id = %s", (world["video"],)
+    )
+    db.execute(
+        "update live_sessions set thumbnail_url = 'https://t.test/live-640x360.jpg' where id = %s",
+        (world["session"],),
+    )
+
+    clips = get(client, "clips")["items"]
+    assert fake.sign_batches == 1, "a page is signed in one Storage request"
+    main = next(c for c in clips if c["id"] == world["clip"])
+    assert main["thumb_kind"] == "frame" and main["thumb_url"].startswith("https://fake.supabase.test/")
+    assert main["creator"]["avatar_url"] == "https://p.test/a.png"
+    assert all("_thumb_path" not in c and "_source_thumb" not in c for c in clips)
+    assert {"thumb_url", "thumb_kind"} <= set(get(client, f"clips/{world['clip']}"))
+
+    posts = get(client, "posts")["items"]
+    assert all(p["clip_thumb_url"] == main["thumb_url"] for p in posts if p["clip_id"] == world["clip"])
+    assert get(client, f"posts/{world['post']}")["clip_thumb_url"].startswith("https://fake.supabase.test/")
+    queue = get(client, "queue")["ranked"]["spike"][0]
+    assert queue["thumb_kind"] == "frame" and queue["creator"]["avatar_url"] == "https://p.test/a.png"
+    assert get(client, "overview")["up_next"][0]["thumb_url"].startswith("https://fake.supabase.test/")
+
+    creators = get(client, "creators")["items"]
+    assert next(c for c in creators if c["id"] == world["creator"])["avatar_url"] == "https://p.test/a.png"
+    assert get(client, f"creators/{world['creator']}")["avatar_url"] == "https://p.test/a.png"
+    assert get(client, "videos")["items"][0]["thumbnail_url"] == "https://t.test/vod-320x180.jpg"
+    assert get(client, f"videos/{world['video']}")["thumbnail_url"] == "https://t.test/vod-320x180.jpg"
+    assert get(client, "live-sessions")["items"][0]["thumbnail_url"] == "https://t.test/live-640x360.jpg"
+    assert (
+        get(client, f"live-sessions/{world['session']}")["thumbnail_url"] == "https://t.test/live-640x360.jpg"
+    )
+
+    # Storage down: the list still answers, with the source thumbnail (the spike's video).
+    fake.error = RuntimeError("storage down")
+    main = next(c for c in get(client, "clips")["items"] if c["id"] == world["clip"])
+    assert (main["thumb_url"], main["thumb_kind"]) == ("https://t.test/vod-320x180.jpg", "source")
+    # No frame and no source: null.
+    fake.error = None
+    db.execute("update clips set thumb_path = null where id = %s", (world["clip"],))
+    db.execute("update videos set thumbnail_url = null where id = %s", (world["video"],))
+    main = next(c for c in get(client, "clips")["items"] if c["id"] == world["clip"])
+    assert (main["thumb_url"], main["thumb_kind"]) == (None, None)
+
+
 def test_search(client: TestClient, world: dict[str, str]) -> None:
     def kinds(q: str) -> list[tuple[str, str]]:
         return [(r["kind"], r["href"]) for r in get(client, f"search?q={q}")["results"]]

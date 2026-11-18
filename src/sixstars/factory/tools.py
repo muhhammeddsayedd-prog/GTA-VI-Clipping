@@ -142,6 +142,31 @@ def grab_frame(source: Path, time_s: float, ffmpeg: str = "ffmpeg") -> bytes:
     return result.stdout
 
 
+def build_thumb_command(
+    source: str, destination: Path, *, time_s: float, width: int, qscale: int, ffmpeg: str = "ffmpeg"
+) -> list[str]:
+    """ffmpeg arguments that write one JPEG frame of `source` (a path or an https URL) at `time_s`,
+    scaled to `width` pixels (height kept in proportion, even). `-ss` comes before `-i`, so a remote file
+    is read from the seek point on, not from the start."""
+    command = [ffmpeg, "-hide_banner", "-loglevel", "error", "-nostdin", "-y", *_seek_args(time_s, None)]
+    command += ["-i", source, "-frames:v", "1", "-vf", f"scale={max(2, int(width))}:-2"]
+    command += ["-q:v", str(min(31, max(2, int(qscale)))), "-f", "image2", "-c:v", "mjpeg", str(destination)]
+    return command
+
+
+def grab_thumb(
+    source: str, destination: Path, *, time_s: float, width: int, qscale: int, ffmpeg: str = "ffmpeg"
+) -> Path:
+    """Write one scaled JPEG frame of `source` to `destination` (see `build_thumb_command`)."""
+    command = build_thumb_command(
+        source, destination, time_s=time_s, width=width, qscale=qscale, ffmpeg=ffmpeg
+    )
+    run(command, timeout_s=FRAME_TIMEOUT_S, what="thumbnail")
+    if not destination.is_file() or destination.stat().st_size == 0:
+        raise FfmpegError(f"no frame decoded at {time_s:.2f} s")
+    return destination
+
+
 def extract_audio(
     source: Path,
     destination: Path,

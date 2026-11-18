@@ -76,9 +76,19 @@ def test_offline_defaults_follow_the_seed_migration() -> None:
     migrations = REPO / "supabase" / "migrations"
     seed = (migrations / "0002_seed_settings.sql").read_text(encoding="utf-8")
     seed += (migrations / "0011_quality.sql").read_text(encoding="utf-8")  # adds factory.cut_snap
+    style = (migrations / "0021_viral_style.sql").read_text(encoding="utf-8")
+    # Migration 0021 moves these seeded values to the docs/27 look and adds factory.style.
+    restyled = ("factory.accent_color", "factory.end_card_s", "factory.loudness_lufs")
     for key, value in OFFLINE_DEFAULTS.items():
         if key.startswith("gate.") or key == "factory.watermark":
             continue  # gate profiles are checked below; the watermark was changed by migration 0003
+        if key in restyled:
+            assert f"set value = '{json.dumps(value)}'::jsonb\n where key = '{key}'" in style, key
+            continue
+        if key == "factory.style":
+            raw = style.split("('factory.style',", 1)[1].split("'", 2)[1]
+            assert json.loads(raw) == value
+            continue
         assert f"('{key}', '{json.dumps(value)}'::jsonb" in seed, key
     cfg = FactoryConfig.offline("spike", {"factory.crf": 18, "vod.whisper_model": "small"})
     assert cfg.params.crf == 18 and cfg.whisper_model == "small" and cfg.max_len_s == 45.0

@@ -32,6 +32,8 @@ HASHTAGS_MIN = 3
 HASHTAGS_MAX = 5
 COMMENTARY_MAX_WORDS = 12
 KEYWORDS_PER_LINE = 2
+# An emoji with skin-tone or ZWJ parts is several code points; two such emoji fit.
+PAYOFF_EMOJI_MAX_CHARS = 8
 EVIDENCE_MAX_WORDS = 20
 TOPIC_MAX_CHARS = 80
 PLATFORMS = ("tiktok", "instagram", "youtube", "twitch")
@@ -191,6 +193,10 @@ class ClipWriting(Reply):
     commentary: str | None = Field(default=None, description="Max 12 words, or null.")
     topic: str = Field(min_length=1, description="Lowercase slug, words joined by hyphens.")
     keywords: list[KeywordHighlight] = Field(default_factory=list)
+    payoff_s: float | None = Field(
+        default=None, description="When the payoff lands (seconds, window-file clock), or null."
+    )
+    payoff_emoji: str | None = Field(default=None, description="One emoji for the payoff, or null.")
     spoiler: bool
     safety: SafetyFlags
     score_parts: ScoreParts
@@ -255,10 +261,24 @@ class ClipWriting(Reply):
             raise ValueError(f"topic has {len(slug)} characters, the maximum is {TOPIC_MAX_CHARS}")
         return slug
 
+    @field_validator("payoff_emoji")
+    @classmethod
+    def _payoff_emoji(cls, value: str | None) -> str | None:
+        """The payoff emoji is a decoration: anything that is not one or two emoji is dropped, not an
+        error (letters, digits or more than a few characters)."""
+        if value is None:
+            return None
+        clean = "".join(value.split())
+        if not clean or len(clean) > PAYOFF_EMOJI_MAX_CHARS or _WORD_RE.search(clean):
+            return None
+        return clean
+
     @model_validator(mode="after")
     def _order(self) -> Self:
         if self.start_s >= self.end_s:
             raise ValueError("start_s must be less than end_s")
+        if self.payoff_s is not None and not self.start_s <= self.payoff_s <= self.end_s:
+            self.payoff_s = None
         return self
 
     @property

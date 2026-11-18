@@ -80,7 +80,7 @@ def fake_video(index: int, user_id: str | None = None) -> TwitchVideo:
         created_at=FIXED_TIME,
         published_at=FIXED_TIME,
         url=f"https://www.twitch.tv/videos/{index}",
-        thumbnail_url="",
+        thumbnail_url=f"https://example.test/vod/{index}-%{{width}}x%{{height}}.jpg",
         view_count=50_000 - index * 1000,
         language="en",
         type="archive",
@@ -176,6 +176,16 @@ class FakeTwitchClient(_Recorder, TwitchClient):
             and (is_featured is None or clip.is_featured == is_featured)
         ]
         return sorted(found, key=lambda clip: -clip.view_count)[:max_items]
+
+    def get_videos_by_id(self, ids: Sequence[str]) -> list[TwitchVideo]:
+        self._record("get_videos_by_id", ids=list(ids))
+        wanted = set(ids)
+        return [video for video in self.videos if video.id in wanted]
+
+    def get_clips_by_id(self, ids: Sequence[str]) -> list[TwitchClip]:
+        self._record("get_clips_by_id", ids=list(ids))
+        wanted = set(ids)
+        return [clip for clip in self.clips if clip.id in wanted]
 
     def get_users(self, ids: Sequence[str]) -> list[TwitchUser]:
         self._record("get_users", ids=list(ids))
@@ -315,6 +325,23 @@ def _fake_video_item(video_id: str) -> dict[str, Any]:
             "channelTitle": "Fake Channel",
             "publishedAt": "2026-11-17T10:00:00Z",
             "liveBroadcastContent": "none",
+            "thumbnails": {
+                "default": {
+                    "url": f"https://i.example.test/vi/{video_id}/default.jpg",
+                    "width": 120,
+                    "height": 90,
+                },
+                "medium": {
+                    "url": f"https://i.example.test/vi/{video_id}/mqdefault.jpg",
+                    "width": 320,
+                    "height": 180,
+                },
+                "high": {
+                    "url": f"https://i.example.test/vi/{video_id}/hqdefault.jpg",
+                    "width": 480,
+                    "height": 360,
+                },
+            },
         },
         "status": {"uploadStatus": "processed", "privacyStatus": "public", "embeddable": True},
         "contentDetails": {"duration": "PT2H", "licensedContent": False},
@@ -343,7 +370,19 @@ def fake_search_item(
 def _fake_channel_item(channel_id: str) -> dict[str, Any]:
     return {
         "id": channel_id,
-        "snippet": {"title": f"Channel {channel_id}", "description": "Fake channel", "country": "US"},
+        "snippet": {
+            "title": f"Channel {channel_id}",
+            "description": "Fake channel",
+            "country": "US",
+            "thumbnails": {
+                "default": {"url": f"https://yt.example.test/{channel_id}/88.jpg", "width": 88, "height": 88},
+                "medium": {
+                    "url": f"https://yt.example.test/{channel_id}/240.jpg",
+                    "width": 240,
+                    "height": 240,
+                },
+            },
+        },
         "statistics": {"subscriberCount": "250000", "viewCount": "90000000", "videoCount": "800"},
     }
 

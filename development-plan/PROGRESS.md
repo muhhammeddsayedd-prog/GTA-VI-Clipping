@@ -373,3 +373,29 @@ FakeUploadPostClient()                 .uploads .deleted .upload_error .platform
 - The final full run was made in a separate, freshly created database on that server (`.../m02_test`, dropped afterwards): **226 passed, 10 skipped**, with migrations 0001 to 0003 applied from scratch by the fixture.
 - Two runs against the shared `postgres` database on 54330 failed in different M01 tests each time (job claiming, savepoints, an events insert), while the same commit passes in an isolated database. The likely cause is another test session using the same database at the same time (the fixtures truncate `jobs` and rewrite `settings`); this was not proven. **Agents that run integration tests in parallel should each use their own database**: `create database <name>` on the server and put the name at the end of `TEST_DATABASE_URL`.
 - `tests/integration/conftest.py` changed: migrations after `0002` are applied on every test session (they must be idempotent), so a database migrated by an older checkout catches up. `api_usage` was added to the tables truncated before each test.
+
+---
+
+## M06 addendum — Viral editing style
+
+**Date:** 2026-11-18 UTC · **Branch:** `m06-viral-style` (from `develop` at `450ca53`)
+
+### What was built
+
+- Analysis of three reference clips with millions of views, plus short-form research: `docs/27-style-reference.md`.
+- Setting `factory.style` (migration `0021_viral_style.sql`): `factory/style.py` (`StyleRules`, classic look when the setting is missing or invalid), `factory/effects.py` (ebur128 envelope parsing, punch-in selection, SFX cue plan), `lines.chunk_line` / `collapse_repeats` (1–2-word captions, `X2` repeats), `subtitles.chunk_events` / `payoff_events` / title-bar hook, `layout.ZoomCut` / `PunchIns` (step zoom, full-frame close-up branch), audio extra SFX tracks + compressor, `render.build_envelope_command`.
+- Clip writer P2: optional `payoff_s` and `payoff_emoji` (invalid values are dropped, not repaired); trim guidance to end within ~1 s of the payoff.
+- Assets: `fonts/Anton-Regular.ttf` (OFL), generated `sfx/whoosh.wav`, `impact.wav`, `boom.wav` (CC0).
+- `clip render-file --payoff/--payoff-emoji`; log event `clip_edit_effects`.
+- Tests: `tests/unit/factory/test_factory_style_effects.py`; the offline-defaults drift test now also reads migration 0021.
+
+### Deviations
+
+- Owner decisions: layout A keeps gameplay on top; end card off (`factory.end_card_s` 0 instead of a new flag); white captions with a magenta accent (`#FF2BD6`).
+- `factory.loudness_lufs` -14 -> -12 with the compressor. `punchin_db` 5 instead of the planned 8 (a real stream peaked only 5.8 dB over its median); caption size 150 instead of 104 (104 looked small next to the references).
+- Emoji use the bundled monochrome Noto Emoji font, not Twemoji PNGs.
+
+### Open issues / next
+
+- Merge to `develop`, apply 0021 on staging, look at a few staging renders before `main`. Clips rendered with the 1.5 s end card that are gated after 0021 is applied expect a 1.5 s shorter file; apply it when the render queue is empty.
+- Not done: generated explainer graphics, face stickers, speaker-coloured captions (docs/27 section 4).

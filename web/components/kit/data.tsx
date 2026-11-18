@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Fragment, useMemo, type ReactNode } from "react";
+import { Fragment, useMemo, useState, type ReactNode } from "react";
 import {
   AlertTriangle, ArrowUpRight, Bolt, Check, ChevronLeft, ChevronRight, CircleDot, Compass, Film, Info, Radio, Send, Settings2, ShieldAlert, User, Video, X,
 } from "lucide-react";
@@ -319,10 +319,29 @@ export function Scene({ seed }: { seed: number }) {
     </div>
   );
 }
-export function Thumb({ seed, hook, dur, live, width = "100%", children }: { seed: string; hook?: string | null; dur?: string; live?: boolean; width?: number | string; children?: ReactNode }) {
+/**
+ * 9:16 clip tile. `src` is a real image: a frame of the rendered clip ("frame") or the 16:9 thumbnail of the
+ * source video ("source", shown whole over a blurred copy of itself). Without one, or if it fails to load,
+ * a generated scene stands in.
+ */
+export function Thumb({ seed, hook, dur, live, width = "100%", children, src, kind = "frame" }: {
+  seed: string; hook?: string | null; dur?: string; live?: boolean; width?: number | string; children?: ReactNode;
+  src?: string | null; kind?: "frame" | "source" | null;
+}) {
+  const [broken, setBroken] = useState<string | null>(null);
+  const img = src && broken !== src ? src : null;
   return (
-    <div className="thumb" style={{ width }}>
-      <Scene seed={seedOf(seed)} />
+    <div className={`thumb${img ? " has-img" : ""}`} style={{ width }}>
+      {img ? (
+        kind === "source" ? (
+          <>
+            <img className="thumb-bg" src={img} alt="" aria-hidden loading="lazy" decoding="async" referrerPolicy="no-referrer" />
+            <img className="thumb-src" src={img} alt="" loading="lazy" decoding="async" referrerPolicy="no-referrer" onError={() => setBroken(img)} />
+          </>
+        ) : (
+          <img className="thumb-img" src={img} alt="" loading="lazy" decoding="async" onError={() => setBroken(img)} />
+        )
+      ) : <Scene seed={seedOf(seed)} />}
       <div className="tl">{live && <span className="livebadge">LIVE · JUST HAPPENED</span>}</div>
       {dur && <div className="tr"><span className="dur">{dur}</span></div>}
       {hook && <div className="ov"><div className="hook">{hook}</div></div>}

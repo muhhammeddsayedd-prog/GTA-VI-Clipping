@@ -25,7 +25,7 @@ export function LoginArt() {
       <div style={{ position: "relative", zIndex: 2 }}>
         <div className="row" style={{ gap: 12 }}>
           <Logo />
-          <div><b style={{ fontSize: 17 }}>6 STARS</b><div style={{ fontSize: 11, color: "#D7D2FF" }}>Clips control console</div></div>
+          <div><b style={{ fontSize: 17 }}>VI STARS CLIPPY</b><div style={{ fontSize: 11, color: "#D7D2FF" }}>Clips control console</div></div>
         </div>
         <BlurText text="Every stream, spike, clip and post — in one place." className="login-headline" delay={60} animateBy="words" direction="top" />
         <p style={{ color: "#D7D2FF", maxWidth: 380, lineHeight: 1.6, margin: 0 }}>

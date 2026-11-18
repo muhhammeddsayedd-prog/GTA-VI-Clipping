@@ -53,8 +53,8 @@ from typing import Any, Final
 from sixstars import db, settings, usage
 from sixstars.clients._http import ApiError, ClientError
 from sixstars.clients.apify import ApifyClient, build_youtube_search_input, normalise_youtube_item
-from sixstars.clients.twitch import TwitchClient
-from sixstars.clients.youtube import CATEGORY_GAMING, IDS_PER_REQUEST_MAX, YouTubeClient
+from sixstars.clients.twitch import STREAM_THUMB_SIZE, VIDEO_THUMB_SIZE, TwitchClient, fill_thumbnail
+from sixstars.clients.youtube import CATEGORY_GAMING, IDS_PER_REQUEST_MAX, YouTubeClient, pick_thumbnail
 from sixstars.config import env
 from sixstars.discovery import health, scoring, store
 from sixstars.discovery.config import DiscoveryConfig
@@ -217,6 +217,7 @@ def twitch_candidates(client: TwitchClient, config: DiscoveryConfig, now: dateti
             viewers=stream.viewer_count,
             started_at=stream.started_at,
             has_chat=True,
+            thumbnail_url=fill_thumbnail(stream.thumbnail_url, *STREAM_THUMB_SIZE),
         )
         for stream in streams
     ]
@@ -241,6 +242,7 @@ def twitch_candidates(client: TwitchClient, config: DiscoveryConfig, now: dateti
                 started_at=video.created_at,
                 duration_s=video.duration_s,
                 has_chat=True,
+                thumbnail_url=fill_thumbnail(video.thumbnail_url, *VIDEO_THUMB_SIZE),
             )
         )
     return found
@@ -781,6 +783,7 @@ def candidate_from_api(
         "published_at": parse_time(snippet.get("publishedAt")),
         "started_at": started,
         "followers": stub.followers if stub else None,
+        "thumbnail_url": pick_thumbnail(item),
     }
     if state == "live":
         viewers = _count(live_details.get("concurrentViewers"))

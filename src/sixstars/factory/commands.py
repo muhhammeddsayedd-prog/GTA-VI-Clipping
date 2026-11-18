@@ -53,8 +53,16 @@ def parse_overrides(pairs: Sequence[str]) -> dict[str, object]:
     return values
 
 
-def manual_writing(item: writer.WriterInput, hook: str, keywords: Sequence[str]) -> ClipWriting:
-    """A clip writer reply typed by hand: the window as given, the hook and keywords from the options.
+def manual_writing(
+    item: writer.WriterInput,
+    hook: str,
+    keywords: Sequence[str],
+    *,
+    payoff_s: float | None = None,
+    payoff_emoji: str = "",
+) -> ClipWriting:
+    """A clip writer reply typed by hand: the window as given, the hook, keywords and payoff from the
+    options (`payoff_s` on the writer's clock).
 
     Each keyword is highlighted on every subtitle line that contains it.
     """
@@ -73,6 +81,8 @@ def manual_writing(item: writer.WriterInput, hook: str, keywords: Sequence[str])
             "hashtags": ["test", "clip", "render"],
             "topic": "render-file-test",
             "keywords": highlights,
+            "payoff_s": payoff_s,
+            "payoff_emoji": payoff_emoji or None,
             "spoiler": False,
             "safety": {},
             "score": 5,
@@ -148,6 +158,8 @@ def render_file(
     set_pairs: Sequence[str] = (),
     stills_dir: Path | None = None,
     no_music: bool = False,
+    payoff_s: float | None = None,
+    payoff_emoji: str = "",
 ) -> int:
     """Render a local video file without writing a clip row.
 
@@ -192,7 +204,9 @@ def render_file(
     def choose_writing(writer_input: writer.WriterInput) -> ClipWriting:
         if use_ai:
             return writer.write(writer_input, lane=ai_lane)
-        return manual_writing(writer_input, hook, keywords)
+        # `payoff_s` is file time; the writer's clock starts at the padded window.
+        payoff = None if payoff_s is None else payoff_s - start + writer_input.proposed.start_s
+        return manual_writing(writer_input, hook, keywords, payoff_s=payoff, payoff_emoji=payoff_emoji)
 
     def choose_layout(media: tools.MediaInfo, time_s: float) -> Layout:
         if forced_box is not None:
