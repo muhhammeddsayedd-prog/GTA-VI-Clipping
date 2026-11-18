@@ -145,6 +145,8 @@ def test_one_video_refused_on_every_port_does_not_hold_the_others(lane: Lane, st
     no_platform_block = db.fetch_all("select 1 from events where type = 'vod.download_blocked'")
     assert no_platform_block == []
 
+    # The lane's clock is fixed in the past: keep the refused video's retry in the real future.
+    db.execute("update jobs set run_after = now() + interval '1 hour' where status = 'queued'")
     lane.ytdlp.section_results = []  # the next video is served
     other = lane.video("vodtest0002")
     lane.enqueue(other)
