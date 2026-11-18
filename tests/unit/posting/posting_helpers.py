@@ -24,7 +24,7 @@ DEFAULT_SETTINGS: dict[str, object] = {
     "posting.spike_max_age_s": 1800,
     "posting.freshness_half_life_h": {"live": 6, "vod": 24},
     "posting.max_clip_age_h": 72,
-    "posting.first_comment": "Follow @6starsclipping for the best GTA 6 moments every hour 🎮⭐",
+    "posting.first_comment": "Follow {handle} for the best GTA 6 moments every hour 🎮⭐",
     "posting.base_hashtags": ["#GTA6", "#GTAVI", "#GTA6Clips", "#Gaming"],
     "posting.youtube_extra_hashtags": ["#Shorts"],
     "posting.platform_max_24h": {"tiktok": 15, "instagram": 50, "youtube": 30},
@@ -70,7 +70,7 @@ def production_accounts() -> dict[str, Account]:
             False,
         ),
         Account("instagram_main", Platform.INSTAGRAM, "default", "@6starsclippy", BOTH, 45, 10, 900),
-        Account("youtube_main", Platform.YOUTUBE, "default", "@6starsclips-m3x", BOTH, 28, 4, 900, "public"),
+        Account("youtube_main", Platform.YOUTUBE, "default", "@6starsClips-m3x", BOTH, 28, 4, 900, "public"),
     ]
     return {row.id: row for row in rows}
 

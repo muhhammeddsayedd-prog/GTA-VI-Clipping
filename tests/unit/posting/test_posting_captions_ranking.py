@@ -23,7 +23,13 @@ from sixstars.posting.captions import (
 from sixstars.posting.models import Platform
 from sixstars.posting.ranking import freshness, half_life_h, is_expired, rank_score
 
-FIRST_COMMENT = "Follow @6starsclipping for the best GTA 6 moments every hour 🎮⭐"
+FIRST_COMMENT = "Follow {handle} for the best GTA 6 moments every hour 🎮⭐"
+
+
+def first_comment(handle: str) -> str:
+    return FIRST_COMMENT.replace("{handle}", handle)
+
+
 TAGS = "#GTA6 #GTAVI #GTA6Clips #Gaming #stunt #viceCity"
 CAPTION = f"Nobody expected this jump 😱\n🎥 @SomeStreamer on YouTube\n{TAGS}"
 
@@ -178,13 +184,18 @@ def test_a_title_of_only_angle_brackets_is_refused() -> None:
 def test_tiktok_fields() -> None:
     fields = build_fields(hourly_clip(), production_accounts()["tiktok_main"], make_params())
 
-    assert fields == {"title": CAPTION, "privacy_level": "PUBLIC_TO_EVERYONE", "first_comment": FIRST_COMMENT}
+    assert fields == {
+        "title": CAPTION,
+        "privacy_level": "PUBLIC_TO_EVERYONE",
+        "first_comment": first_comment("@6starsclipping"),
+    }
 
 
 def test_instagram_fields() -> None:
     fields = build_fields(hourly_clip(), production_accounts()["instagram_main"], make_params())
 
-    assert fields == {"title": CAPTION, "media_type": "REELS", "first_comment": FIRST_COMMENT}
+    expected = first_comment("@6starsclippy")
+    assert fields == {"title": CAPTION, "media_type": "REELS", "first_comment": expected}
 
 
 def test_youtube_fields() -> None:
@@ -197,7 +208,7 @@ def test_youtube_fields() -> None:
         "categoryId": "20",
         "privacyStatus": "public",
         "selfDeclaredMadeForKids": False,
-        "first_comment": FIRST_COMMENT,
+        "first_comment": first_comment("@6starsClips-m3x"),
     }
 
 
@@ -245,6 +256,23 @@ def test_the_first_comment_comes_from_settings() -> None:
     assert build_fields(hourly_clip(), acct("instagram_main"), params)["first_comment"] == (
         "Follow for more (staging test)"
     )
+
+
+def test_each_platform_names_its_own_account_in_the_first_comment() -> None:
+    params = make_params(first_comment="Follow {handle} for more")
+    comments = {
+        account.id: build_fields(hourly_clip(), account, params)["first_comment"]
+        for account in production_accounts().values()
+    }
+    assert comments["tiktok_main"] == "Follow @6starsclipping for more"
+    assert comments["instagram_main"] == "Follow @6starsclippy for more"
+    assert comments["youtube_main"] == "Follow @6starsClips-m3x for more"
+
+
+def test_a_handle_stored_without_the_at_sign_still_gets_one() -> None:
+    params = make_params(first_comment="Follow {handle}")
+    fields = build_fields(hourly_clip(), acct("instagram_main", handle="6starsclippy"), params)
+    assert fields["first_comment"] == "Follow @6starsclippy"
 
 
 def test_the_client_adds_user_platform_and_request_id_itself() -> None:

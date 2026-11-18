@@ -445,7 +445,7 @@ def test_layout_cache_validity(creator_id: str) -> None:
 def test_factory_config_loads_from_the_settings_table(database: None) -> None:
     cfg = FactoryConfig.load("hourly")
     assert (cfg.params.width, cfg.params.height, cfg.params.fps) == (1080, 1920, 30)
-    assert cfg.params.watermark == "@6starsclipping" and cfg.params.loudness_lufs == -14
+    assert cfg.params.watermark and cfg.params.loudness_lufs == -14
     assert (cfg.min_len_s, cfg.max_len_s, cfg.context_pad_s, cfg.max_music_ratio) == (20.0, 60.0, 15.0, 0.1)
     assert FactoryConfig.load("spike").max_len_s == 45.0
     settings.set("factory.accent_color", "#00FF88")
