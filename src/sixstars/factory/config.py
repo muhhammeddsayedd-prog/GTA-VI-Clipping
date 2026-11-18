@@ -4,13 +4,15 @@ per render from the `settings` table.
 """
 
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Literal
 
 from sixstars import settings
+from sixstars.factory.anchor import CutRules
 from sixstars.factory.params import FactoryParams
 from sixstars.factory.pauses import SnapRules
 from sixstars.factory.style import VIRAL_STYLE, StyleRules
+from sixstars.scoring import config as scoring_config
 
 Lane = Literal["spike", "hourly"]
 GateProfile = Literal["hourly", "express"]
@@ -84,6 +86,7 @@ class FactoryConfig:
     max_music_ratio: float
     snap: SnapRules = SnapRules()
     style: StyleRules = StyleRules()
+    cut_rules: CutRules | None = None  # scoring_config cut.adaptive (None: the classic cut)
 
     @classmethod
     def from_mapping(cls, values: Mapping[str, object], lane: str) -> "FactoryConfig":
@@ -131,9 +134,20 @@ class FactoryConfig:
         values["factory.cut_snap"] = settings.get("factory.cut_snap", None)
         # Absent before migration 0021: the classic look.
         values["factory.style"] = settings.get("factory.style", None)
-        return cls.from_mapping(values, lane)
+        return with_cut_rules(cls.from_mapping(values, lane), scoring_config.flag("cut.adaptive"))
 
     @classmethod
     def offline(cls, lane: str, overrides: Mapping[str, object] | None = None) -> "FactoryConfig":
         """The documented defaults plus `overrides`, without a database (design iteration only)."""
         return cls.from_mapping({**OFFLINE_DEFAULTS, **(overrides or {})}, lane)
+
+
+def with_cut_rules(cfg: FactoryConfig, flag: Mapping[str, object] | None) -> FactoryConfig:
+    """`cut.adaptive`: the writer's length limits become the flag's `min_s`..`max_s` (the maximum never
+    above the lane's own). Unchanged while the flag is off. Pure."""
+    if flag is None:
+        return cfg
+    rules = CutRules.from_flag(flag)
+    high = min(rules.max_s, cfg.max_len_s)
+    low = min(rules.min_s, high)
+    return replace(cfg, min_len_s=low, max_len_s=high, cut_rules=rules)

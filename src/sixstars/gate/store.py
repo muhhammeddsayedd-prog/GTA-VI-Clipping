@@ -380,8 +380,11 @@ def store_decision(
     now: datetime,
     *,
     boosted: bool = False,
+    rank_bonus: float = 0.0,
 ) -> bool:
     """Write the verdict on the clip and its event. Call inside `decision_lock()`.
+
+    `rank_bonus` (the first-time boost's rank points) is added to `rank_score`.
 
     The ranking stub of M07: `rank_score` is the clip's score, or the posting engine's demotion rank when
     the clip came from the spike lane (`boosted`), so that it goes to the top of the hourly queue.
@@ -389,7 +392,7 @@ def store_decision(
     """
     score = _float(row.raw["score"])
     if decision.verdict is Verdict.APPROVE:
-        rank = None if score is None else (demoted_rank(score) if boosted else score)
+        rank = None if score is None else (demoted_rank(score) if boosted else score) + rank_bonus
         changed = db.execute(
             """
             update clips set status = 'approved', approved_at = %s, lane = %s, gate_profile = %s,

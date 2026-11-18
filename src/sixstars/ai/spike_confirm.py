@@ -8,11 +8,13 @@ least `spikes.ab_min_confidence`, otherwise the spike is rejected.
 `decide` is pure; `apply` writes the result (tier, confidence, reason, status) and an event.
 """
 
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from typing import Literal
+from typing import Any, Literal
 
 from sixstars import db, events, settings
 from sixstars.ai.schemas import SpikeVerdict
+from sixstars.scoring import log as scoring_log
 
 Tier = Literal["S", "A", "B"]
 FinalTier = Literal["S", "A", "B", "rejected"]
@@ -55,9 +57,61 @@ def decide(provisional: Tier, verdict: SpikeVerdict, thresholds: Thresholds) -> 
     return TierDecision(tier, "confirmed", confidence, f"{verdict.moment_type}: {verdict.one_line}")
 
 
-def apply(spike_id: str, provisional: Tier, verdict: SpikeVerdict) -> TierDecision:
-    """Decide with the thresholds from settings, update the `spikes` row and record an event."""
-    decision = decide(provisional, verdict, Thresholds.from_settings())
+def non_content(verdict: SpikeVerdict, keep_reject_terms: Sequence[str]) -> str | None:
+    """The term that marks a P1 reject as a non-content spike (giveaway, raid, ...), or None. Pure."""
+    text = f"{verdict.noise_reason or ''} {verdict.one_line}".lower()
+    return next((term for term in keep_reject_terms if term and term.lower() in text), None)
+
+
+def decide_fast(
+    verdict: SpikeVerdict, normal: TierDecision, keep_reject_terms: Sequence[str], why: str
+) -> TierDecision:
+    """`fastpath.live`: a strong live spike is clipped as tier S whatever the chat-only P1 check says,
+    unless P1 rejected it as a non-content spike. Pure."""
+    if normal.status == "rejected" and non_content(verdict, keep_reject_terms) is not None:
+        return normal
+    reason = f"fast path ({why}): {verdict.moment_type}: {verdict.one_line}"
+    if normal.status == "rejected":
+        reason = f"fast path ({why}) over P1 reject [{normal.reason}]"
+    return TierDecision("S", "confirmed", verdict.confidence, reason[:500])
+
+
+def apply(
+    spike_id: str,
+    provisional: Tier,
+    verdict: SpikeVerdict,
+    *,
+    fast: tuple[Sequence[str], str] | None = None,
+    sub_scores: Mapping[str, Any] | None = None,
+    creator_id: str | None = None,
+) -> TierDecision:
+    """Decide with the thresholds from settings, update the `spikes` row and record an event.
+
+    `fast` is `(keep_reject_terms, why)` when the spike takes the live fast path (`decide_fast`).
+    The decision and `sub_scores` go to `scoring_log` (stage `spike.confirm`)."""
+    normal = decide(provisional, verdict, Thresholds.from_settings())
+    decision = normal if fast is None else decide_fast(verdict, normal, fast[0], fast[1])
+    scoring_log.record(
+        "spike.confirm",
+        decision=decision.status,
+        reason=decision.reason,
+        spike_id=spike_id,
+        creator_id=creator_id,
+        sub_scores={
+            **dict(sub_scores or {}),
+            "provisional_tier": provisional,
+            "tier": decision.tier,
+            "p1_is_moment": verdict.is_moment,
+            "p1_confidence": verdict.confidence,
+            "p1_moment_type": verdict.moment_type,
+            "p1_status": normal.status,
+            "fast_path": fast is not None,
+            "fast_path_overrode_reject": fast is not None
+            and normal.status == "rejected"
+            and decision.status == "confirmed",
+        },
+    )
+    scoring_log.stamp("spikes", spike_id)
     db.execute(
         """
         update spikes

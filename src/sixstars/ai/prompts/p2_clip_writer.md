@@ -76,6 +76,7 @@ Window file length: {window_s} s
 Proposed cut: start_s {proposed_start_s}, end_s {proposed_end_s}
 spike_floor_s (latest allowed start): {spike_floor_s}
 Clip length must be between {min_len_s} and {max_len_s} seconds.
+{cut_guidance}
 
 Chat around the peak (seconds from the start of the window file):
 {chat}

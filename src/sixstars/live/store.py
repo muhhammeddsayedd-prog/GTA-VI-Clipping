@@ -181,6 +181,26 @@ def save_bots(session_id: str, names: frozenset[str]) -> None:
     db.execute("update live_sessions set bot_names = %s where id = %s", (sorted(names), session_id))
 
 
+def save_chat_baseline(session_id: str, baseline: Mapping[str, Any]) -> None:
+    """Store the session's current chat baseline (`spikes.baseline.to_json`)."""
+    db.execute(
+        "update live_sessions set chat_baseline = %s where id = %s", (Jsonb(dict(baseline)), session_id)
+    )
+
+
+def prior_chat_baselines(creator_id: str, platform: str, session_id: str, limit: int) -> list[Any]:
+    """The stored chat baselines of the creator's most recent other sessions on the platform."""
+    rows = db.fetch_all(
+        """
+        select chat_baseline from live_sessions
+        where creator_id = %s and platform = %s and id <> %s and chat_baseline is not null
+        order by coalesce(started_at, assigned_at) desc nulls last limit %s
+        """,
+        (creator_id, platform, session_id, max(1, limit)),
+    )
+    return [row["chat_baseline"] for row in rows]
+
+
 def finish(
     session_id: str, status: str, now: datetime, reason: str, data: Mapping[str, Any] | None = None
 ) -> bool:
@@ -249,6 +269,30 @@ def close_spike(spike_id: str, status: str, reason: str, *, event: str, level: e
     )
     events.emit(
         event, level=level, entity_type="spike", entity_id=spike_id, message=reason[:500], service=SERVICE
+    )
+
+
+def merge_spike(spike_id: str, into_spike_id: str, reason: str) -> None:
+    """`merge.keep_stronger`: the spike was replaced by a stronger one inside the merge gap."""
+    db.execute(
+        "update spikes set status = 'merged', merged_into = %s, claude_reason = coalesce(claude_reason, %s) "
+        "where id = %s",
+        (into_spike_id, reason[:500], spike_id),
+    )
+    events.emit(
+        "live.spike_merged",
+        entity_type="spike",
+        entity_id=spike_id,
+        message=reason[:500],
+        data={"merged_into": into_spike_id},
+        service=SERVICE,
+    )
+
+
+def cancel_queued_job(job_id: int) -> bool:
+    """Cancel a job that has not started. True when it was still queued."""
+    return (
+        db.execute("update jobs set status = 'cancelled' where id = %s and status = 'queued'", (job_id,)) > 0
     )
 
 

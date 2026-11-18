@@ -18,6 +18,7 @@ from sixstars.chat.models import ChatMessage
 
 _WORD_RE: Final = re.compile(r"[^\W_]+")
 _REPEAT_RE: Final = re.compile(r"(.)\1+")
+_CUSTOM_EMOJI_RE: Final = re.compile(r":[A-Za-z0-9_][A-Za-z0-9_\-]*:")
 PREFIX_MARK: Final = "*"
 
 
@@ -31,6 +32,16 @@ def tokenise(text: str) -> list[str]:
     return [squeeze(word) for word in _WORD_RE.findall(text.upper())]
 
 
+def is_burst(tokens: Sequence[str], burst_min: int) -> bool:
+    """True when one word makes up `burst_min` or more of the message's words ("KEKW KEKW KEKW")."""
+    counts: dict[str, int] = {}
+    for token in tokens:
+        counts[token] = counts.get(token, 0) + 1
+        if counts[token] >= burst_min:
+            return True
+    return False
+
+
 @dataclass(frozen=True, slots=True)
 class TokenMatcher:
     """A compiled token list (`spikes.reaction_tokens` or `spikes.clip_tokens`)."""
@@ -39,10 +50,15 @@ class TokenMatcher:
     prefixes: tuple[str, ...]
     phrases: tuple[str, ...]
     symbols: tuple[str, ...]
+    burst_min: int = 0  # a message repeating one word this many times matches (0 = off)
+    custom_emoji: bool = False  # a YouTube custom emoji (":name:") matches
 
     @classmethod
-    def from_tokens(cls, tokens: Iterable[str]) -> "TokenMatcher":
-        """Sort the tokens of a setting into whole words, word prefixes, phrases and symbols."""
+    def from_tokens(
+        cls, tokens: Iterable[str], *, burst_min: int = 0, custom_emoji: bool = False
+    ) -> "TokenMatcher":
+        """Sort the tokens of a setting into whole words, word prefixes, phrases and symbols. `burst_min`
+        and `custom_emoji` are the `reactions.extended` rules (scoring_config)."""
         words: set[str] = set()
         prefixes: set[str] = set()
         phrases: set[str] = set()
@@ -60,15 +76,26 @@ class TokenMatcher:
                 prefixes.add(parts[0])
             else:
                 words.add(parts[0])
-        return cls(frozenset(words), tuple(sorted(prefixes)), tuple(sorted(phrases)), tuple(sorted(symbols)))
+        return cls(
+            frozenset(words),
+            tuple(sorted(prefixes)),
+            tuple(sorted(phrases)),
+            tuple(sorted(symbols)),
+            burst_min=max(0, burst_min),
+            custom_emoji=custom_emoji,
+        )
 
     def matches(self, text: str, words: Sequence[str] | None = None) -> bool:
         """True when the message contains at least one token. `words` is `tokenise(text)` if already made."""
         if any(symbol in text for symbol in self.symbols):
             return True
+        if self.custom_emoji and _CUSTOM_EMOJI_RE.search(text):
+            return True
         tokens = tokenise(text) if words is None else words
         if not tokens:
             return False
+        if self.burst_min >= 2 and len(tokens) >= self.burst_min and is_burst(tokens, self.burst_min):
+            return True
         if any(token in self.words for token in tokens):
             return True
         if self.prefixes and any(token.startswith(self.prefixes) for token in tokens):
