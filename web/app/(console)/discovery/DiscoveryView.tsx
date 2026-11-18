@@ -83,12 +83,12 @@ function Sources({ d, lastRun }: { d: Discovery; lastRun: Event | undefined }) {
   const vodBlocks = readBlocks(d.source_health.vod);
   const liveBlocks = readBlocks(d.source_health.live);
   const meter = (k: string) => {
-    if (k === "youtube_search_api") return { pct: (q.search_calls_today / Math.max(q.search_calls_limit, 1)) * 100, label: `${q.search_calls_today} / ${q.search_calls_limit} calls today` };
+    if (k === "youtube_search_api") return { pct: (q.search_calls_today / Math.max(q.search_calls_limit, 1)) * 100, label: `${q.search_calls_today} / ${q.search_calls_limit} calls today (resets 00:00 Pacific)` };
     if (k === "apify") {
       const pct = (q.apify_today_usd / Math.max(q.apify_daily_budget_usd, 0.01)) * 100;
       return { pct, label: `${fmtUsd(q.apify_today_usd)} / ${fmtUsd(q.apify_daily_budget_usd)} today · month ${fmtUsd(q.apify_month_usd)} / ${fmtUsd(q.apify_monthly_budget_usd, 0)}`, tone: pct > 90 ? ("red" as const) : pct > 50 ? ("amber" as const) : undefined };
     }
-    if (k === "youtube_api") return { pct: (q.youtube_units_today / Math.max(q.youtube_units_limit, 1)) * 100, label: `${fmtNum(q.youtube_units_today)} / ${fmtNum(q.youtube_units_limit)} quota units today` };
+    if (k === "youtube_api") return { pct: (q.youtube_units_today / Math.max(q.youtube_units_limit, 1)) * 100, label: `${fmtNum(q.youtube_units_today)} / ${fmtNum(q.youtube_units_limit)} quota units today (resets 00:00 Pacific)` };
     return undefined;
   };
   return (

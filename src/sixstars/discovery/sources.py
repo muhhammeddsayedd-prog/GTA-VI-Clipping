@@ -11,7 +11,8 @@ uses free or nearly free sources:
 1. yt-dlp search (`ytsearch.py`): live streams and recent videos per search term. Free.
 2. Channel RSS feeds of creators we already know (a rotating slice per pass). Free.
 3. YouTube Data API `videos.list`, 1 quota unit per 50 videos, for what the listings lack: start and
-   publish times, likes, comments, language, live state. Capped by `discovery.youtube_quota_daily_units`.
+   publish times, likes, comments, language, live state. Capped by
+   `discovery.youtube_quota_daily_units` per quota day (from midnight Pacific).
 4. Apify: one small run every `discovery.apify_interval_s`, alternating live and recent, started in one
    pass and read in a later one, behind a daily and a monthly spend guard. Discovery works without it.
 
@@ -56,7 +57,7 @@ from sixstars.clients.apify import ApifyClient, build_youtube_search_input, norm
 from sixstars.clients.twitch import STREAM_THUMB_SIZE, VIDEO_THUMB_SIZE, TwitchClient, fill_thumbnail
 from sixstars.clients.youtube import CATEGORY_GAMING, IDS_PER_REQUEST_MAX, YouTubeClient, pick_thumbnail
 from sixstars.config import env
-from sixstars.discovery import health, scoring, store
+from sixstars.discovery import health, quota, scoring, store
 from sixstars.discovery.config import DiscoveryConfig
 from sixstars.discovery.models import FORBIDDEN_TIERS, Candidate
 from sixstars.discovery.ytsearch import FlatVideo, YtDlpSearch
@@ -565,12 +566,12 @@ def search_api_step(
         stubs.extend(found)
         _log.info("discovery_search_list", mode=mode, results=len(found), calls_today=used + len(made))
     note: str | None = None
-    today = now.strftime("%Y-%m-%d")
+    today = quota.day_start(now).strftime("%Y-%m-%d")  # the quota day starts at midnight Pacific
     if not made and reason.startswith("daily budget") and state.get("budget_noted_day") != today:
         state["budget_noted_day"] = today
         note = (
-            f"search.list {reason}: no more Data API searches today (UTC); discovery continues on channel "
-            "feeds, Apify and, when it works, yt-dlp"
+            f"search.list {reason}: no more Data API searches this quota day (resets 00:00 Pacific); "
+            "discovery continues on channel feeds, Apify and, when it works, yt-dlp"
         )
     if state != before:
         settings.set(SEARCH_API_STATE_KEY, state)

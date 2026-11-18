@@ -6,12 +6,13 @@ with a few hundred candidates costs a handful of round trips.
 """
 
 from collections.abc import Collection, Iterable, Mapping, Sequence
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from psycopg.types.json import Jsonb
 
-from sixstars import db, events, jobs
+from sixstars import db, events, jobs, settings
+from sixstars.discovery import quota
 from sixstars.discovery.assign import ACTIVE_STATUSES, Session, SlotPlan
 from sixstars.discovery.blocked import BLOCKED_REASON_PREFIX, BlockedVideo, Queue
 from sixstars.discovery.models import FORBIDDEN_TIERS, Candidate, Creator, Scored
@@ -180,30 +181,73 @@ def approved_hourly_clips() -> int:
 # ── spend counters ───────────────────────────────────────────
 
 
-def youtube_units_today() -> float:
-    """YouTube Data API quota units recorded since 00:00 UTC (the real quota resets at midnight Pacific
-    time; UTC is used like every other daily budget of the system)."""
+def youtube_quota_day_start(now: datetime | None = None) -> datetime:
+    """Start of the current YouTube quota day: the last midnight in `discovery.youtube_quota_timezone`
+    (America/Los_Angeles: Google resets the quota at midnight Pacific time)."""
+    tz = settings.get_str(quota.TIMEZONE_KEY, quota.DEFAULT_TIMEZONE)
+    return quota.day_start(now or datetime.now(UTC), tz)
+
+
+def youtube_units_today(now: datetime | None = None) -> float:
+    """YouTube Data API quota units recorded since the start of the quota day (`youtube_quota_day_start`).
+    `search.list` has its own bucket and is counted by `youtube_search_calls_today`."""
     row = db.fetch_one(
         """
         select coalesce(sum(units), 0) as total from api_usage
         where provider = 'youtube' and operation like '%%.list' and operation <> 'search.list'
-          and created_at >= date_trunc('day', now(), 'UTC')
-        """
+          and created_at >= %s
+        """,
+        (youtube_quota_day_start(now),),
     )
     return float(row["total"]) if row is not None else 0.0
 
 
-def youtube_search_calls_today() -> int:
-    """`search.list` calls recorded since 00:00 UTC. They have their own quota bucket (100 calls a day by
-    default), so they are counted apart from `youtube_units_today`."""
+def youtube_search_calls_today(now: datetime | None = None) -> int:
+    """`search.list` calls recorded since the start of the quota day. They have their own quota bucket (100
+    calls a day by default), so they are counted apart from `youtube_units_today`."""
     row = db.fetch_one(
         """
         select count(*) as total from api_usage
         where provider = 'youtube' and operation = 'search.list'
-          and created_at >= date_trunc('day', now(), 'UTC')
-        """
+          and created_at >= %s
+        """,
+        (youtube_quota_day_start(now),),
     )
     return int(row["total"]) if row is not None else 0
+
+
+# ── YouTube channel cache ────────────────────────────────────
+
+
+def cached_youtube_channels(channel_ids: Collection[str], max_age_s: int) -> dict[str, dict[str, Any]]:
+    """Raw `channels.list` items (parts snippet + statistics) fetched within `max_age_s`, by channel id."""
+    if not channel_ids or max_age_s <= 0:
+        return {}
+    rows = db.fetch_all(
+        """
+        select channel_id, item from youtube_channel_cache
+        where channel_id = any(%s) and fetched_at > now() - make_interval(secs => %s)
+        """,
+        (list(channel_ids), max_age_s),
+    )
+    return {str(row["channel_id"]): dict(row["item"]) for row in rows}
+
+
+def save_youtube_channels(items: Iterable[Mapping[str, Any]]) -> None:
+    """Upsert raw `channels.list` items into the cache, stamped now."""
+    # One row per id: `on conflict do update` may not touch a row twice in one statement.
+    unique = {str(item["id"]): dict(item) for item in items if item.get("id")}
+    rows = [{"channel_id": channel_id, "item": item} for channel_id, item in unique.items()]
+    if not rows:
+        return
+    db.execute(
+        """
+        insert into youtube_channel_cache (channel_id, item, fetched_at)
+        select x.channel_id, x.item, now() from jsonb_to_recordset(%s) as x(channel_id text, item jsonb)
+        on conflict (channel_id) do update set item = excluded.item, fetched_at = excluded.fetched_at
+        """,
+        (Jsonb(rows),),
+    )
 
 
 def recent_live_sources(now: datetime, window_s: int, limit: int) -> list[dict[str, Any]]:

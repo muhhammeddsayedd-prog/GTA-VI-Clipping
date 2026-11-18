@@ -2,6 +2,7 @@
 filter-graph pieces they add. Pure: no ffmpeg, no network."""
 
 from collections.abc import Callable
+from dataclasses import replace
 from pathlib import Path, PurePath
 
 import pytest
@@ -111,7 +112,7 @@ def test_chunked_captions_are_caps_with_accent_repeat_and_mask(
     assert "F******" in captions[2] and "fucking" not in ass.lower()
     assert "Style: Caption,Anton,150," in ass
     hook_rows = [row for row in ass.splitlines() if row.startswith("Dialogue: 5,")]
-    assert hook_rows and all(",0:00:05.00,Hook," in row for row in hook_rows)  # whole clip
+    assert hook_rows and all(",0:00:03.00,Hook," in row for row in hook_rows)  # first hook_seconds only
     payoff = [row for row in ass.splitlines() if row.startswith("Dialogue: 8,")]
     assert len(payoff) == 1 and "0:00:02.20,0:00:03.70" in payoff[0] and "Noto Emoji" in payoff[0]
 
@@ -302,9 +303,15 @@ def test_title_bar_png_is_drawn_and_overlaid(
     )
     chains = title_filters(spec, Geometry.for_canvas(720, 1280), source="v_in", out="v_titled")
     assert chains[0].startswith("movie=filename=title.png") and "scale=" in chains[0]
-    assert chains[1] == "[v_in][v_titled_img]overlay=x=(W-w)/2:y=147[v_titled]"
+    assert chains[1] == "[v_in][v_titled_img]overlay=x=(W-w)/2:y=147:enable=lt(t\\,3)[v_titled]"
     graph = ";".join(build_render_command(spec))
     assert "[v_progress][v_titled_img]overlay" in graph and "[v_titled]ass=" in graph
+    # A hook longer than the clip is shown for the whole clip, and none at all when switched off.
+    longer = replace(spec, params=params_factory(width=720, height=1280, end_card_s=0, hook_seconds=30))
+    canvas = Geometry.for_canvas(720, 1280)
+    assert "enable=lt(t\\,10)" in title_filters(longer, canvas, source="a", out="b")[1]
+    off = replace(spec, params=params_factory(width=720, height=1280, end_card_s=0, hook_seconds=0))
+    assert "v_titled" not in ";".join(build_render_command(off))
 
 
 # ── writer payoff and assets ─────────────────────────────────

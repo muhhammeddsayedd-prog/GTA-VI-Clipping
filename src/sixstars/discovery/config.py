@@ -17,7 +17,7 @@ DEFAULTS: Final[dict[str, Any]] = {
     "discovery.youtube_recent_sorts": ["relevance", "views"],
     "discovery.ytdlp_workers": 6,
     "discovery.ytdlp_timeout_s": 25,
-    "discovery.youtube_quota_daily_units": 3000,
+    "discovery.youtube_quota_daily_units": 9000,
     "discovery.rss_max_channels_per_run": 50,  # 25 in 0006, raised by 0010
     "discovery.rss_cursor": None,
     "discovery.apify_interval_s": 21600,

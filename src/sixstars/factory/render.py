@@ -158,7 +158,7 @@ def build_video_filters(spec: RenderSpec) -> list[str]:
         enable=shown,
     )
     text_source = "v_progress"
-    if spec.title_png is not None:
+    if spec.title_png is not None and params.hook_seconds > 0:
         chains += title_filters(spec, geometry, source="v_progress", out="v_titled")
         text_source = "v_titled"
     text_chain = [ass_filter(spec.ass_path, spec.fonts.fonts_dir)]
@@ -196,8 +196,10 @@ def build_video_filters(spec: RenderSpec) -> list[str]:
 
 def title_filters(spec: RenderSpec, geometry: Geometry, *, source: str, out: str) -> list[str]:
     """The title bar PNG read with `movie`, scaled from the reference canvas to the output, laid over
-    `source` centred with its top at `spec.title_top` (one still frame, held for the whole clip)."""
+    `source` centred with its top at `spec.title_top` (one still frame, shown for the first
+    `factory.hook_seconds` of the clip, then gone so the content has the frame)."""
     assert spec.title_png is not None
+    hook_end = min(spec.params.hook_seconds, spec.clip_duration_s)
     scale = geometry.width / REF_WIDTH
     image = [
         render_filter("movie", [("filename", normalize_filter_path(str(spec.title_png)))]),
@@ -206,7 +208,9 @@ def title_filters(spec: RenderSpec, geometry: Geometry, *, source: str, out: str
     if geometry.width != REF_WIDTH:
         image.append(render_filter("scale", [("w", f"trunc(iw*{scale:.4f}/2)*2"), ("h", "-2")]))
     y = round(spec.title_top * geometry.height / REF_HEIGHT)
-    overlay = render_filter("overlay", [("x", "(W-w)/2"), ("y", str(y))])
+    overlay = render_filter(
+        "overlay", [("x", "(W-w)/2"), ("y", str(y)), ("enable", f"lt(t,{_seconds(hook_end)})")]
+    )
     return [f"{','.join(image)}[{out}_img]", f"[{source}][{out}_img]{overlay}[{out}]"]
 
 

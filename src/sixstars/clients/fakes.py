@@ -311,6 +311,14 @@ class FakeYouTubeClient(_Recorder, YouTubeClient):
             region_allowed=None,
         )
 
+    def get_statuses(self, video_ids: Sequence[str]) -> dict[str, YouTubeVideoStatus]:
+        """Batched form: one recorded `get_statuses` call, answered per id by `get_status` (so a test
+        double that overrides `get_status` keeps working)."""
+        unique = list(dict.fromkeys(video_ids))
+        self._record("get_statuses", video_ids=unique)
+        found = {video_id: self.get_status(video_id) for video_id in unique}
+        return {video_id: status for video_id, status in found.items() if status is not None}
+
     def delete_video(self, video_id: str) -> bool:
         self._record("delete_video", video_id=video_id)
         return self.uploaded.pop(video_id, None) is not None

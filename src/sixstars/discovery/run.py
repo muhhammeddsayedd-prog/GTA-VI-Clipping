@@ -471,6 +471,11 @@ def check_permissions(
         if item.creator.id in due and item.creator.description_checked_at is None:
             urgent.setdefault(item.creator.id, item.creator)
     now_list = list(urgent.values())[: config.permission_checks_per_run]
+    now_ids = {creator.id for creator in now_list}
+    to_queue = [c for c in due.values() if c.id not in now_ids][: config.permission_jobs_per_run]
+    # One batched channels.list for the in-pass checks and the creators about to get a job: the checks and
+    # the jobs then read their channel from the cache (`discovery.youtube_channel_cache_ttl_s`).
+    tiers.prefetch_youtube_channels(clients.youtube, [c for c in [*now_list, *to_queue] if c.key not in info])
     checked = (
         tiers.check_creators(
             now_list,
