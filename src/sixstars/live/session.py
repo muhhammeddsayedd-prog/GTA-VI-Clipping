@@ -530,10 +530,13 @@ class LiveSession:
         if now - self._baseline_saved_at < max(every, 30.0):
             return
         self._baseline_saved_at = now
-        with self._lock:
-            baseline = self.detector.current_baseline(now - CHAT_LAG_S.get(self.row.platform, 5.0))
-        if baseline is not None:
-            store.save_chat_baseline(self.row.id, baseline_json(baseline, now))
+        try:
+            with self._lock:
+                baseline = self.detector.current_baseline(now - CHAT_LAG_S.get(self.row.platform, 5.0))
+            if baseline is not None:
+                store.save_chat_baseline(self.row.id, baseline_json(baseline, now))
+        except Exception as exc:  # noqa: BLE001 - never lose the tick's spikes over the stored baseline
+            self._log.warning("live_baseline_save_failed", error=f"{type(exc).__name__}: {exc}"[:200])
 
     async def _read_chat(self) -> None:
         open_chat: OpenChat = self.deps.open_chat or (
