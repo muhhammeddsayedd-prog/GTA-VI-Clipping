@@ -47,7 +47,7 @@ def test_config_narrows_the_length_limits_by_the_lane_gate_profile() -> None:
         "express", 15.0, 45.0, 0.0,
     )  # fmt: skip
     assert hourly.context_pad_s == 15.0 and hourly.whisper_model == "medium"
-    assert isinstance(hourly.params, FactoryParams) and hourly.params.watermark == "@6starsclipping"
+    assert isinstance(hourly.params, FactoryParams) and hourly.params.watermark == "6 Stars Clips"
 
 
 def test_config_without_a_gate_profile_uses_the_spike_limits() -> None:
