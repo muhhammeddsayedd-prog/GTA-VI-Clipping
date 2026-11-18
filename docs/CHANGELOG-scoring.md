@@ -28,4 +28,4 @@ Funnel before Phase 1 (production, per hour, 18 Nov UTC; spikes → clips → ap
 
 | Time (UTC) | Change | Flag | Rollback | Result after monitoring |
 |---|---|---|---|---|
-| 2026-11-18 | Code + migration 0026 deployed, every flag off (no behaviour change). Live sessions start saving their chat baseline every 5 min (data only). | — | flags are off | pending |
+| 2026-11-18 16:06 | PR #58: code + migration 0026 deployed to production, every flag off (no behaviour change; config version 8 = the seed rows). Live sessions start saving their chat baseline every 5 min (data only). | — | flags are off | pending |

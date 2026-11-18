@@ -17,6 +17,7 @@ from psycopg.types.json import Jsonb
 from sixstars import db, events
 from sixstars.config import env
 from sixstars.logging import get_logger
+from sixstars.scoring import log as scoring_log
 
 FORBIDDEN_TIERS: Final = ("restricted", "blocked")
 OPEN_STATUSES: Final = ("new", "processing")
@@ -544,6 +545,15 @@ def insert_transcript_spike(
             },
             service=SERVICE,
         )
+        scoring_log.record(
+            "spike.confirm",
+            decision=status,
+            reason=reason,
+            spike_id=spike_id,
+            creator_id=video.creator_id,
+            sub_scores={"mode": "transcript", "tier": tier, "confidence": confidence, "parts": dict(parts)},
+        )
+        scoring_log.stamp("spikes", spike_id)
         return spike_id, True
 
 

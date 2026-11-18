@@ -245,3 +245,15 @@ def test_gate_lowering_never_raises_a_limit() -> None:
     assert lowered_lengths(settings, 1000).hourly.min_len_s == settings.hourly.min_len_s
     assert lowered_hourly_score(settings, 5).hourly.min_score == min(5, settings.hourly.min_score)
     assert lowered_hourly_score(settings, 5).express.min_score == settings.express.min_score
+
+
+def test_scoring_log_sub_scores_survive_postgres_numerics() -> None:
+    from decimal import Decimal
+
+    from sixstars.scoring.log import json_safe
+
+    assert json_safe({"score": Decimal("6.5"), "parts": {"x": Decimal("1")}, "when": object}) == {
+        "score": 6.5,
+        "parts": {"x": 1.0},
+        "when": str(object),
+    }
