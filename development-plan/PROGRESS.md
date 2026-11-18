@@ -399,3 +399,18 @@ FakeUploadPostClient()                 .uploads .deleted .upload_error .platform
 
 - Merge to `develop`, apply 0021 on staging, look at a few staging renders before `main`. Clips rendered with the 1.5 s end card that are gated after 0021 is applied expect a 1.5 s shorter file; apply it when the render queue is empty.
 - Not done: generated explainer graphics, face stickers, speaker-coloured captions (docs/27 section 4).
+
+## Hotfix 2026-11-18 — Hook title only in the first seconds
+
+### What was built
+
+- The `title_bar` hook (TikTok-style PNG) now shows only for the first `factory.hook_seconds` (3 s), then goes so the content has the frame. Before, it stayed for the whole clip. `render.title_filters` gives the overlay `enable=lt(t,…)`; with `hook_seconds` 0 the bar is not drawn. The ASS fallback (no title font) uses the same timing.
+- Look, position, font and watermark placement are unchanged. The watermark stays below where the bar was, for the whole clip.
+
+### Deviations
+
+- None. No new setting or migration. To change how long the title shows, edit `factory.hook_seconds` in `settings`.
+
+### Open issues / next
+
+- Only clips rendered after the deploy are affected. Clips already rendered or posted keep the title for the whole clip.

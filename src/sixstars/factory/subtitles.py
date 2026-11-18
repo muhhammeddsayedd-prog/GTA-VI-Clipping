@@ -398,8 +398,8 @@ def build_ass(
     payoff emoji.
 
     `duration_s` is the clip length without the end card; nothing is drawn after it. On spike-lane clips
-    (`live_badge`) the hook box moves down so it clears the badge. With `hook_mode` `title_bar` the hook
-    stays for the whole clip instead of `factory.hook_seconds`. `payoff_s` is in clip time.
+    (`live_badge`) the hook box moves down so it clears the badge. The hook shows for the first
+    `factory.hook_seconds` in every `hook_mode`. `payoff_s` is in clip time.
     """
     style = style or SubtitleStyle()
     zone = safe_zone(params)
@@ -421,7 +421,7 @@ def build_ass(
     if live_badge:
         events += badge_events(end_s=duration_s, top=badge_top, measure=measure)
     if hook:
-        hook_end = duration_s if hook_mode == "title_bar" else min(params.hook_seconds, duration_s)
+        hook_end = min(params.hook_seconds, duration_s)
         events += hook_events(hook, end_s=hook_end, top=hook_top, measure=measure)
     if payoff_s is not None and payoff_emoji:
         events += payoff_events(payoff_emoji, payoff_s=payoff_s, duration_s=duration_s, layout=layout)
