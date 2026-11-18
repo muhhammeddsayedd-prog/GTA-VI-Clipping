@@ -201,6 +201,7 @@ class ClipContext:
     spoiler_block_until: datetime | None = None
     reject_topics: Sequence[str] | None = None
     clip_id: str | None = None
+    cut_guidance: str = ""  # scoring_config cut.adaptive: target length and the anchor point
 
 
 @dataclass(frozen=True, slots=True)
@@ -462,6 +463,7 @@ def write_clip(
         "spike_floor_s": _seconds(ctx.spike_floor_s),
         "min_len_s": f"{ctx.min_len_s:g}",
         "max_len_s": f"{ctx.max_len_s:g}",
+        "cut_guidance": ctx.cut_guidance,
         "chat": _chat_block(ctx.chat),
         "lines": "\n".join(
             f"[{line.index}] {_seconds(line.start_s)}-{_seconds(line.end_s)} | {line.text}"

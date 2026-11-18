@@ -7,11 +7,12 @@ constants below; they are fields of the config too, so the pure functions never 
 """
 
 from collections.abc import Iterable, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any, Final
 
 from sixstars import settings
 from sixstars.chat.filters import MAX_PER_USER_PER_BUCKET, FilterContext, normalise_name
+from sixstars.scoring import config as scoring_config
 
 FEATURES: Final[tuple[str, ...]] = ("msgs", "uniq", "react", "clipreq", "audio")
 
@@ -123,6 +124,11 @@ class SpikeConfig:
     chat_sample_size: int = CHAT_SAMPLE_SIZE
     audio_ref_s: float = AUDIO_REF_S
     bot_learn_s: float = BOT_LEARN_S
+    reaction_burst_min: int = (
+        0  # scoring_config reactions.extended: a token repeated this often is a reaction
+    )
+    youtube_emoji_reactions: bool = False  # scoring_config reactions.extended: ":name:" counts as a reaction
+    live_keep_stronger: bool = False  # scoring_config merge.keep_stronger
 
     @classmethod
     def from_mapping(cls, values: Mapping[str, Any]) -> "SpikeConfig":
@@ -159,7 +165,12 @@ class SpikeConfig:
         single keys without touching the table; the CLI uses it to try a tuning."""
         values: dict[str, Any] = {key: settings.get(key) for key in SETTING_KEYS}
         values.update(overrides or {})
-        return cls.from_mapping(values)
+        return apply_scoring_flags(
+            cls.from_mapping(values),
+            scoring_config.flag("warmup.v2"),
+            scoring_config.flag("reactions.extended"),
+            merge=scoring_config.flag("merge.keep_stronger"),
+        )
 
     def filter_context(self, stream_start: float = 0.0, bot_names: Iterable[str] = ()) -> FilterContext:
         """The M03 message filter for one stream, built without another settings read."""
@@ -173,6 +184,33 @@ class SpikeConfig:
     def offset_for(self, platform: str) -> float:
         """`live.chat_offset_s` for a platform (0 when the platform has no entry)."""
         return float(self.chat_offset_s.get(platform, 0.0))
+
+
+def apply_scoring_flags(
+    cfg: SpikeConfig,
+    warmup: Mapping[str, Any] | None,
+    reactions: Mapping[str, Any] | None,
+    *,
+    merge: Mapping[str, Any] | None = None,
+) -> SpikeConfig:
+    """The config with the enabled scoring flags applied (docs/CHANGELOG-scoring.md). Pure.
+
+    - `warmup.v2`: `warmup_s` replaces `spikes.warmup_s`.
+    - `reactions.extended`: `extra_tokens` are added to the reaction tokens, `burst_min` and `youtube_emoji`
+      switch on the burst and custom-emoji reaction rules.
+    - `merge.keep_stronger`: live mode clips a stronger spike inside the merge gap too (`supersedes_peak_t`).
+    """
+    changes: dict[str, Any] = {}
+    if warmup is not None:
+        changes["warmup_s"] = max(0.0, scoring_config.number(warmup, "warmup_s", cfg.warmup_s))
+    if reactions is not None:
+        extra = [token for token in scoring_config.strings(reactions, "extra_tokens") if token.strip()]
+        changes["reaction_tokens"] = tuple(dict.fromkeys([*cfg.reaction_tokens, *extra]))
+        changes["reaction_burst_min"] = int(scoring_config.number(reactions, "burst_min", 0.0))
+        changes["youtube_emoji_reactions"] = reactions.get("youtube_emoji") is True
+    if merge is not None:
+        changes["live_keep_stronger"] = True
+    return replace(cfg, **changes) if changes else cfg
 
 
 def from_settings(overrides: Mapping[str, Any] | None = None) -> SpikeConfig:

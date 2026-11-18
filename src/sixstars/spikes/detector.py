@@ -27,7 +27,7 @@ from typing import Any, Final, Literal
 from sixstars.chat import filters
 from sixstars.chat.models import ChatMessage, Platform, sort_messages
 from sixstars.logging import get_logger
-from sixstars.spikes.baseline import baseline_for
+from sixstars.spikes.baseline import Baseline, baseline_for
 from sixstars.spikes.buckets import Counted, LoudnessTrack, TokenMatcher, count_message, make_buckets
 from sixstars.spikes.config import SpikeConfig
 from sixstars.spikes.scoring import Scored, Tier, is_candidate, score_bucket, tier_for
@@ -72,6 +72,7 @@ class DetectedSpike:
     chat_sample: list[dict[str, Any]]
     baseline_mean: dict[str, float] = field(default_factory=dict)
     absorbed: list["DetectedSpike"] = field(default_factory=list)
+    supersedes_peak_t: float | None = None  # live, merge.keep_stronger: the weaker spike this one replaces
 
 
 @dataclass(frozen=True, slots=True)
@@ -124,6 +125,13 @@ class SpikeTracker:
     def flush(self, end_t: float) -> RawSpike | None:
         """Close the open spike at the end of the data (replay mode)."""
         return self._close(end_t)
+
+
+def reaction_matcher(cfg: SpikeConfig) -> TokenMatcher:
+    """The reaction matcher of a config, with the `reactions.extended` rules when they are on."""
+    return TokenMatcher.from_tokens(
+        cfg.reaction_tokens, burst_min=cfg.reaction_burst_min, custom_emoji=cfg.youtube_emoji_reactions
+    )
 
 
 def learn_bots(messages: Iterable[ChatMessage]) -> set[str]:
@@ -239,10 +247,7 @@ def analyse_replay(
     ordered = sort_messages(messages)
     bots = frozenset(learn_bots(ordered) if bot_names is None else map(filters.normalise_name, bot_names))
     ctx = cfg.filter_context(stream_start, bots)
-    reactions, clips = (
-        TokenMatcher.from_tokens(cfg.reaction_tokens),
-        TokenMatcher.from_tokens(cfg.clip_tokens),
-    )
+    reactions, clips = reaction_matcher(cfg), TokenMatcher.from_tokens(cfg.clip_tokens)
     items = [
         count_message(message, reactions, clips) for message in ordered if filters.is_counted(message, ctx)
     ]
@@ -342,8 +347,13 @@ class LiveSpikeDetector:
         config: SpikeConfig | None = None,
         bot_names: Iterable[str] = (),
         listen_start: float | None = None,
+        prior: Baseline | None = None,
     ) -> None:
         self.platform: Platform = platform
+        # The creator's stored chat baseline (scoring_config warmup.v2): used while the stream has too
+        # little chat history of its own for a trailing baseline.
+        self.prior = prior
+        self.prior_used = 0
         self.stream_start = stream_start
         self.suppressed: list[DetectedSpike] = []
         self._fixed_config = config
@@ -357,6 +367,7 @@ class LiveSpikeDetector:
         self._matchers: tuple[tuple[str, ...], tuple[str, ...], TokenMatcher, TokenMatcher] | None = None
         self._last_step: int | None = None
         self._last_emitted_peak: float | None = None
+        self._last_emitted_score: float | None = None
 
     @property
     def bot_names(self) -> frozenset[str]:
@@ -376,11 +387,16 @@ class LiveSpikeDetector:
 
     def _token_matchers(self, cfg: SpikeConfig) -> tuple[TokenMatcher, TokenMatcher]:
         cached = self._matchers
-        if cached is None or cached[0] != cfg.reaction_tokens or cached[1] != cfg.clip_tokens:
+        rules = (
+            *cfg.reaction_tokens,
+            f"burst={cfg.reaction_burst_min}",
+            f"emoji={cfg.youtube_emoji_reactions}",
+        )
+        if cached is None or cached[0] != rules or cached[1] != cfg.clip_tokens:
             cached = (
-                cfg.reaction_tokens,
+                rules,
                 cfg.clip_tokens,
-                TokenMatcher.from_tokens(cfg.reaction_tokens),
+                reaction_matcher(cfg),
                 TokenMatcher.from_tokens(cfg.clip_tokens),
             )
             self._matchers = cached
@@ -436,6 +452,9 @@ class LiveSpikeDetector:
         listen_start = self._listen_start if self._listen_start is not None else end
         coverage_start = max(self.stream_start + cfg.warmup_s, listen_start)
         baseline = baseline_for(buckets, back, cfg, coverage_start)
+        if baseline is None and self.prior is not None and end - cfg.bucket_s >= coverage_start:
+            baseline = self.prior
+            self.prior_used += 1
         if baseline is None:
             return None
         raw = self._tracker.step(score_bucket(buckets[back], baseline, cfg), cfg, cfg.min_messages)
@@ -444,14 +463,46 @@ class LiveSpikeDetector:
         spike = build_spike(
             "live", raw, cfg, platform=self.platform, items=self._items, stream_start=self.stream_start
         )
-        if in_cooldown(spike.peak_t, self._last_emitted_peak, cfg.merge_gap_s):
+        stronger = self._last_emitted_score is not None and spike.score_z > self._last_emitted_score
+        if (
+            in_cooldown(spike.peak_t, self._last_emitted_peak, cfg.merge_gap_s)
+            and cfg.live_keep_stronger
+            and stronger
+        ):
+            spike.supersedes_peak_t = self._last_emitted_peak
+            log.info(
+                "live_spike_supersedes",
+                platform=self.platform,
+                peak_t=spike.peak_t,
+                score_z=spike.score_z,
+                replaces=self._last_emitted_peak,
+            )
+        elif in_cooldown(spike.peak_t, self._last_emitted_peak, cfg.merge_gap_s):
             self.suppressed.append(spike)
             log.info(
                 "live_spike_suppressed", platform=self.platform, peak_t=spike.peak_t, score_z=spike.score_z
             )
             return None
         self._last_emitted_peak = spike.peak_t
+        self._last_emitted_score = spike.score_z
         return spike
+
+    def current_baseline(self, now: float) -> Baseline | None:
+        """The trailing baseline of the newest complete bucket before `now`, for storing as the creator's
+        chat baseline (None while there is not enough history)."""
+        cfg = self._config()
+        back = int(math.floor(cfg.baseline_s / cfg.bucket_s + 1e-6))
+        end = now
+        buckets = make_buckets(
+            self._items,
+            end - (back + 1) * cfg.bucket_s,
+            cfg.bucket_s,
+            back + 1,
+            max_per_user=cfg.max_per_user,
+        )
+        listen_start = self._listen_start if self._listen_start is not None else end
+        coverage_start = max(self.stream_start + cfg.warmup_s, listen_start)
+        return baseline_for(buckets, back, cfg, coverage_start)
 
     def tick(self, now: float) -> list[DetectedSpike]:
         """Advance the sliding window to `now` (unix seconds) and return the spikes that closed.

@@ -32,7 +32,7 @@ from sixstars.ai.schemas import ClipWriting, SpikeVerdict
 from sixstars.clients.anthropic_client import AnthropicClient, BudgetKind
 from sixstars.clients.transcribe import Mode, Transcriber
 from sixstars.config import env
-from sixstars.factory import effects, facecam, music, thumbs, tools, writer
+from sixstars.factory import anchor, effects, facecam, music, thumbs, tools, writer
 from sixstars.factory import transcript as transcripts
 from sixstars.factory.assets import FactoryAssets, load_assets
 from sixstars.factory.audio import SfxTrack, parse_loudnorm_report
@@ -55,6 +55,7 @@ from sixstars.factory.textfit import TextMeasurer, estimate_text_width, pillow_m
 from sixstars.factory.titlebar import TitleBar, draw_title_bar
 from sixstars.factory.window import ClipWindow, padded_window
 from sixstars.logging import get_logger
+from sixstars.scoring import log as scoring_log
 
 JOB_CLIP_RENDER = "clip.render"
 JOB_EXPRESS_RENDER = "express.render"
@@ -610,6 +611,32 @@ def produce(
 
     lines = group_lines(transcript.words)
     floor = item.spike_floor_s if item.spike_floor_s is not None else proposed.start_s
+    window_chat = tuple(
+        ChatLine(t_s=line.t_s - offset, text=line.text, user=line.user)
+        for line in item.chat
+        if padded.start_s <= line.t_s <= padded.end_s
+    )
+    cut_anchor: anchor.Anchor | None = None
+    cut_guidance = ""
+    if cfg.cut_rules is not None:
+        started = time.monotonic()
+        if cfg.cut_rules.anchor:
+            readings = (
+                anchor.measure_loudness(
+                    item.source_path, padded.start_s, padded.duration_s, ffmpeg=deps.ffmpeg
+                )
+                if media.has_audio
+                else []
+            )
+            cut_anchor = anchor.find_anchor(
+                padded.duration_s,
+                floor - offset,
+                loudness=readings,
+                chat_times=[line.t_s for line in window_chat],
+                words=transcript.words,
+            )
+        cut_guidance = anchor.guidance(cfg.cut_rules, cut_anchor)
+        timed("anchor", started)
     writer_input = writer.WriterInput(
         creator=item.creator,
         platform=item.platform,
@@ -620,15 +647,12 @@ def produce(
         spike_floor_s=floor - offset,
         min_len_s=cfg.min_len_s,
         max_len_s=cfg.max_len_s,
-        chat=tuple(
-            ChatLine(t_s=line.t_s - offset, text=line.text, user=line.user)
-            for line in item.chat
-            if padded.start_s <= line.t_s <= padded.end_s
-        ),
+        chat=window_chat,
         verdict=item.verdict,
         profanity_hint=writer.profanity_hint(transcript.words, assets.profanity()),
         clip_id=clip_id,
         snap=cfg.snap,
+        cut_guidance=cut_guidance,
     )
     started = time.monotonic()
     writing = choose_writing(writer_input)
@@ -647,6 +671,36 @@ def produce(
     clip_text = clip_lines(lines, window_w)
     if not clip_text:
         raise ClipSkippedError("no_speech")
+    if cfg.cut_rules is not None:
+        scoring_log.record(
+            "factory.cut",
+            decision="cut",
+            clip_id=clip_id,
+            spike_id=item.spike_id,
+            creator_id=item.creator_id,
+            sub_scores={
+                "anchor_s": None if cut_anchor is None else cut_anchor.t_s,
+                "anchor": None
+                if cut_anchor is None
+                else {
+                    "loud_lufs": cut_anchor.loud_lufs,
+                    "chat_per_s": cut_anchor.chat_per_s,
+                    "words_per_s": cut_anchor.words_per_s,
+                    "combined": cut_anchor.combined,
+                },
+                "anchor_inside_cut": None
+                if cut_anchor is None
+                else window_w.start_s <= cut_anchor.t_s <= window_w.end_s,
+                "writer_start_s": writing.start_s,
+                "writer_end_s": writing.end_s,
+                "final_start_s": round(window_w.start_s, 2),
+                "final_end_s": round(window_w.end_s, 2),
+                "duration_s": round(window_w.duration_s, 2),
+                "min_len_s": cfg.min_len_s,
+                "max_len_s": cfg.max_len_s,
+                "mode": item.mode,
+            },
+        )
 
     started = time.monotonic()
     analysis: music.MusicAnalysis | None = None

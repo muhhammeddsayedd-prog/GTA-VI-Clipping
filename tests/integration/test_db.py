@@ -14,8 +14,9 @@ def test_schema_objects_exist() -> None:
         "select table_name from information_schema.tables "
         "where table_schema = 'public' and table_type = 'BASE TABLE'"
     )
-    # 18 from 0001 plus viewer_clips (0019) and youtube_channel_cache (0024)
-    assert len(tables) == 20
+    # 18 from 0001 plus viewer_clips (0019), youtube_channel_cache (0024) and scoring_config,
+    # scoring_config_history, scoring_log (0026)
+    assert len(tables) == 23
     assert db.fetch_one("select * from v_queue_depth") is None
     assert db.fetch_all("select * from v_posts_last_24h") == []
 
