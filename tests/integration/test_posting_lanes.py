@@ -486,8 +486,17 @@ def test_the_holding_window_posts_the_best_spike_of_the_batch(production: None, 
     released = try_post_spike(early, client, clock=fixed(hold_end))
 
     assert {r["clip"] for r in posts("lane = 'spike'")} == {late}
-    assert clip_row(late)["status"] == "posted"
     assert released.demoted and clip_row(early)["lane"] == "hourly"
+    # The 10's own retry job (queued for the end of the hold) finds it published and settles it.
+    (late_job,) = [
+        j
+        for j in job_rows(RETRY_JOB_TYPE)
+        if j["payload"]["clip_id"] == late  # type: ignore[index]
+    ]
+    db.execute("update jobs set status = 'running' where id = %s", (late_job["id"],))
+    settled = try_post_spike(late, client, clock=fixed(hold_end), job_id=int(str(late_job["id"])))
+    assert settled.posted and clip_row(late)["status"] == "posted"
+    assert len(client.calls_to("upload_video")) == 2  # the 10 went out once per spike account
 
 
 def test_an_unknown_spike_clip_is_reported_and_nothing_happens(production: None) -> None:
