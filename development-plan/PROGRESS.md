@@ -534,3 +534,26 @@ FakeUploadPostClient()                 .uploads .deleted .upload_error .platform
 
 - The padded source copy for a montage variant is larger than a clip copy (up to about three minutes of near-lossless video, deleted after the variants); watch disk on staging.
 - M18 is complete. Before `develop` → `main`: run a day on staging with the five phases, check render time and disk, and decide whether production starts with every style enabled.
+
+## L0 — TikTok diagnosis and the delivery guard (2026-11-19)
+
+Spec: `docs/28-learning-and-growth.md` (learning loop + growth engine; owner amendments at the end). Branch `learn-l0`.
+
+### What was built
+
+- **Diagnosis** (`development-plan/progress-notes/L0-tiktok-diagnosis.md`): the 16 TikTok posts are public (oEmbed and the public page answer, `privateItem:false`) and have real post ids, yet TikTok itself shows `playCount: 0`. Not a privacy or moderation problem: TikTok isn't distributing the account (likely For You ineligibility). The owner approved stopping TikTok: production `tiktok_main.lanes` is now `{}` (undo in CHANGELOG-scoring).
+- **Delivery guard** `learning/delivery.py` (flag `learning.delivery_guard`, off): after each stats pass, an account whose last 5 posts ≥ 6 h old have median 0 views gets `hourly_paused_until` set (until resumed), the posts marked `delivery_suspect`, an `events` row and a critical Telegram alert. 0 views counts only once the post was read (`stats_updated_at`); a TikTok post without a post id after 6 h counts as 0.
+- Posting: `Account.hourly_paused_until`, new skip reason `hourly_paused` in `decide_hourly_account` (only the hourly lane; `paused_until` still pauses both).
+- `POST /v1/control/lane/resume` (`{"account_id"}` or `{"text": "/resume <id>"}`) and WF08 `/resume <account>` (WF08 now sends the whole message text for commands with arguments: `MESSAGE_BODY`).
+- Migration `0032_learning_delivery.sql`; flag `learning.exclude_tiktok` (on) for L2+.
+
+### Tests
+
+Unit: 3624 passed. Integration (throwaway postgres:17): new `test_delivery_guard.py` 5 passed, stats/posting/api/guardian suites pass, except 6 gate tests (`file_duration` rejections) that fail the same way on clean `develop` locally (environment, not this change).
+
+### Deviations / open
+
+- Migration numbers start at 0032 (0027–0031 are M18). The guard's pause is a far-future timestamp (2100-01-01), not `infinity` (psycopg can't read infinity into datetime).
+- WF08 must be re-applied (`build_workflows.py apply`) to get `/resume`; [STG] WF08 stays inactive, so test the route directly on staging.
+- The TikTok account restriction needs the owner: TikTok app → Account status / video Analytics.
+- TikTok Ads Manager shows the ad account currency is **EGP**: A1 stores a currency on money rows and converts the USD cap.

@@ -89,7 +89,7 @@ WORKFLOWS: dict[str, tuple[str, str, str]] = {
     "WF08": (
         "Telegram Commands",
         "telegram-commands",
-        "Owner commands /stop /start /status /report from the Telegram chat, relayed to the control API. "
+        "Owner commands /stop /start /status /report /resume <account> from the Telegram chat, relayed to the control API. "
         "One bot has one webhook, so only one environment may have this workflow active.",
     ),
     "WF09": (
@@ -312,6 +312,8 @@ ERROR_TEXT = (
 COMMAND = (
     "={{ ($('Telegram Trigger').first().json.message?.text ?? '').trim().split(/\\s+/)[0].split('@')[0] }}"
 )
+# The whole Telegram message as `{"text": ...}`: commands with arguments (/resume <account>) parse it in the API.
+MESSAGE_BODY = "={{ JSON.stringify({ text: $('Telegram Trigger').first().json.message?.text ?? '' }) }}"
 REPLY_TEXT = (
     "={{ $json.text ?? ($json.stopped === true ? '⛔ Emergency stop is ON: nothing will be posted.'"
     " : $json.stopped === false ? '✅ Emergency stop is OFF: posting resumed.' : JSON.stringify($json)) }}"
@@ -463,6 +465,9 @@ def build(wf_id: str, ctx: Json) -> tuple[list[Json], Json]:
             "/start": api_request(ctx, "Start posting", "POST", "/v1/control/start"),
             "/status": api_request(ctx, "Get status", "GET", "/v1/status?format=telegram"),
             "/report": api_request(ctx, "Get daily report", "GET", "/v1/reports/daily?format=telegram"),
+            "/resume": api_request(
+                ctx, "Resume hourly lane", "POST", "/v1/control/lane/resume", MESSAGE_BODY
+            ),
         }
         rules = [
             {"conditions": string_condition(COMMAND, command), "renameOutput": True, "outputKey": command}

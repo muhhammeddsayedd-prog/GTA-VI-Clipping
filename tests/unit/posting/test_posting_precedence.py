@@ -856,3 +856,21 @@ def test_every_decision_explains_itself() -> None:
             assert decision.reason.strip()
             assert decision.code in Reason
             assert decision.clip_id == plan.clip_id
+
+
+def test_a_paused_hourly_lane_skips_the_slot() -> None:
+    slot = datetime(2026, 11, 20, 12, 0, tzinfo=UTC)
+    account = replace(production_accounts()["instagram_main"], hourly_paused_until=slot + timedelta(days=365))
+
+    decision = decide_hourly_account(account, [], slot, slot + MINUTE, make_params())
+
+    assert (decision.action, decision.code) == (Action.SKIP, Reason.HOURLY_PAUSED)
+
+
+def test_an_expired_hourly_pause_does_not_skip() -> None:
+    slot = datetime(2026, 11, 20, 12, 0, tzinfo=UTC)
+    account = replace(production_accounts()["instagram_main"], hourly_paused_until=slot - MINUTE)
+
+    decision = decide_hourly_account(account, [], slot, slot + MINUTE, make_params())
+
+    assert decision.code is not Reason.HOURLY_PAUSED
