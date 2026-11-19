@@ -24,6 +24,10 @@ from sixstars.factory.layout import (
     HOOK_BOTTOM,
     HOOK_TOP,
     LOW_CREDIT_BOTTOM,
+    M_CREDIT_BOTTOM,
+    M_GAME_H,
+    M_SEAM_Y,
+    M_TOP,
     P_VIDEO_H,
     P_VIDEO_Y,
     PAYOFF_Y_C,
@@ -91,6 +95,8 @@ class SubtitleStyle:
     # M18 Phase C: the caption's centre (0: the layout's) and the spoken word's colour (empty: none).
     centre_y: int = 0
     active_color: str = ""
+    # Phase E: two-tier chunks (a keyword big, italic and glowing; the other words small above it).
+    tiers: bool = False
 
     @classmethod
     def from_rules(cls, rules: StyleRules) -> "SubtitleStyle":
@@ -112,6 +118,7 @@ class SubtitleStyle:
             font=rules.caption_font,
             centre_y=rules.caption_y,
             active_color=rules.caption_active_color,
+            tiers=rules.caption_tiers,
         )
 
 
@@ -145,6 +152,7 @@ def caption_bottom(layout: LayoutKind, params: FactoryParams, style: SubtitleSty
             "C": CAPTION_Y_C,
             "H": CAPTION_Y_B,
             "P": CAPTION_Y_B,
+            "M": M_SEAM_Y,
         }[layout]
     )
     bottom = min(centre + style.size / 2, zone.bottom - style.outline - style.shadow)
@@ -156,6 +164,8 @@ def credit_bottom(layout: LayoutKind, params: FactoryParams, style: SubtitleStyl
     in layouts H and P (no captions) at `LOW_CREDIT_BOTTOM`, under the stream or on the gameplay."""
     if layout in ("H", "P"):
         return float(LOW_CREDIT_BOTTOM)
+    if layout == "M":
+        return float(M_CREDIT_BOTTOM)
     # The credit keeps the layout's place even when a style moves its captions (`centre_y`).
     style = replace(style, centre_y=0) if style is not None else SubtitleStyle()
     return caption_bottom(layout, params, style) - style.size - style.outline - style.credit_gap
@@ -312,6 +322,26 @@ def chunk_events(
         size = style.size if width <= max_width else max(style.min_size, int(style.size * max_width / width))
         pop = CHUNK_KEYWORD_POP if any(marked) else CHUNK_POP
         place = f"{{\\an2\\pos({REF_WIDTH // 2},{bottom})" + (f"\\fs{size}" if size != style.size else "")
+        if style.tiers and any(marked):
+            # Two tiers: the keyword words big, italic and glowing; the others small above them.
+            main = WORD_GAP.join(ass_text(t) for t, m in zip(texts, marked, strict=True) if m)
+            lead = WORD_GAP.join(ass_text(t) for t, m in zip(texts, marked, strict=True) if not m)
+            # A glow is two layers: the keyword's accent halo (a wide, blurred, half-transparent outline) and
+            # the crisp white keyword with a thin dark outline over it.
+            halo = (
+                f"\\i1\\1c{accent}\\3c{accent}\\3a&H40&\\bord{max(6, size // 10)}"
+                f"\\blur{max(8, size // 8)}\\shad0"
+            )
+            crisp = f"\\i1\\1c{white}\\3c{ass_override_color(BLACK)}\\bord{max(2, size // 40)}\\shad0"
+            lead_size = max(style.min_size // 2, round(size * 0.42))
+            lead_place = f"{{\\an2\\pos({REF_WIDTH // 2},{bottom - size})\\fs{lead_size}"
+            events.append(dialogue(LAYER_CAPTION, start, end, "Caption", place + pop + halo + "}" + main))
+            events.append(
+                dialogue(LAYER_CAPTION + 1, start, end, "Caption", place + pop + crisp + "}" + main)
+            )
+            if lead:
+                events.append(dialogue(LAYER_CAPTION, start, end, "Caption", lead_place + pop + "}" + lead))
+            continue
         if style.active_color:
             # The spoken word in the active colour: one event per word of the chunk, the pop on the first.
             active = ass_override_color(style.active_color)
@@ -353,6 +383,7 @@ def payoff_events(emoji: str, *, payoff_s: float, duration_s: float, layout: Lay
         "C": PAYOFF_Y_C,
         "H": H_VIDEO_Y + H_VIDEO_H // 2,
         "P": P_VIDEO_Y + P_VIDEO_H // 2,
+        "M": M_TOP + M_GAME_H // 2,
     }[layout]
     end = min(payoff_s + PAYOFF_EMOJI_S, duration_s)
     tags = f"{{\\an5\\pos({REF_WIDTH // 2},{centre_y})\\fs{PAYOFF_EMOJI_SIZE}{PAYOFF_POP}}}"

@@ -16,12 +16,12 @@ from typing import Literal
 from sixstars.factory.escape import parse_hex_color
 
 HookMode = Literal["box", "title_bar"]
-Frame = Literal["auto", "headline_card", "pov"]
+Frame = Literal["auto", "headline_card", "pov", "montage"]
 TitleSource = Literal["hook", "title_line", "headline", "question", "pov_line"]
 TitleLook = Literal["bar", "question"]
 
 _HOOK_MODES: tuple[HookMode, ...] = ("box", "title_bar")
-_FRAMES: tuple[Frame, ...] = ("auto", "headline_card", "pov")
+_FRAMES: tuple[Frame, ...] = ("auto", "headline_card", "pov", "montage")
 _TITLE_SOURCES: tuple[TitleSource, ...] = ("hook", "title_line", "headline", "question", "pov_line")
 _TITLE_LOOKS: tuple[TitleLook, ...] = ("bar", "question")
 
@@ -59,6 +59,10 @@ class StyleRules:
     * `caption_y`: the caption line's centre on the 1080x1920 canvas (0: the layout's own place).
     * `caption_active_color`: the spoken word of a caption chunk in this colour (empty: no highlight).
     * `show_title`: draw the title at all (off for the one-word caption style).
+    * `frame` `montage` (Phase E, reference R10): gameplay above the facecam in a 3:4 letterbox with a
+      soft fade between them; every other `montage_every_s` seconds the gameplay cuts to B-roll from
+      the footage around the moment. `caption_tiers`: a chunk with a keyword shows its other words
+      small above the keyword, which is big, italic and glowing in the accent colour.
     """
 
     caption_words: int = 0
@@ -88,6 +92,8 @@ class StyleRules:
     caption_y: int = 0
     caption_active_color: str = ""
     show_title: bool = True
+    montage_every_s: float = 0.0
+    caption_tiers: bool = False
 
     def __post_init__(self) -> None:
         if self.caption_words < 0 or self.caption_chars < 1:
@@ -104,6 +110,8 @@ class StyleRules:
             raise ValueError("frame, title_source or title_look is unknown")
         if self.caption_y and not 200 <= self.caption_y <= 1720:
             raise ValueError("caption_y must be 0 or within 200..1720")
+        if self.montage_every_s < 0:
+            raise ValueError("montage_every_s must not be negative")
         if self.caption_active_color:
             parse_hex_color(self.caption_active_color)
         if self.punchin_max < 0 or self.punchin_len_s <= 0 or self.punchin_min_gap_s < 0:
@@ -190,6 +198,8 @@ class StyleRules:
                 caption_y=integer("caption_y", base.caption_y),
                 caption_active_color=text("caption_active_color", base.caption_active_color),
                 show_title=flag("show_title", base.show_title),
+                montage_every_s=number("montage_every_s", base.montage_every_s),
+                caption_tiers=flag("caption_tiers", base.caption_tiers),
             )
         except ValueError:
             return base
@@ -276,4 +286,26 @@ CAM_TOP_WORDCAP: dict[str, object] = {
     "caption_y": 580,
     "caption_active_color": "#FFD400",
     "show_title": False,
+}
+# Phase E (development-plan/M18): the hype montage of reference R10. Gameplay over the streamer's face in a
+# 3:4 letterbox, cuts to B-roll every other 3 s, two-tier kinetic words on the seam, a whoosh on each cut and
+# the payoff emoji; no title. Needs a facecam and spare footage around the moment (`requires`).
+HYPE_MONTAGE: dict[str, object] = {
+    "frame": "montage",
+    "montage_every_s": 3.0,
+    "captions": True,
+    "caption_tiers": True,
+    "caption_words": 2,
+    "caption_chars": 16,
+    "caption_font": "Anton",
+    "caption_size": 120,
+    "caption_caps": True,
+    "show_title": False,
+    "hook_mode": "title_bar",
+    "punchin_max": 0,
+    "zoomcut_every_s": 0,
+    "cut_sfx": True,
+    "payoff_fx": True,
+    "compress": True,
+    "sfx_gain_db": -12,
 }

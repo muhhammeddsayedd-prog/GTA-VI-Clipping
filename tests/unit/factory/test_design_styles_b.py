@@ -43,8 +43,10 @@ from sixstars.factory.styles import DEFAULT_STYLES, StyleCatalog
 from sixstars.factory.subtitles import SubtitleStyle, credit_bottom
 from sixstars.factory.variants import recipe_json
 
-# The five styles of phases A and B (Phase C's cam_top_wordcap has its own tests).
-CATALOG = StyleCatalog.from_setting({k: v for k, v in DEFAULT_STYLES.items() if k != "cam_top_wordcap"})
+# The five styles of phases A and B (phases C and E have their own tests).
+CATALOG = StyleCatalog.from_setting(
+    {k: v for k, v in DEFAULT_STYLES.items() if k not in ("cam_top_wordcap", "hype_montage")}
+)
 ACCOUNTS = [
     AccountSlot("instagram_main", "instagram", ("hourly", "spike")),
     AccountSlot("tiktok_main", "tiktok", ("hourly", "spike")),

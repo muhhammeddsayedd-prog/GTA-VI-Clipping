@@ -512,3 +512,25 @@ FakeUploadPostClient()                 .uploads .deleted .upload_error .platform
 
 - Staging has no views (dry-run/private posts): the bandit stays in learning there. It starts judging in production once 20 posts of a style are two days old on an account.
 - Phase E: `hype_montage`.
+
+## M18 Phase E — The hype montage (2026-11-19)
+
+### What was built
+
+- Style `hype_montage` (reference R10, migration 0031): layout M (3:4 letterbox, gameplay over the facecam, soft fade over the seam), B-roll cuts every other 3 s from the busiest footage around the clip, two-tier glowing keyword captions on the seam, whoosh/impact on each cut, payoff emoji, no title. Hourly only; requires a facecam and at least 9 s of footage around the clip.
+- `factory/montage.py`: motion reading (ffmpeg `tblend` + `signalstats`), B-roll picks (outside the clip, no stills, no overlaps), the cut timeline (payoff guard, opening and closing seconds), the seam fade PNG.
+- Renderer: B-roll as extra ffmpeg inputs laid over the gameplay panel (`BrollCut`), the fade overlay, the progress bar at the bottom of the letterbox. Anything that goes wrong in planning the B-roll means a montage without cuts, never a failed render.
+- Variants: when a montage is planned for another account the source copy holds the padded window (`recipe.window_start_s`, `recipe.broll`).
+- Director: fact `broll`; affinity discovery 3, reaction 2.
+- Console names; P5 knows the montage.
+- Tests: `tests/unit/factory/test_hype_montage.py` (11; one found that a payoff right after a slot start made an empty window and would have failed the render — fixed), an integration test rendering a montage variant from the padded copy.
+
+### Deviations
+
+- The plan said B-roll from "other high-scoring moments of the same video". Those windows are deleted once their own render ends, so the B-roll comes from the footage around the moment that the source already holds (Phase C's wider windows). Picked by on-screen motion, not by chat.
+- The keyword glow uses the brand accent (`factory.accent_color`), not R10's gold/blue; no logo cards.
+
+### Open issues / next
+
+- The padded source copy for a montage variant is larger than a clip copy (up to about three minutes of near-lossless video, deleted after the variants); watch disk on staging.
+- M18 is complete. Before `develop` → `main`: run a day on staging with the five phases, check render time and disk, and decide whether production starts with every style enabled.

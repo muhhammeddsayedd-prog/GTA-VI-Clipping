@@ -76,8 +76,9 @@ def test_the_plan_covers_the_enabled_accounts_and_skips_their_last_style(staging
         "cam_top_viral",
         "cam_top_wordcap",
         "headline_card",
+        "hype_montage",
         "pov_fullframe",
-    ), "migrations 0027 to 0029"
+    ), "migrations 0027 to 0031"
     assert cfg.catalog.rules_for("cam_top_title").title_source == "title_line"
     assert cfg.director.multiplier("discovery", "headline_card") == 3.0
 
@@ -292,6 +293,7 @@ def test_a_clip_with_every_text_gets_three_styles_rendered(
         "cam_top_title": "C",
         "cam_top_question": "C",
         "cam_top_wordcap": "C",
+        "hype_montage": "M",
         "headline_card": "H",
         "pov_fullframe": "P",
     }
@@ -478,3 +480,79 @@ def test_only_published_public_posts_of_the_right_age_are_scored(staging_account
     assert rows == [("tiktok_main", "cam_top_title", 4000), ("tiktok_main", "cam_top_viral", 1000)]
     stats = variants.style_stats(["tiktok_main"], rules)["tiktok_main"]
     assert stats["cam_top_title"].mean > 0 > stats["cam_top_viral"].mean
+
+
+def test_a_montage_variant_is_rendered_from_the_footage_around_the_clip(
+    staging_accounts: None, data_dir: Path, tmp_path: Path
+) -> None:
+    """Phase E: when a montage is planned for another account, the source copy holds the padded window and
+    the variant cuts to B-roll from outside the clip."""
+    from sixstars.factory.director import StylePlan
+
+    ffmpeg, ffprobe = shutil.which("ffmpeg"), shutil.which("ffprobe")
+    if ffmpeg is None or ffprobe is None:
+        pytest.skip("ffmpeg/ffprobe not installed")
+    source = tmp_path / "source.mp4"
+    command = [ffmpeg, "-hide_banner", "-loglevel", "error", "-nostdin", "-y", "-f", "lavfi"]
+    command += ["-i", "testsrc2=size=1920x1080:rate=30:duration=40", "-f", "lavfi"]
+    command += ["-i", "sine=frequency=440:sample_rate=48000:duration=40", "-c:v", "libx264"]
+    command += ["-preset", "ultrafast", "-pix_fmt", "yuv420p", "-c:a", "aac", "-shortest", str(source)]
+    subprocess.run(command, check=True, capture_output=True, timeout=600)
+
+    creator = add_creator()
+    clip_id = add_clip(creator, status="gating")
+    plan = StylePlan(
+        reference_account="instagram_main",
+        reference_style="cam_top_viral",
+        by_account={"instagram_main": "cam_top_viral", "tiktok_main": "hype_montage"},
+    )
+    reference_file = data_dir / "ready" / f"{clip_id}.mp4"
+    reference_file.parent.mkdir(parents=True)
+    reference_file.write_bytes(b"reference")
+    padded, clip_span = ClipWindow(5.0, 37.0), ClipWindow(15.0, 27.0)
+    recipe = variants.recipe_json(
+        lines=(Line(0, (Word("scuba", 1.0, 1.5), Word("dive", 1.5, 2.0))),),
+        layout=LayoutA(facecam_box=Box(1440, 720, 480, 360)),
+        duration_s=clip_span.duration_s,
+        series_no=5,
+        mode="normal",
+        lane="hourly",
+        creator="test_streamer",
+        hook="Hook",
+        keywords={0: ["scuba"]},
+        duck=(),
+        payoff_s=None,
+        payoff_emoji=None,
+        window_start_s=clip_span.start_s - padded.start_s,
+        broll=True,
+    )
+    assert variants.after_reference(
+        clip_id,
+        plan,
+        layout_kind="C",
+        output_path=reference_file,
+        file_size_bytes=9,
+        duration_s=clip_span.duration_s,
+        render_ms=1,
+        source=source,
+        window=padded,
+        has_audio=True,
+        recipe=recipe,
+    )
+    copy = variants.variants_dir(clip_id) / variants.SOURCE_NAME
+    from sixstars.factory import tools
+
+    assert abs(tools.probe(copy).duration_s - padded.duration_s) < 0.5, "the copy holds the padded window"
+    db.execute("update clips set status = 'approved' where id = %s", (clip_id,))
+    assert variants.run_variants(clip_id, 0, storage=FakeClipStorage()) == "done"
+    row = db.fetch_one(
+        "select status, layout_kind, duration_s, checks, error from clip_renders "
+        "where clip_id = %s and style_id = 'hype_montage'",
+        (clip_id,),
+    )
+    assert row is not None and row["status"] == "ready", row and row["error"]
+    assert row["layout_kind"] == "M" and abs(float(row["duration_s"]) - clip_span.duration_s) < 0.2
+    events = db.fetch_all(
+        "select data from events where type = 'clip.variants_done' and entity_id = %s", (clip_id,)
+    )
+    assert events and events[0]["data"]["renders"]["hype_montage"]["status"] == "ready"

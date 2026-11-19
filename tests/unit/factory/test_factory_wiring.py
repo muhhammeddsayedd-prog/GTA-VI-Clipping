@@ -89,6 +89,10 @@ def migrated_style_settings(first: str, second: str, third: str) -> dict[str, ob
     merged_director["affinity"]["story"]["cam_top_wordcap"] = 3
     bandit = (MIGRATIONS / "0030_style_bandit.sql").read_text(encoding="utf-8")
     merged_director.update(json.loads(bandit.split("set value = value || '", 1)[1].split("'::jsonb", 1)[0]))
+    montage = (MIGRATIONS / "0031_hype_montage.sql").read_text(encoding="utf-8")
+    wordcap.update(json.loads(montage.split("set value = value || '", 1)[1].split("'::jsonb", 1)[0]))
+    merged_director["affinity"]["discovery"]["hype_montage"] = 3
+    merged_director["affinity"]["reaction"]["hype_montage"] = 2
     return {"factory.styles": {**added, **styles, **wordcap}, "factory.style_director": merged_director}
 
 
