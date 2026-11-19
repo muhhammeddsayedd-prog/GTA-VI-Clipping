@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useState } from "react";
 import { Code, ExternalLink, X } from "lucide-react";
 
@@ -48,7 +49,7 @@ export function ClipDetailView({ id }: { id: string }) {
     <>
       <PageHead back="/clips"
         title={<>Clip <span className="pc">{series(c.series_no)}</span></>}
-        sub={<span className="row" style={{ gap: 8, flexWrap: "wrap" }}>{c.hook ?? c.title} <Badge status={c.status} /> <Badge tone={laneTone(c.lane)}>{c.lane}</Badge> {c.gate_profile && <span>· {c.gate_profile} profile</span>}</span>}
+        sub={<span className="row" style={{ gap: 8, flexWrap: "wrap" }}>{c.hook ?? c.title} <Badge status={c.status} /> <Badge tone={laneTone(c.lane)}>{c.lane}</Badge> {c.version === "story" && <Badge tone="purple">story cut</Badge>} {c.gate_profile && <span>· {c.gate_profile} profile</span>}{(c.family ?? []).map((f) => <Link key={f.id} href={`/clips/${f.id}`} className="small">{f.version === "story" ? "Story cut" : "Short clip"} {series(f.series_no)}{f.duration_s ? ` · ${Math.round(f.duration_s)} s` : ""} →</Link>)}</span>}
         actions={<>
           <Btn icon={<Code size={15} />} onClick={() => setRaw(true)}>Raw JSON</Btn>
           {live && <Btn kind="p" href={live.post_url!} external icon={<ExternalLink size={15} />}>Open on {live.platform === "youtube" ? "YouTube" : live.platform === "tiktok" ? "TikTok" : "Instagram"}</Btn>}

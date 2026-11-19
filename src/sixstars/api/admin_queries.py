@@ -494,7 +494,7 @@ CLIP_COLUMNS = f"""
 c.id::text as id, c.series_no, c.spike_id::text as spike_id, {creator_json()} as creator, c.source_platform,
 c.source_type, c.lane, c.duration_s, c.hook, c.title, c.topic, c.score, c.rank_score, c.music_ratio,
 c.status, c.reject_reason, c.gate_profile, c.created_at, c.approved_at, c.posted_at,
-(c.storage_path is not null) as has_file,
+(c.storage_path is not null) as has_file, c.version, c.parent_clip_id::text as parent_clip_id,
 c.thumb_path as {THUMB_PATH}, {source_thumb_sql("c")} as {SOURCE_THUMB}
 """
 CLIP_SOURCE = "clips c join creators cr on cr.id = c.creator_id"
@@ -1332,6 +1332,21 @@ def clip_renders(clip_id: str) -> list[Row]:
         from clip_renders r join clips c on c.id = r.clip_id
         where r.clip_id = %s
         order by r.is_reference desc, r.style_id
+        """,
+        (clip_id,),
+    )
+
+
+def clip_family(clip_id: str) -> list[Row]:
+    """The other clips of a clip's family (development-plan/M18 Phase C): its short clip and its story
+    cut, oldest first."""
+    return db.fetch_all(
+        """
+        select f.id::text as id, f.series_no, f.version, f.status, f.duration_s, f.created_at
+        from clips c
+        join clips f on coalesce(f.parent_clip_id, f.id) = coalesce(c.parent_clip_id, c.id)
+        where c.id = %s and f.id <> c.id
+        order by f.created_at
         """,
         (clip_id,),
     )

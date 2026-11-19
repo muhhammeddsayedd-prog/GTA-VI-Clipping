@@ -13,6 +13,7 @@ import pytest
 from pydantic import BaseModel
 
 from sixstars import config, db, jobs, settings, usage
+from sixstars import settings as story_settings
 from sixstars.ai import calls
 from sixstars.ai.calls import BudgetExceededError
 from sixstars.chat import synthetic, twitch_replay
@@ -24,6 +25,14 @@ from sixstars.factory.pipeline import RenderInput
 from sixstars.vod import cleanup, health, process, sections, store
 from sixstars.vod.common import Deps
 from sixstars.vod.config import DEFAULTS, VodConfig
+
+
+@pytest.fixture(autouse=True)
+def no_story_cuts(database: None) -> None:
+    """These tests pin the lane's own windows; story cuts (development-plan/M18 Phase C) widen them and have
+    their own tests (`test_design_styles.py`)."""
+    story_settings.set("factory.story", {"enabled": False})
+
 
 FIXTURES = Path(__file__).resolve().parents[1] / "fixtures"
 BOT_CHECK = (

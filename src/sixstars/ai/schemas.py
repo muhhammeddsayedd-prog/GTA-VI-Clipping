@@ -210,6 +210,10 @@ class ClipWriting(Reply):
     title_line: str | None = Field(default=None, description="On-screen title, max 48 characters.")
     question: str | None = Field(default=None, description="Question title ending in '?', or null.")
     pov_line: str | None = Field(default=None, description="Line starting with 'POV', or null.")
+    story_start_s: float | None = Field(
+        default=None, description="Start of the longer story cut (window-file clock), or null."
+    )
+    story_end_s: float | None = Field(default=None, description="End of the story cut, or null.")
     spoiler: bool
     safety: SafetyFlags
     score_parts: ScoreParts
@@ -324,7 +328,14 @@ class ClipWriting(Reply):
             raise ValueError("start_s must be less than end_s")
         if self.payoff_s is not None and not self.start_s <= self.payoff_s <= self.end_s:
             self.payoff_s = None
+        story = (self.story_start_s, self.story_end_s)
+        if None in story or story[0] >= story[1]:  # type: ignore[operator]
+            self.story_start_s = self.story_end_s = None
         return self
+
+    @property
+    def has_story(self) -> bool:
+        return self.story_start_s is not None and self.story_end_s is not None
 
     @property
     def length_s(self) -> float:
@@ -345,17 +356,39 @@ def clip_writing_schema(
     min_len_s: float,
     max_len_s: float,
     lines: Mapping[int, str],
+    story_min_s: float = 0.0,
+    story_max_s: float = 0.0,
 ) -> type[ClipWriting]:
     """`ClipWriting` with the trim rules of one call: inside the window file, not starting after
     `spike_floor_s`, length between the limits.
 
     `lines` maps each subtitle line number to its text. A highlight is only a decoration, so a keyword
     for an unknown line, or one that is not in the text of its line, is dropped instead of failing the
-    reply."""
+    reply. The story cut (development-plan/M18 Phase C) is kept only when `story_max_s` is positive and it
+    lies inside the window, is `story_min_s`..`story_max_s` long and overlaps the short cut; otherwise it
+    is dropped, never an error."""
     tokens_by_line = {number: _tokens(text) for number, text in lines.items()}
 
     class Bound(ClipWriting):
         model_config = ConfigDict(title="ClipWriting")
+
+        @model_validator(mode="after")
+        def _story(self) -> Self:
+            if not self.has_story:
+                return self
+            start, end = float(self.story_start_s or 0.0), float(self.story_end_s or 0.0)
+            length = end - start
+            fits = (
+                story_max_s > 0
+                and start >= -TIME_TOLERANCE_S
+                and end <= window_s + TIME_TOLERANCE_S
+                and story_min_s - TIME_TOLERANCE_S <= length <= story_max_s + TIME_TOLERANCE_S
+                and start < self.end_s
+                and end > self.start_s
+            )
+            if not fits:
+                self.story_start_s = self.story_end_s = None
+            return self
 
         @model_validator(mode="after")
         def _trim(self) -> Self:

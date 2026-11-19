@@ -51,6 +51,7 @@ from sixstars.chat.models import ChatSourceError, ReplayChat, read_jsonl, write_
 from sixstars.chat.net import PROXY_FIX, ProxyRefusal, proxy_refusal, redact_proxy
 from sixstars.factory.commands import input_from_spike
 from sixstars.factory.pipeline import next_budget_reset
+from sixstars.factory.story import StoryRules
 from sixstars.logging import get_logger
 from sixstars.spikes import DetectedSpike, SpikeConfig, analyse_replay, persist_spike
 from sixstars.spikes.buckets import tokenise
@@ -521,12 +522,22 @@ def _fallback(video: Video, cfg: VodConfig, track: Track | None, access: Access,
     return result.source
 
 
+def story_rules() -> StoryRules:
+    """`factory.story` when it applies to this lane's renders (hourly, normal, VOD), else stories off."""
+    rules = StoryRules.from_setting(settings.get("factory.story", None))
+    applies = rules.applies(lane=RENDER_LANE, mode=RENDER_MODE, source_type="vod")
+    return rules if applies else StoryRules()
+
+
 def _queue_render(video: Video, row: SpikeRow, downloaded: Downloaded, cfg: VodConfig) -> bool:
     """Queue the `clip.render` job of one downloaded window. False when one is already queued."""
     item = input_from_spike(
         row.id, downloaded.path, source_offset_s=downloaded.start_s, lane=RENDER_LANE, mode=RENDER_MODE
     )
     item = replace(item, verdict=verdict_from_row(row))
+    if story_rules().enabled:
+        # The section was widened for a story cut (M18 Phase C): the writer reads all of it.
+        item = replace(item, pad_start_s=0.0, pad_end_s=downloaded.duration_s)
     priority = cfg.priority_for(row.tier)
     job_id = jobs.enqueue(
         "normal", JOB_CLIP_RENDER, item.to_payload(), priority=priority, dedupe_key=f"clip.render:{row.id}"
@@ -561,9 +572,11 @@ def _download_and_queue(video: Video, cfg: VodConfig, access: Access, deps: Deps
     ]
     rows.sort(key=lambda row: (-cfg.priority_for(row.tier), -row.score_z))
     work: list[tuple[SpikeRow, sections.Section]] = []
+    story = story_rules()
     for row in rows:
         try:
-            work.append((row, sections.section_for(row.pad_start_s, row.pad_end_s, video.duration_s)))
+            pad_start, pad_end = story.widen(row.pad_start_s, row.pad_end_s)
+            work.append((row, sections.section_for(pad_start, pad_end, video.duration_s)))
         except ValueError as exc:
             store.fail_spike(row.id, str(exc))
     if not work:

@@ -48,3 +48,7 @@ Limits of the pre-check: the public API does not expose every Content ID claim (
 ## Design-style renders (development-plan/M18)
 
 The gate judges the first render of a clip. The other design styles of the clip (`clip_renders`, job `clip.variants`) are rendered only after it approved the clip and get the technical checks only (frame size, file length within `gate.checks.duration_tolerance_s`, black and frozen picture within `max_black_s` / `max_freeze_s` in their own band). A render that fails is not posted: its accounts get the first render. Score, music, safety, duplicates and P5 are the same for every style (same source, same cut).
+
+## Story cuts (development-plan/M18 Phase C)
+
+A story cut (`clips.version = 'story'`) is judged by the hourly profile with the length limits of `factory.story` (`min_s`..`max_s`) instead of `gate.hourly`'s. The duplicate checks (topic, transcript, source range) ignore the clip's own family: the short clip and its story cut cover the same moment on purpose. The posting engine keeps them apart (docs/11).

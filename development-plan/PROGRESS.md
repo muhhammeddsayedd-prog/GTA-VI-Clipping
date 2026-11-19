@@ -466,3 +466,28 @@ FakeUploadPostClient()                 .uploads .deleted .upload_error .platform
 
 - Watch staging: how often P2 gives each text, which styles accounts get, render time with up to three styles per clip.
 - Phase C: story cuts and one-word captions (`cam_top_wordcap`).
+
+## M18 Phase C — Story cuts and one-word captions (2026-11-19)
+
+### What was built
+
+- Platform limits checked in the docs (docs/14): TikTok API 10 min, Instagram Reels 15 min (Upload-Post), YouTube Shorts 3 min (YouTube Help). Setting `posting.max_duration_s`.
+- `factory.story` (`factory/story.py`): story cuts of 60-150 s for hourly, normal-mode renders of VOD and live sources. Their windows are widened (VOD section, live cut) by 90 s before and 30 s after, and the writer reads the whole window. Express renders are unchanged.
+- P2: optional `story_start_s` / `story_end_s` (kept only inside the window, within the limits and overlapping the short cut; otherwise dropped). Prompt section "Story cut", `{story_rule}` in the user message.
+- `pipeline.render_story`: after the short clip, the same job renders the story as its own clip (`clips.version = 'story'`, `parent_clip_id`), reusing transcript, writer reply and layout; style planned for the moment type `story`; variants; `clip.gate` job. Failures reject only the story.
+- Gate: story clips use the story length limits; duplicate checks ignore the clip's own family.
+- Posting: `posting.sibling_gap_h` (12 h between family members on one account) and `posting.max_duration_s` in the hourly pick.
+- Style `cam_top_wordcap` (R06): one or two Montserrat Black capitals on the facecam's bottom edge (y 580), spoken word in yellow, no title. New rule keys `caption_y`, `caption_active_color`, `show_title`.
+- Migration 0029: `clips.version`, `clips.parent_clip_id` (one story per short clip), `factory.story`, `posting.sibling_gap_h`, `posting.max_duration_s`, `cam_top_wordcap`, story affinity.
+- Console: "story cut" badge and links between a short clip and its story.
+- Tests: `tests/unit/factory/test_story_cuts.py`, `tests/unit/posting/test_posting_story_family.py`, integration tests for a real story render, the family-aware gate and the VOD widening. The VOD and live integration tests that pin window positions run with story cuts off.
+
+### Deviations
+
+- The story is rendered inline after its short clip (same job, source still on disk) instead of a separate job, so no second transcription or writer call is needed.
+- A story is never made for express (spike-lane) renders or viewer-made Twitch clips (their window is the viewer's cut).
+
+### Open issues / next
+
+- Wider windows cost transcription time on the normal queue (up to about 120 s more audio per hourly clip). Watch the staging queue; lower `pad_before_s` or turn `factory.story.enabled` off if it falls behind.
+- Phase D: the per-account bandit on post performance. Phase E: `hype_montage`.

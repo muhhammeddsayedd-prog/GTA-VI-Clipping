@@ -77,6 +77,8 @@ from sixstars.logging import get_logger
 from sixstars.scoring import log as scoring_log
 
 JOB_CLIP_RENDER = "clip.render"
+# The gate's job (`gate.gate.JOB_GATE`; the gate imports this module, so the name is repeated here).
+JOB_GATE = "clip.gate"
 JOB_EXPRESS_RENDER = "express.render"
 ASS_NAME = "clip.ass"
 TITLE_PNG = "title.png"
@@ -146,6 +148,9 @@ class RenderInput:
     upload: bool = False
     moment_chosen: bool = False
     whole_window: bool = False
+    # development-plan/M18 Phase C: "story" for the longer cut of a short clip (`parent_clip_id`).
+    version: str = "short"
+    parent_clip_id: str | None = None
 
     def __post_init__(self) -> None:
         if self.lane not in LANES:
@@ -359,6 +364,9 @@ class Produced:
     timings_ms: dict[str, int]
     # The render as made: `factory.variants` renders the other styles of the plan from it.
     job: RenderJob | None = None
+    # Where the padded window starts in the file, and the writer's input: a story cut reuses both.
+    offset_s: float = 0.0
+    writer_input: writer.WriterInput | None = None
 
 
 WritingChooser = Callable[[writer.WriterInput], ClipWriting]
@@ -520,7 +528,7 @@ def render_file(job: RenderJob, *, ffmpeg: str = "ffmpeg", ffprobe: str = "ffpro
     job = replace(
         job,
         layout=framed_layout(job.layout, style),
-        hook=chosen_title(job.hook, job.texts, job.payoff_emoji, style),
+        hook=chosen_title(job.hook, job.texts, job.payoff_emoji, style) if style.show_title else None,
     )
     cam_top = job.layout.kind == "C"
     words = [word for line in job.lines for word in line.words]
@@ -708,6 +716,20 @@ def keep_window(writing: ClipWriting, proposed: ClipWindow) -> ClipWriting:
     return writing.model_copy(update={"start_s": proposed.start_s, "end_s": proposed.end_s})
 
 
+def wants_story(item: RenderInput, cfg: FactoryConfig) -> bool:
+    """Is a story cut asked for this render (development-plan/M18 Phase C)? Not for a story itself, not for
+    a clip whose window was cut by someone else (`whole_window`), and only where `factory.story` applies."""
+    if item.version != "short" or item.whole_window:
+        return False
+    return cfg.story.applies(lane=item.lane, mode=item.mode, source_type=item.source_type)
+
+
+def _story_limits(item: RenderInput, cfg: FactoryConfig) -> dict[str, float]:
+    if not wants_story(item, cfg):
+        return {}
+    return {"story_min_s": cfg.story.min_s, "story_max_s": cfg.story.max_s}
+
+
 def transcription_modes(mode: str) -> tuple[Mode, ...]:
     """Local first for a normal render, hosted first for an express one; the other is the fallback."""
     return ("hosted", "local") if mode == "express" else ("local", "hosted")
@@ -830,6 +852,7 @@ def produce(
         clip_id=clip_id,
         snap=cfg.snap,
         cut_guidance=cut_guidance,
+        **_story_limits(item, cfg),
     )
     started = time.monotonic()
     writing = choose_writing(writer_input)
@@ -899,6 +922,8 @@ def produce(
     timed("layout", started)
     if choose_style is not None:
         style, style_id = choose_style(writing, layout)
+        if deps.assets is None and style.caption_font != cfg.style.caption_font:
+            assets = load_assets(cfg.params.font, caption_font=_caption_fonts(cfg, style))
 
     started = time.monotonic()
     job = RenderJob(
@@ -936,6 +961,8 @@ def produce(
         outcome=outcome,
         timings_ms=timings,
         job=job,
+        offset_s=offset,
+        writer_input=writer_input,
     )
 
 
@@ -1188,6 +1215,165 @@ def _prepare_variants(
         get_logger("factory").error("variants_prepare_failed", error=f"{type(exc).__name__}: {exc}"[:300])
 
 
+def story_window(produced: Produced, story_min_s: float, story_max_s: float) -> ClipWindow | None:
+    """The story cut in window time: the writer's story trim under the trim rules with the story's length
+    limits, snapped like the short cut (`writer.final_window`). None without a story trim. Pure."""
+    writing, base = produced.writing, produced.writer_input
+    if base is None or writing.story_start_s is None or writing.story_end_s is None:
+        return None
+    story_writing = writing.model_copy(
+        update={"start_s": writing.story_start_s, "end_s": writing.story_end_s}
+    )
+    story_input = replace(
+        base,
+        proposed=ClipWindow(writing.story_start_s, writing.story_end_s),
+        spike_floor_s=base.window_s,
+        min_len_s=story_min_s,
+        max_len_s=story_max_s,
+    )
+    return writer.final_window(story_writing, story_input)
+
+
+def claim_story_clip(parent_id: str, item: RenderInput, window: ClipWindow) -> ClipRow | None:
+    """The `clips` row of the story cut of `parent_id` (a new one in `rendering`, under the next series
+    number), or None when the parent already has one (a retried job)."""
+    with db.transaction():
+        db.execute("select pg_advisory_xact_lock(hashtextextended(%s, 0))", (f"clip.story:{parent_id}",))
+        existing = db.fetch_one(
+            "select id from clips where parent_clip_id = %s and version = 'story'", (parent_id,)
+        )
+        if existing is not None:
+            return None
+        row = db.fetch_one(
+            """
+            insert into clips
+              (series_no, creator_id, source_platform, source_id, source_url, source_type, lane, start_s,
+               end_s, gate_profile, status, version, parent_clip_id)
+            values
+              (nextval('clip_series_seq'), %s, %s, %s, %s, %s, 'hourly', %s, %s, 'hourly', 'rendering',
+               'story', %s)
+            returning id::text as id, series_no
+            """,
+            (
+                item.creator_id,
+                item.platform,
+                item.source_id,
+                item.source_url,
+                item.source_type,
+                round(item.source_offset_s + window.start_s, 3),
+                round(item.source_offset_s + window.end_s, 3),
+                parent_id,
+            ),
+        )
+        assert row is not None
+        story_id = str(row["id"])
+        events.emit(
+            "clip.render_started",
+            entity_type="clip",
+            entity_id=story_id,
+            data={"version": "story", "parent_clip_id": parent_id, "lane": "hourly", "creator": item.creator},
+        )
+        return ClipRow(story_id, int(row["series_no"]), "rendering", created=True)
+
+
+def render_story(
+    parent_id: str, item: RenderInput, cfg: FactoryConfig, produced: Produced, deps: Deps
+) -> str | None:
+    """Render the story cut of a short clip (development-plan/M18 Phase C) as its own clip, from the same
+    source, transcript, writer reply and layout, then queue it for the gate. Never raises: a story that
+    cannot be made is logged (and its row rejected) and the short clip is unaffected. Returns its id."""
+    log = get_logger("factory")
+    window_w = story_window(produced, cfg.story.min_s, cfg.story.max_s)
+    job = produced.job
+    if window_w is None or job is None:
+        return None
+    window = ClipWindow(window_w.start_s + produced.offset_s, window_w.end_s + produced.offset_s)
+    story_item = replace(item, spike_id=None, lane="hourly", version="story", parent_clip_id=parent_id)
+    row: ClipRow | None = None
+    scratch: Path | None = None
+    try:
+        row = claim_story_clip(parent_id, story_item, window)
+        if row is None:
+            return None
+        lines = group_lines(produced.transcript.words)
+        clip_text = clip_lines(lines, window_w)
+        if not clip_text:
+            raise ClipSkippedError("no_speech")
+        writing = produced.writing.model_copy(update={"start_s": window_w.start_s, "end_s": window_w.end_s})
+        _store_writing(row.id, writing, produced.transcript)
+        analysis: music.MusicAnalysis | None = None
+        if not deps.skip_music:
+            try:
+                analysis = music.analyse(
+                    job.source_path,
+                    window,
+                    detector=deps.music_detector,
+                    has_audio=job.media.has_audio,
+                    ffmpeg=deps.ffmpeg,
+                )
+            except music.MusicDetectorUnavailableError as exc:
+                log.warning("music_detector_unavailable", error=str(exc)[:200])
+        facts = clip_facts(dict(job.texts), has_facecam=isinstance(job.layout, LayoutA))
+        plan = variants.plan_for(row.id, "hourly", cfg, facts=facts, moment_type="story")
+        payoff = produced.writing.payoff_s
+        scratch = scratch_dir_for(row.id)
+        scratch.mkdir(parents=True, exist_ok=True)
+        story_job = replace(
+            job,
+            window=window,
+            lines=clip_text,
+            output_path=ready_path_for(row.id),
+            scratch_dir=scratch,
+            series_no=row.series_no,
+            lane="hourly",
+            duck=music.duck_spans(analysis, cfg.max_music_ratio, window.duration_s),
+            style=cfg.catalog.rules_for(plan.reference_style),
+            style_id=plan.reference_style,
+            payoff_s=None if payoff is None else payoff - window_w.start_s,
+        )
+        started = time.monotonic()
+        outcome = render_file(story_job, ffmpeg=deps.ffmpeg, ffprobe=deps.ffprobe)
+        story = replace(
+            produced,
+            writing=writing,
+            window=window,
+            lines=tuple(clip_text),
+            layout=framed_layout(job.layout, story_job.style),
+            music=analysis,
+            outcome=outcome,
+            timings_ms={"render": int((time.monotonic() - started) * 1000)},
+            job=story_job,
+        )
+        _finish(row.id, story_item, cfg, story)
+        thumbs.try_make_thumb(
+            row.id,
+            str(outcome.output_path),
+            created_at=None,
+            duration_s=outcome.clip_duration_s,
+            storage=deps.storage,
+            ffmpeg=deps.ffmpeg,
+        )
+        _prepare_variants(row.id, story_item, plan, story, deps)
+        jobs.enqueue("normal", JOB_GATE, {"clip_id": row.id}, dedupe_key=f"{JOB_GATE}:{row.id}")
+        events.emit(
+            "clip.story_rendered",
+            entity_type="clip",
+            entity_id=parent_id,
+            data={"story_clip_id": row.id, "duration_s": round(outcome.clip_duration_s, 3)},
+        )
+        log.info("story_rendered", story_clip_id=row.id, duration_s=round(outcome.clip_duration_s, 2))
+        return row.id
+    except Exception as exc:  # noqa: BLE001 - see the docstring
+        log.error("story_failed", error=f"{type(exc).__name__}: {exc}"[:300])
+        if row is not None:
+            reason = exc.reason if isinstance(exc, ClipSkippedError) else f"render_failed: {exc}"
+            _reject(row.id, story_item, reason[:500], failed=not isinstance(exc, ClipSkippedError))
+        return None
+    finally:
+        if scratch is not None:
+            shutil.rmtree(scratch, ignore_errors=True)
+
+
 def upload_clip(clip_id: str, *, storage: clip_storage.ClipStorage | None = None) -> str:
     """Upload the finished clip to the private bucket and save the key in `clips.storage_path`.
 
@@ -1284,6 +1470,8 @@ def render_clip(item: RenderInput, *, deps: Deps | None = None, force: bool = Fa
         _finish(row.id, item, cfg, produced)
         if planned:
             _prepare_variants(row.id, item, planned[-1], produced, deps)
+        if produced.writing.has_story and wants_story(item, cfg):
+            render_story(row.id, item, cfg, produced, deps)
         # The console's frame of the clip, made before the gate so a rejected clip has one too. Never
         # raises: a missing thumbnail must not fail the render.
         thumbs.try_make_thumb(

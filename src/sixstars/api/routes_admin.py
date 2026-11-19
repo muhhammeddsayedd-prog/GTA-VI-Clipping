@@ -277,6 +277,7 @@ def clip(clip_id: str) -> JSONResponse:
         )
         row["posts"] = q.posts_where("p.clip_id = %s", (clip_id,))
         row["renders"] = q.clip_renders(clip_id)
+        row["family"] = q.clip_family(clip_id)
         row["events"] = q.entity_events("clip", clip_id)
         row["trace"] = q.build_trace(clip_id=clip_id)
     return answer(row)

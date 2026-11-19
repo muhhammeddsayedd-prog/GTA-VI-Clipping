@@ -19,6 +19,7 @@ from sixstars.factory.style import (
     CAM_TOP_QUESTION,
     CAM_TOP_TITLE,
     CAM_TOP_VIRAL,
+    CAM_TOP_WORDCAP,
     HEADLINE_CARD,
     POV_FULLFRAME,
     StyleRules,
@@ -70,6 +71,14 @@ DEFAULT_STYLES: dict[str, object] = {
         "accounts": ALL_ACCOUNTS,
         "requires": ["pov_line"],
         "rules": POV_FULLFRAME,
+    },
+    # Phase C (migration 0029).
+    "cam_top_wordcap": {
+        "enabled": True,
+        "weight": 1,
+        "lanes": list(LANES),
+        "accounts": ALL_ACCOUNTS,
+        "rules": CAM_TOP_WORDCAP,
     },
 }
 

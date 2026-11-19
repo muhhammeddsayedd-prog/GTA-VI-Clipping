@@ -31,7 +31,7 @@ DEFAULT_DIRECTOR: dict[str, object] = {
         "reaction": {"cam_top_viral": 3},
         "discovery": {"headline_card": 3, "cam_top_question": 3},
         "action": {"pov_fullframe": 3, "cam_top_viral": 2},
-        "story": {"cam_top_title": 3},
+        "story": {"cam_top_title": 3, "cam_top_wordcap": 3},
         "npc_funny": {"cam_top_title": 2, "pov_fullframe": 2},
         "fail": {"cam_top_viral": 2, "pov_fullframe": 2},
     },

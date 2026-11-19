@@ -283,6 +283,7 @@ def planned_post(clip: Clip, account: Account, decision: Decision, now: datetime
         dry_run=decision.dry_run,
         creator_id=clip.creator_id,
         slot_at=decision.slot_at,
+        family_id=clip.family_id,
     )
 
 

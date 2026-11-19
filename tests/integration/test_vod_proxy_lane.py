@@ -11,12 +11,21 @@ import test_vod_process
 from test_vod_process import BOT_CHECK, NOW, Lane, queued, video_row
 
 from sixstars import config, db, settings, usage
+from sixstars import settings as story_settings
 from sixstars.clients.fakes import FakeProxyProbe
 from sixstars.clients.proxy_probe import ProbeResult
 from sixstars.factory.pipeline import next_budget_reset
 from sixstars.guardian import health as guardian
 from sixstars.guardian import incidents
 from sixstars.vod import proxy
+
+
+@pytest.fixture(autouse=True)
+def no_story_cuts(database: None) -> None:
+    """These tests pin the lane's own windows; story cuts (development-plan/M18 Phase C) widen them and have
+    their own tests (`test_design_styles.py`)."""
+    story_settings.set("factory.story", {"enabled": False})
+
 
 lane = test_vod_process.lane  # the fixture, shared with test_vod_process
 

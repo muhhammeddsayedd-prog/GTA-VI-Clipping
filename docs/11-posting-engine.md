@@ -115,3 +115,8 @@ Caption template (same for all platforms):
 <base_hashtags> <clip hashtags (max 5)>
 ```
 Write `posts` row before the call (`pending`), update to `published` with `platform_post_id`/`post_url`, or `failed` with the error. Retries: 3 with backoff (30 s, 2 min, 5 min) using the same idempotency key.
+
+## Families of clips and platform lengths (development-plan/M18 Phase C)
+
+- A short clip and its story cut form a family (`coalesce(clips.parent_clip_id, clips.id)`). The hourly lane does not give an account a clip of a family it posted less than `posting.sibling_gap_h` (12) hours ago.
+- A clip longer than its platform takes (`posting.max_duration_s`: TikTok 600 s via the API and Instagram Reels 900 s per docs.upload-post.com/api/video-requirements, YouTube Shorts 180 s per YouTube Help) is not given to that platform's accounts.

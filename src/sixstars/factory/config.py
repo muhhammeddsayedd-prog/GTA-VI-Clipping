@@ -12,6 +12,7 @@ from sixstars.factory.anchor import CutRules
 from sixstars.factory.director import DEFAULT_DIRECTOR, DirectorRules
 from sixstars.factory.params import FactoryParams
 from sixstars.factory.pauses import SnapRules
+from sixstars.factory.story import DEFAULT_STORY, StoryRules
 from sixstars.factory.style import VIRAL_STYLE, StyleRules
 from sixstars.factory.styles import DEFAULT_STYLES, StyleCatalog
 from sixstars.scoring import config as scoring_config
@@ -39,6 +40,7 @@ OFFLINE_DEFAULTS: dict[str, object] = {
     "factory.style": VIRAL_STYLE,
     "factory.styles": DEFAULT_STYLES,
     "factory.style_director": DEFAULT_DIRECTOR,
+    "factory.story": DEFAULT_STORY,
     "factory.watermark": "6 Stars Clips",
     "factory.series_label": "6 Stars Moments",
     "factory.bleep": True,
@@ -95,6 +97,7 @@ class FactoryConfig:
     # the catalogue's fallback.
     catalog: StyleCatalog = StyleCatalog.legacy(None)
     director: DirectorRules = DirectorRules()
+    story: StoryRules = StoryRules()  # development-plan/M18 Phase C
 
     @classmethod
     def from_mapping(cls, values: Mapping[str, object], lane: str) -> "FactoryConfig":
@@ -125,6 +128,7 @@ class FactoryConfig:
             style=StyleRules.from_setting(values.get("factory.style")),
             catalog=StyleCatalog.from_setting(values.get("factory.styles"), values.get("factory.style")),
             director=DirectorRules.from_setting(values.get("factory.style_director")),
+            story=StoryRules.from_setting(values.get("factory.story")),
         )
 
     @classmethod
@@ -147,6 +151,8 @@ class FactoryConfig:
         # Absent before migration 0027: one style for every clip (factory.style).
         values["factory.styles"] = settings.get("factory.styles", None)
         values["factory.style_director"] = settings.get("factory.style_director", None)
+        # Absent before migration 0029: no story cuts.
+        values["factory.story"] = settings.get("factory.story", None)
         return with_cut_rules(cls.from_mapping(values, lane), scoring_config.flag("cut.adaptive"))
 
     @classmethod
