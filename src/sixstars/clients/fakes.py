@@ -28,6 +28,7 @@ from sixstars.clients.upload_post import (
     UploadStatus,
 )
 from sixstars.clients.youtube import FeedEntry, YouTubeChannel, YouTubeClient, YouTubeVideoStatus
+from sixstars.clients.youtube_analytics import VideoAnalytics, YouTubeAnalyticsClient
 
 Call = tuple[str, dict[str, Any]]
 
@@ -593,6 +594,7 @@ class FakeUploadPostClient(_Recorder, UploadPostClient):
         self.deleted: list[tuple[str, str, str]] = []
         self.upload_error: Exception | None = None
         self.platform_results: dict[str, PlatformResult] = {}
+        self.post_metrics: dict[str, Any] = {}  # request id -> post_metrics in the real shape
         self.analytics: dict[str, Any] = {
             "tiktok": {"followers": 1200, "views": 45000},
             "instagram": {"followers": 800, "reach": 9000, "views": 20000},
@@ -679,7 +681,7 @@ class FakeUploadPostClient(_Recorder, UploadPostClient):
         if request_id not in self.uploads:
             return {"success": False, "platforms": {}}
         result = self._result(request_id)
-        metrics = {"views": 1000, "likes": 50, "comments": 5, "shares": 2}
+        metrics = self.post_metrics.get(request_id, {"views": 1000, "likes": 50, "comments": 5, "shares": 2})
         return {
             "success": True,
             "post": {"request_id": request_id, "profile_username": self.uploads[request_id]["user"]},
@@ -726,3 +728,19 @@ class FakeProxyProbe(_Recorder, ProxyProbe):
     def probe(self, proxy_url: str) -> ProbeResult:
         self._record("probe", proxy_url=proxy_url)
         return self.result
+
+
+class FakeYouTubeAnalyticsClient(_Recorder, YouTubeAnalyticsClient):
+    """`reports[video_id]` answers `video_report`; `configured` says whether OAuth exists."""
+
+    def __init__(self, configured: bool = True) -> None:
+        self.calls = []
+        self.configured = configured
+        self.reports: dict[str, VideoAnalytics] = {}
+
+    def is_configured(self) -> bool:
+        return self.configured
+
+    def video_report(self, video_ids: Sequence[str], start: Any, end: Any) -> dict[str, VideoAnalytics]:
+        self._record("video_report", video_ids=list(video_ids), start=start, end=end)
+        return {v: self.reports[v] for v in video_ids if v in self.reports}

@@ -78,6 +78,9 @@ def test_one_pass_stores_account_snapshots_and_post_numbers(world: None) -> None
         "posts": 3,
         "skipped": 0,
         "rate_limited": False,
+        "snapshots": 0,
+        "snapshots_left": 0,
+        "handed_to_job": False,
         "errors": [],
     }
     stored = {

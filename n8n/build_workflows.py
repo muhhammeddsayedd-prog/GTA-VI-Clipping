@@ -73,7 +73,7 @@ WORKFLOWS: dict[str, tuple[str, str, str]] = {
     "WF05": (
         "Stats Collector",
         "stats",
-        "Every 2 hours, asks the control API to collect account and post stats.",
+        "Every 30 minutes, asks the control API to collect account and post stats (fixed-age snapshots first).",
     ),
     "WF06": (
         "Daily Report",
@@ -334,7 +334,7 @@ def build(wf_id: str, ctx: Json) -> tuple[list[Json], Json]:
         trigger = schedule("Every 15 minutes", {"field": "minutes", "minutesInterval": 15})
         return tick(ctx, trigger, "Run guardian check", "/v1/guardian/check")
     if wf_id == "WF05":
-        trigger = schedule("Every 2 hours", {"field": "hours", "hoursInterval": 2, "triggerAtMinute": 0})
+        trigger = schedule("Every 30 minutes", {"field": "minutes", "minutesInterval": 30})
         return tick(ctx, trigger, "Collect stats", "/v1/stats/collect")
     if wf_id == "WF06":
         nodes = [

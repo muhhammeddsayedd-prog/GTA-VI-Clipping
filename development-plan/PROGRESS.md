@@ -557,3 +557,30 @@ Unit: 3624 passed. Integration (throwaway postgres:17): new `test_delivery_guard
 - WF08 must be re-applied (`build_workflows.py apply`) to get `/resume`; [STG] WF08 stays inactive, so test the route directly on staging.
 - The TikTok account restriction needs the owner: TikTok app → Account status / video Analytics.
 - TikTok Ads Manager shows the ad account currency is **EGP**: A1 stores a currency on money rows and converts the USD cap.
+
+## L1 — Fixed-age snapshots (2026-11-19)
+
+Branch `learn-l1` (on top of L0, PR #67 merged to develop and deployed to staging 06:02 UTC).
+
+### What was built
+
+- Migration `0033_learning_snapshots.sql`: table `post_metrics_snapshots` (insert only, unique per post and target age; missing fields null), flag `learning.snapshots` (off), setting `stats.job_budget_s` (240).
+- `learning/snapshots.py` (pure): due windows (1/3/6/24/72/168 h, accepted until `t + max(0.75 h, 0.25 t)`), youngest first; `parse_snapshot` for the real TikTok / Instagram / YouTube answers.
+- `stats/snapshot_pass.py`: runs **before** the totals refresh (owner amendment 3). YouTube: one Data API call for all due videos, plus one Analytics API call when `youtube_analytics` is true in the flag and OAuth exists. Others: Upload-Post, one call per post, paced by a token bucket (90, +0.3/s). Each reading also refreshes the post's totals; the totals pass skips those posts.
+- Overflow: readings left at the end of the inline budget queue the worker job `stats.collect` (dedupe key, `stats.job_budget_s`; `stats/handlers.py`). The job never queues itself.
+- `clients/youtube_analytics.py` (reports.query, `dimensions=video`, filters up to 200 ids) with `FakeYouTubeAnalyticsClient`; `FakeUploadPostClient.post_metrics` per request id.
+- WF05 builder: every 30 minutes.
+
+### Owner amendment 5 (checked on production, 19 Nov)
+
+Upload-Post's YouTube post analytics return only `views, likes, comments, favorites`: **no** `subscribers_gained` or `average_view_percentage`. Those need the YouTube Analytics API. Its docs accept the `youtube` scope we already request, but **no YouTube refresh token exists** in staging or production, so the owner must run `sixstars youtube auth` once (then set `YOUTUBE_OAUTH_REFRESH_TOKEN` and `youtube_analytics: true`). Instagram gives `avg_watch_seconds`, `reach`, `saves`, `shares` (no completion, no followers per post).
+
+### Tests
+
+Unit 3640 passed (25 new). Integration: `test_stats_snapshots.py` (4), plus stats, guard, db, api and guardian route suites pass on a throwaway postgres:17. `test_db` table count 24 → 25.
+
+### Deviations / open
+
+- `stats.collect_budget_s` stays 20 (not 25): the account step isn't budgeted, and 25 s risks the n8n 30 s timeout. Extra time comes from the job instead.
+- WF05 on staging/production must be re-applied by hand (`build_workflows.py apply --env staging`).
+- Paid split: `paid` is set from `posts.boosted`; `paid_views` / `paid_followers` stay null until the ads controller (A5) reads Zernio's split.

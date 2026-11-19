@@ -16,6 +16,18 @@ from sixstars.scoring import config as scoring_config
 
 __all__ = ["world"]  # fixture
 
+
+@pytest.fixture(autouse=True)
+def flags_reset() -> Iterator[None]:
+    """Flags written by a test are switched back off (fixtures don't restore scoring_config)."""
+    yield
+    db.execute(
+        "update scoring_config set value = jsonb_set(value, '{enabled}', 'false') where key = any(%s)",
+        (["learning.delivery_guard", "learning.snapshots"],),
+    )
+    scoring_config.invalidate()
+
+
 TOKEN = "integration-test-token-0123456789abcdef0123456789"
 AUTH = {"Authorization": f"Bearer {TOKEN}"}
 
