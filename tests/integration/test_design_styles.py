@@ -14,7 +14,7 @@ from psycopg.types.json import Jsonb
 from sixstars import config, db
 from sixstars.factory import variants
 from sixstars.factory.config import FactoryConfig
-from sixstars.factory.director import plan_styles
+from sixstars.factory.director import clip_facts, plan_styles
 from sixstars.factory.layout import Box, LayoutA
 from sixstars.factory.lines import Line, Word
 from sixstars.factory.window import ClipWindow
@@ -66,7 +66,15 @@ def test_the_plan_covers_the_enabled_accounts_and_skips_their_last_style(staging
     accounts = variants.load_accounts()
     assert [account.id for account in accounts] == ["instagram_main", "tiktok_main", "youtube_main"]
     cfg = FactoryConfig.load("hourly")
-    assert cfg.catalog.ids == ("cam_top_title", "cam_top_viral")
+    assert cfg.catalog.ids == (
+        "cam_top_question",
+        "cam_top_title",
+        "cam_top_viral",
+        "headline_card",
+        "pov_fullframe",
+    ), "migrations 0027 and 0028"
+    assert cfg.catalog.rules_for("cam_top_title").title_source == "title_line"
+    assert cfg.director.multiplier("discovery", "headline_card") == 3.0
 
     creator = add_creator()
     earlier = add_clip(creator, status="posted", style_id="cam_top_viral")
@@ -211,3 +219,77 @@ def test_an_approved_clip_gets_its_other_style_rendered_checked_and_uploaded(
         "select data from events where entity_id = %s and type = 'clip.variants_done'", (clip_id,)
     )
     assert done is not None and done["data"]["renders"][other]["status"] == "ready"
+
+
+def test_a_clip_with_every_text_gets_three_styles_rendered(
+    staging_accounts: None, data_dir: Path, tmp_path: Path
+) -> None:
+    """Phase B: with the writer's texts and a facecam, the three accounts get three different styles and
+    the other two are rendered in their own layouts."""
+    ffmpeg, ffprobe = shutil.which("ffmpeg"), shutil.which("ffprobe")
+    if ffmpeg is None or ffprobe is None:
+        pytest.skip("ffmpeg/ffprobe not installed")
+    source = tmp_path / "source.mp4"
+    command = [ffmpeg, "-hide_banner", "-loglevel", "error", "-nostdin", "-y", "-f", "lavfi"]
+    command += ["-i", "testsrc2=size=1920x1080:rate=30:duration=10", "-f", "lavfi"]
+    command += ["-i", "sine=frequency=440:sample_rate=48000:duration=10", "-c:v", "libx264"]
+    command += ["-preset", "ultrafast", "-pix_fmt", "yuv420p", "-c:a", "aac", "-shortest", str(source)]
+    subprocess.run(command, check=True, capture_output=True, timeout=300)
+
+    creator = add_creator()
+    clip_id = add_clip(creator, status="gating")
+    cfg = FactoryConfig.load("hourly")
+    texts = {
+        "title_line": "Speed vs the locked truck",
+        "headline": "Speed learns you can't steal every car in GTA 6",
+        "question": "Can you steal any car in GTA 6?",
+        "pov_line": "POV the truck has a key cloner",
+    }
+    facts = clip_facts(texts, has_facecam=True)
+    plan = plan_styles(clip_id, "hourly", variants.load_accounts(), cfg.catalog, cfg.director, facts=facts)
+    assert len(set(plan.by_account.values())) == 3 and len(plan.styles) == 3
+    reference_file = data_dir / "ready" / f"{clip_id}.mp4"
+    reference_file.parent.mkdir(parents=True)
+    reference_file.write_bytes(b"reference")
+    recipe = variants.recipe_json(
+        lines=(Line(0, (Word("no", 0.5, 0.8), Word("way", 0.8, 1.2))),),
+        layout=LayoutA(facecam_box=Box(1440, 720, 480, 360)),
+        duration_s=6.0,
+        series_no=4,
+        mode="normal",
+        lane="hourly",
+        creator="test_streamer",
+        hook="No way he did that",
+        keywords={},
+        duck=(),
+        payoff_s=None,
+        payoff_emoji=None,
+        texts=texts,
+    )
+    assert variants.after_reference(
+        clip_id,
+        plan,
+        layout_kind="C",
+        output_path=reference_file,
+        file_size_bytes=9,
+        duration_s=6.0,
+        render_ms=1,
+        source=source,
+        window=ClipWindow(2.0, 8.0),
+        has_audio=True,
+        recipe=recipe,
+    )
+    db.execute("update clips set status = 'approved' where id = %s", (clip_id,))
+    assert variants.run_variants(clip_id, 0, storage=FakeClipStorage()) == "done"
+
+    expected_kind = {
+        "cam_top_viral": "C",
+        "cam_top_title": "C",
+        "cam_top_question": "C",
+        "headline_card": "H",
+        "pov_fullframe": "P",
+    }
+    for row in db.fetch_all("select * from clip_renders where clip_id = %s and not is_reference", (clip_id,)):
+        assert row["status"] == "ready", (row["style_id"], row["error"])
+        assert row["layout_kind"] == expected_kind[row["style_id"]]
+        assert row["checks"]["problems"] == []

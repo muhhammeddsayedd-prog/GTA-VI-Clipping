@@ -190,4 +190,7 @@ def clip_columns(writing: ClipWriting) -> dict[str, object]:
         "safety_flags": Jsonb(writing.safety.model_dump()),
         "score": writing.score,
         "score_parts": Jsonb(writing.score_parts.model_dump()),
+        # development-plan/M18 Phase B (migration 0028).
+        "moment_type": writing.moment_type,
+        "style_texts": Jsonb(writing.style_texts()),
     }

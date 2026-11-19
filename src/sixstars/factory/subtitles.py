@@ -19,8 +19,13 @@ from sixstars.factory.layout import (
     CAPTION_Y_A,
     CAPTION_Y_B,
     CAPTION_Y_C,
+    H_VIDEO_H,
+    H_VIDEO_Y,
     HOOK_BOTTOM,
     HOOK_TOP,
+    LOW_CREDIT_BOTTOM,
+    P_VIDEO_H,
+    P_VIDEO_Y,
     PAYOFF_Y_C,
     REF_HEIGHT,
     REF_WIDTH,
@@ -127,13 +132,18 @@ def caption_bottom(layout: LayoutKind, params: FactoryParams, style: SubtitleSty
     """
     style = style or SubtitleStyle()
     zone = safe_zone(params)
-    centre = {"A": CAPTION_Y_A, "B": CAPTION_Y_B, "C": CAPTION_Y_C}[layout]
+    centre = {"A": CAPTION_Y_A, "B": CAPTION_Y_B, "C": CAPTION_Y_C, "H": CAPTION_Y_B, "P": CAPTION_Y_B}[
+        layout
+    ]
     bottom = min(centre + style.size / 2, zone.bottom - style.outline - style.shadow)
     return max(bottom, zone.top + style.size + style.outline)
 
 
 def credit_bottom(layout: LayoutKind, params: FactoryParams, style: SubtitleStyle | None = None) -> float:
-    """Y of the credit's bottom edge: just above a one-line caption, at the bottom of the gameplay area."""
+    """Y of the credit's bottom edge: just above a one-line caption, at the bottom of the gameplay area;
+    in layouts H and P (no captions) at `LOW_CREDIT_BOTTOM`, under the stream or on the gameplay."""
+    if layout in ("H", "P"):
+        return float(LOW_CREDIT_BOTTOM)
     style = style or SubtitleStyle()
     return caption_bottom(layout, params, style) - style.size - style.outline - style.credit_gap
 
@@ -306,7 +316,13 @@ def payoff_events(emoji: str, *, payoff_s: float, duration_s: float, layout: Lay
     text = " ".join(emoji.split())
     if not text or not 0 <= payoff_s < duration_s:
         return []
-    centre_y = {"A": A_GAMEPLAY_H // 2, "B": B_GAMEPLAY_Y + B_GAMEPLAY_H // 2, "C": PAYOFF_Y_C}[layout]
+    centre_y = {
+        "A": A_GAMEPLAY_H // 2,
+        "B": B_GAMEPLAY_Y + B_GAMEPLAY_H // 2,
+        "C": PAYOFF_Y_C,
+        "H": H_VIDEO_Y + H_VIDEO_H // 2,
+        "P": P_VIDEO_Y + P_VIDEO_H // 2,
+    }[layout]
     end = min(payoff_s + PAYOFF_EMOJI_S, duration_s)
     tags = f"{{\\an5\\pos({REF_WIDTH // 2},{centre_y})\\fs{PAYOFF_EMOJI_SIZE}{PAYOFF_POP}}}"
     return [dialogue(LAYER_PAYOFF, payoff_s, end, "Caption", tags + ass_text_emoji(text))]

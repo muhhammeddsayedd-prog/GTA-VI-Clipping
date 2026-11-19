@@ -60,6 +60,7 @@ def manual_writing(
     *,
     payoff_s: float | None = None,
     payoff_emoji: str = "",
+    texts: Mapping[str, str] | None = None,
 ) -> ClipWriting:
     """A clip writer reply typed by hand: the window as given, the hook, keywords and payoff from the
     options (`payoff_s` on the writer's clock).
@@ -83,6 +84,7 @@ def manual_writing(
             "keywords": highlights,
             "payoff_s": payoff_s,
             "payoff_emoji": payoff_emoji or None,
+            **{name: text for name, text in (texts or {}).items() if text},
             "spoiler": False,
             "safety": {},
             "score": 5,
@@ -161,6 +163,7 @@ def render_file(
     payoff_s: float | None = None,
     payoff_emoji: str = "",
     style_id: str = "",
+    texts: Mapping[str, str] | None = None,
 ) -> int:
     """Render a local video file without writing a clip row.
 
@@ -207,7 +210,9 @@ def render_file(
             return writer.write(writer_input, lane=ai_lane)
         # `payoff_s` is file time; the writer's clock starts at the padded window.
         payoff = None if payoff_s is None else payoff_s - start + writer_input.proposed.start_s
-        return manual_writing(writer_input, hook, keywords, payoff_s=payoff, payoff_emoji=payoff_emoji)
+        return manual_writing(
+            writer_input, hook, keywords, payoff_s=payoff, payoff_emoji=payoff_emoji, texts=texts
+        )
 
     def choose_layout(media: tools.MediaInfo, time_s: float) -> Layout:
         if forced_box is not None:

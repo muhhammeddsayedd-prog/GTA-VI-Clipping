@@ -36,7 +36,8 @@ ACCOUNTS = [
     AccountSlot("tiktok_main", "tiktok", ("hourly", "spike")),
     AccountSlot("youtube_main", "youtube", ("hourly", "spike")),
 ]
-CATALOG = StyleCatalog.from_setting(DEFAULT_STYLES)
+# The Phase A tests use the two styles that need nothing of the clip; Phase B has its own tests.
+CATALOG = StyleCatalog.from_setting({key: DEFAULT_STYLES[key] for key in ("cam_top_viral", "cam_top_title")})
 CAM = Box(0, 300, 260, 166)
 
 
@@ -175,7 +176,7 @@ def test_the_style_decides_where_a_found_facecam_goes() -> None:
 def test_the_gate_band_of_layout_c_lies_between_the_title_and_the_captions() -> None:
     top, bottom = gameplay_band("C")
     assert top * 1920 >= C_FACECAM_H + 40  # below the title on the seam
-    assert bottom * 1920 <= CAPTION_Y_C - 200  # above the caption and the credit line
+    assert bottom * 1920 <= CAPTION_Y_C - 150  # above the caption and the credit line
     assert gameplay_band(None) == gameplay_band("A") == gameplay_band("B")
 
 

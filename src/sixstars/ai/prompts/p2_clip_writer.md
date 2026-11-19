@@ -29,6 +29,15 @@ Times are seconds from the start of the window file, the same clock as the subti
 - `payoff_s`: the moment the payoff lands (the crash, the explosion, the scream, the punchline), in seconds on the window-file clock and inside your cut. The video punches in there with a bass hit, so pick the single strongest instant the transcript or chat points to. Null when there is no one moment like that.
 - `payoff_emoji`: one emoji reacting to the payoff, shown big on screen at `payoff_s` (for example 💀 😭 🤯 😂 🔥 😳). Null when `payoff_s` is null.
 
+## Words for the on-screen styles
+
+The clip is rendered in several looks, one per platform, and each look shows one short text on screen for the whole clip. Write all of them; a look whose text is null is not used. The same rules as the hook apply: true to the clip, no spoilers, no profanity, no hashtags, no @handles, English.
+- `moment_type`: what kind of moment this is, one of `reaction` (the streamer's reaction is the point), `discovery` (the game can do something surprising, a new feature or detail), `action` (a chase, crash, stunt or fight carries it), `story` (a longer arc with a setup and an outcome), `npc_funny` (an NPC or the world does something absurd), `fail` (a plan goes wrong).
+- `title_line`: a short caption-style title, at most 48 characters, written like a viewer would caption it, usually ending in one emoji (for example "NPC has a pet alligator 😭", "GTA 6 police do NOT play 😭💀").
+- `headline`: one news-style sentence, at most 90 characters, that states what the clip shows as a fact, naming the streamer when that helps (for example "Speed learns you can't steal every car in GTA 6 👀"). It must not give away a story event.
+- `question`: only for a moment that answers a question about the game, the question it answers, at most 48 characters, ending in "?" (for example "Can you punch a bird in GTA 6?"). Otherwise null.
+- `pov_line`: only for a moment you watch through the player's eyes, a line of at most 48 characters starting with "POV" (for example "POV this doesn't feel real at all 😭🔥"). Otherwise null.
+
 Everything is in English. No slurs, anywhere. Mild profanity is fine in subtitles (it is bleeped) but keep it out of the hook, title and caption.
 
 ## Spoilers

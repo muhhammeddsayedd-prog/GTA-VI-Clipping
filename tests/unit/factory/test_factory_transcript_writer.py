@@ -453,5 +453,6 @@ def test_clip_columns_maps_every_p2_output() -> None:
     assert columns["score_parts"].obj == {"hook": 8, "clarity": 7, "payoff": 9, "rewatch": 8}  # type: ignore[attr-defined]
     assert set(columns) == {
         "hook", "title", "caption", "hashtags", "commentary", "topic", "keywords", "spoiler", "safety_flags",
-        "score", "score_parts",
+        "score", "score_parts", "moment_type", "style_texts",
     }  # fmt: skip
+    assert columns["moment_type"] is None and columns["style_texts"].obj == {}  # type: ignore[attr-defined]

@@ -309,6 +309,10 @@ def clip_render_file(
     style: str = typer.Option(
         "", "--style", help="Design style id from factory.styles (default: the single factory.style)."
     ),
+    title_line: str = typer.Option("", "--title-line", help="Writer's title line (without --ai)."),
+    headline: str = typer.Option("", "--headline", help="Writer's news headline (without --ai)."),
+    question: str = typer.Option("", "--question", help="Writer's question title (without --ai)."),
+    pov: str = typer.Option("", "--pov", help="Writer's POV line (without --ai)."),
 ) -> None:
     """Render a clip from a local video without writing a clip row (for design iteration)."""
     from pathlib import Path
@@ -338,6 +342,7 @@ def clip_render_file(
             payoff_s=payoff if payoff >= 0 else None,
             payoff_emoji=payoff_emoji,
             style_id=style,
+            texts={"title_line": title_line, "headline": headline, "question": question, "pov_line": pov},
         )
 
     if not ai:

@@ -443,3 +443,26 @@ FakeUploadPostClient()                 .uploads .deleted .upload_error .platform
 - Measure render time and disk on the staging server (variants add one render per extra style per approved clip, plus a temporary source copy).
 - Pre-existing: on a machine with ffmpeg, 57 integration tests fail on `main` as well (stale end-card and gate expectations from before migration 0021); CI skips them because it has no ffmpeg.
 - Phase B: `headline_card`, `pov_fullframe`, `cam_top_question`, P2 `moment_type` and text variants.
+
+## M18 Phase B — The calm styles: question, news card, POV (2026-11-19)
+
+### What was built
+
+- Clip writer P2: optional `moment_type` (reaction, discovery, action, story, npc_funny, fail) and the styles' texts `title_line` (≤ 48), `headline` (≤ 90), `question` (≤ 48, ends in "?"), `pov_line` (≤ 48, starts with "POV"). Each is a decoration: a value that breaks its rule is dropped. Stored in `clips.moment_type` and `clips.style_texts` (migration 0028). Prompt and docs/15 updated.
+- Styles (migration 0028, `factory.styles`): `cam_top_question` (layout C, red Anton capitals with a black outline at the top of the gameplay), `headline_card` (layout H: brand header with the star avatar, headline, the stream as a 4:3 crop that keeps the facecam; no watermark), `pov_fullframe` (layout P: 3:4 gameplay crop between black bars, centred POV line). `cam_top_title` now shows `title_line`. New rule keys `frame`, `title_source`, `title_look`, `watermark`; entry key `requires`.
+- Drawing: `factory/cards.py` (Pillow, colour emoji like the title bar); assets `brand/logo.png` as the avatar and Anton for questions.
+- Director: a style is used only when the clip has what it `requires` (`director.clip_facts`); `factory.style_director.affinity` multiplies weights per `moment_type`. The plan is now made after the writer and the layout detection (`produce(choose_style=...)`); variants carry the texts in their recipe.
+- Gate bands: H 670-1400, P 300-760; layout C's band moved to 960-1240 (below the tallest question, above the credit line). P5 knows the new elements.
+- Console: names of the new styles and layouts.
+- `clip render-file --title-line/--headline/--question/--pov`.
+- Tests: `tests/unit/factory/test_design_styles_b.py` (19), an end-to-end integration test rendering three styles of one clip (H, P, C).
+
+### Deviations
+
+- Layout H keeps the stream at 4:3 (like R09) rather than full 16:9; the crop moves to keep the streamer's facecam.
+- The question title is drawn in layout C only by default (the style asks for the facecam on top); without a facecam it sits at the top of layout B's gameplay.
+
+### Open issues / next
+
+- Watch staging: how often P2 gives each text, which styles accounts get, render time with up to three styles per clip.
+- Phase C: story cuts and one-word captions (`cam_top_wordcap`).

@@ -2,7 +2,7 @@
 
 **Goal:** every clip is rendered in several design styles: one style per platform account, and a short and a story version of the moment when it has a story. A style director picks each style automatically. Today one global look (`factory.style`, docs/27) goes to every platform.
 
-**Status:** Phase A built 2026-11-19 (see PROGRESS.md); phases B-E open.
+**Status:** Phases A and B built 2026-11-19 (see PROGRESS.md); phases C-E open.
 
 **Depends on:** M06 (clip factory), M07 (gate), M10 (posting), M17 (console, for the style views). Staging first. Nothing reaches `main` before the staging checks of each phase pass.
 

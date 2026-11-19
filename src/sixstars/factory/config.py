@@ -9,7 +9,7 @@ from typing import Literal
 
 from sixstars import settings
 from sixstars.factory.anchor import CutRules
-from sixstars.factory.director import DirectorRules
+from sixstars.factory.director import DEFAULT_DIRECTOR, DirectorRules
 from sixstars.factory.params import FactoryParams
 from sixstars.factory.pauses import SnapRules
 from sixstars.factory.style import VIRAL_STYLE, StyleRules
@@ -38,7 +38,7 @@ OFFLINE_DEFAULTS: dict[str, object] = {
     "factory.end_card_s": 0,
     "factory.style": VIRAL_STYLE,
     "factory.styles": DEFAULT_STYLES,
-    "factory.style_director": {"no_repeat_n": 1, "diverse_across_accounts": True},
+    "factory.style_director": DEFAULT_DIRECTOR,
     "factory.watermark": "6 Stars Clips",
     "factory.series_label": "6 Stars Moments",
     "factory.bleep": True,
