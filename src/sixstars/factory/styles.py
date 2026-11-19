@@ -15,9 +15,18 @@ from `factory.style`: every clip then looks exactly as before.
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 
-from sixstars.factory.style import CAM_TOP_TITLE, CAM_TOP_VIRAL, StyleRules
+from sixstars.factory.style import (
+    CAM_TOP_QUESTION,
+    CAM_TOP_TITLE,
+    CAM_TOP_VIRAL,
+    HEADLINE_CARD,
+    POV_FULLFRAME,
+    StyleRules,
+)
 
 LEGACY_STYLE_ID = "legacy"
+# What a style may require of a clip (`StyleEntry.requires`): a facecam, or one of the writer's texts.
+REQUIREMENTS = ("facecam", "title_line", "headline", "question", "pov_line")
 ALL_ACCOUNTS = "*"
 LANES = ("spike", "hourly")
 
@@ -37,6 +46,31 @@ DEFAULT_STYLES: dict[str, object] = {
         "accounts": ALL_ACCOUNTS,
         "rules": CAM_TOP_TITLE,
     },
+    # Phase B (migration 0028).
+    "cam_top_question": {
+        "enabled": True,
+        "weight": 1,
+        "lanes": list(LANES),
+        "accounts": ALL_ACCOUNTS,
+        "requires": ["question"],
+        "rules": CAM_TOP_QUESTION,
+    },
+    "headline_card": {
+        "enabled": True,
+        "weight": 1,
+        "lanes": list(LANES),
+        "accounts": ALL_ACCOUNTS,
+        "requires": ["headline"],
+        "rules": HEADLINE_CARD,
+    },
+    "pov_fullframe": {
+        "enabled": True,
+        "weight": 1,
+        "lanes": list(LANES),
+        "accounts": ALL_ACCOUNTS,
+        "requires": ["pov_line"],
+        "rules": POV_FULLFRAME,
+    },
 }
 
 
@@ -50,6 +84,11 @@ class StyleEntry:
     weight: float = 1.0
     lanes: tuple[str, ...] = LANES
     accounts: tuple[str, ...] | None = None
+    requires: tuple[str, ...] = ()
+
+    def fits(self, facts: frozenset[str]) -> bool:
+        """Does the clip have everything this style needs (a facecam, the writer's text it shows)?"""
+        return all(need in facts for need in self.requires)
 
     def allows(self, lane: str, account_id: str | None) -> bool:
         """May this style be used for a clip of `lane` posted on `account_id` (None: any account)?"""
@@ -69,6 +108,9 @@ def _entry(style_id: str, raw: object) -> StyleEntry | None:
     weight = raw.get("weight", 1)
     lanes = raw.get("lanes", list(LANES))
     accounts = raw.get("accounts", ALL_ACCOUNTS)
+    requires = raw.get("requires", [])
+    if not isinstance(requires, list) or not all(need in REQUIREMENTS for need in requires):
+        return None
     if not isinstance(enabled, bool) or isinstance(weight, bool) or not isinstance(weight, int | float):
         return None
     if not isinstance(lanes, list) or not all(lane in LANES for lane in lanes):
@@ -86,6 +128,7 @@ def _entry(style_id: str, raw: object) -> StyleEntry | None:
         weight=float(weight),
         lanes=tuple(lanes),
         accounts=allowed,
+        requires=tuple(requires),
     )
 
 

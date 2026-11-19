@@ -44,6 +44,7 @@ Rules given in the prompt:
 - Spoiler: true if the clip shows or discusses GTA 6 story events, endings, character deaths or mission reveals.
 - Safety: flag real-world politics, gambling, sponsored segments, real-world violence, sexual content, personal information (addresses, phone numbers, faces of non-consenting bystanders on IRL streams), hate speech, possible copyrighted media playing (TV, film, music).
 - Score 1–10 with sub-scores: hook strength, clarity without context, payoff, rewatchability.
+- Design styles (development-plan/M18 Phase B): `moment_type` and the on-screen texts of the styles (`title_line`, `headline`, `question`, `pov_line`). Each is a decoration: a value that breaks its rule is dropped, and a style whose text is missing is not picked.
 
 ```json
 {
@@ -58,6 +59,11 @@ Rules given in the prompt:
   "keywords": [{"line": 0, "words": [""]}],
   "payoff_s": 0.0,          // optional: when the payoff lands (window-file clock) or null; docs/27
   "payoff_emoji": "💀",     // optional: one emoji shown at payoff_s, or null
+  "moment_type": "discovery", // optional: reaction | discovery | action | story | npc_funny | fail (M18)
+  "title_line": "",        // optional: on-screen title, max 48 chars, usually one emoji (M18)
+  "headline": "",          // optional: news-style sentence, max 90 chars (headline_card style, M18)
+  "question": null,        // optional: max 48 chars ending in "?" (cam_top_question style, M18)
+  "pov_line": null,        // optional: max 48 chars starting with "POV" (pov_fullframe style, M18)
   "spoiler": false,
   "safety": {"politics": false, "gambling": false, "sponsored": false, "real_violence": false,
              "sexual": false, "personal_info": false, "hate": false, "copyrighted_media": false},

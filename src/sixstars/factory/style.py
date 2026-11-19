@@ -14,8 +14,14 @@ from dataclasses import dataclass
 from typing import Literal
 
 HookMode = Literal["box", "title_bar"]
+Frame = Literal["auto", "headline_card", "pov"]
+TitleSource = Literal["hook", "title_line", "headline", "question", "pov_line"]
+TitleLook = Literal["bar", "question"]
 
 _HOOK_MODES: tuple[HookMode, ...] = ("box", "title_bar")
+_FRAMES: tuple[Frame, ...] = ("auto", "headline_card", "pov")
+_TITLE_SOURCES: tuple[TitleSource, ...] = ("hook", "title_line", "headline", "question", "pov_line")
+_TITLE_LOOKS: tuple[TitleLook, ...] = ("bar", "question")
 
 
 @dataclass(frozen=True, slots=True)
@@ -41,6 +47,13 @@ class StyleRules:
       instead of gameplay on top (layout A).
     * `captions`: burn in the spoken words (off: a title-only style, docs/27 section 5).
     * `title_whole_clip`: the title bar stays for the whole clip instead of `factory.hook_seconds`.
+    * `frame`: `auto` draws layout A, B or C from the facecam and `facecam_top`; `headline_card` the
+      news card (layout H: brand header, headline, the stream as the streamer had it); `pov` the
+      gameplay alone in a tall crop with black bars and a centred line (layout P).
+    * `title_source`: which of the clip writer's texts the title shows (the hook when that one is
+      missing). `title_look`: `bar` (white bar) or `question` (big red capitals with a black outline
+      at the top of the gameplay).
+    * `watermark`: burn in `factory.watermark` (off for the headline card, whose header is the brand).
     """
 
     caption_words: int = 0
@@ -63,6 +76,10 @@ class StyleRules:
     facecam_top: bool = False
     captions: bool = True
     title_whole_clip: bool = False
+    frame: Frame = "auto"
+    title_source: TitleSource = "hook"
+    title_look: TitleLook = "bar"
+    watermark: bool = True
 
     def __post_init__(self) -> None:
         if self.caption_words < 0 or self.caption_chars < 1:
@@ -71,6 +88,12 @@ class StyleRules:
             raise ValueError("caption_size must be within 24..200")
         if self.hook_mode not in _HOOK_MODES:
             raise ValueError(f"hook_mode must be one of {_HOOK_MODES}")
+        if (
+            self.frame not in _FRAMES
+            or self.title_source not in _TITLE_SOURCES
+            or self.title_look not in _TITLE_LOOKS
+        ):
+            raise ValueError("frame, title_source or title_look is unknown")
         if self.punchin_max < 0 or self.punchin_len_s <= 0 or self.punchin_min_gap_s < 0:
             raise ValueError("punch-in counts and lengths must not be negative")
         if not 1.0 <= self.punchin_zoom <= 3.0 or not 1.0 <= self.zoomcut_scale <= 1.5:
@@ -123,6 +146,9 @@ class StyleRules:
             return " ".join(value.split()) if isinstance(value, str) else fallback
 
         hook_mode = raw.get("hook_mode")
+        frame = raw.get("frame")
+        title_source = raw.get("title_source")
+        title_look = raw.get("title_look")
         try:
             return cls(
                 caption_words=integer("caption_words", base.caption_words),
@@ -145,6 +171,10 @@ class StyleRules:
                 facecam_top=flag("facecam_top", base.facecam_top),
                 captions=flag("captions", base.captions),
                 title_whole_clip=flag("title_whole_clip", base.title_whole_clip),
+                frame=frame if frame in _FRAMES else base.frame,
+                title_source=title_source if title_source in _TITLE_SOURCES else base.title_source,
+                title_look=title_look if title_look in _TITLE_LOOKS else base.title_look,
+                watermark=flag("watermark", base.watermark),
             )
         except ValueError:
             return base
@@ -180,6 +210,7 @@ CAM_TOP_TITLE: dict[str, object] = {
     "captions": False,
     "hook_mode": "title_bar",
     "title_whole_clip": True,
+    "title_source": "title_line",
     "facecam_top": True,
     "punchin_max": 0,
     "zoomcut_every_s": 0,
@@ -188,3 +219,31 @@ CAM_TOP_TITLE: dict[str, object] = {
     "compress": True,
     "sfx_gain_db": -10,
 }
+# Phase B (development-plan/M18): the calm styles of the references R05 (question), R08 (POV) and R09 (news
+# card). None has spoken captions, punch-ins or zoom cuts; each shows one of the writer's texts for the
+# whole clip.
+_CALM: dict[str, object] = {
+    "caption_words": 0,
+    "captions": False,
+    "hook_mode": "title_bar",
+    "title_whole_clip": True,
+    "punchin_max": 0,
+    "zoomcut_every_s": 0,
+    "cut_sfx": False,
+    "payoff_fx": False,
+    "compress": True,
+    "sfx_gain_db": -10,
+}
+CAM_TOP_QUESTION: dict[str, object] = {
+    **_CALM,
+    "facecam_top": True,
+    "title_source": "question",
+    "title_look": "question",
+}
+HEADLINE_CARD: dict[str, object] = {
+    **_CALM,
+    "frame": "headline_card",
+    "title_source": "headline",
+    "watermark": False,
+}
+POV_FULLFRAME: dict[str, object] = {**_CALM, "frame": "pov", "title_source": "pov_line"}

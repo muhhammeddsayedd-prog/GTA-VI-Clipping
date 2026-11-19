@@ -104,11 +104,21 @@ def recent_styles(account_ids: Sequence[str], depth: int) -> dict[str, list[str]
     return out
 
 
-def plan_for(clip_id: str, lane: str, cfg: FactoryConfig) -> StylePlan:
-    """The director's plan for a clip, from the enabled accounts and their latest styles."""
+def plan_for(
+    clip_id: str,
+    lane: str,
+    cfg: FactoryConfig,
+    *,
+    facts: frozenset[str] = frozenset(),
+    moment_type: str | None = None,
+) -> StylePlan:
+    """The director's plan for a clip, from the enabled accounts, their latest styles and what the clip
+    offers (`director.clip_facts`)."""
     accounts = load_accounts()
     recent = recent_styles([account.id for account in accounts], cfg.director.no_repeat_n)
-    return plan_styles(clip_id, lane, accounts, cfg.catalog, cfg.director, recent)
+    return plan_styles(
+        clip_id, lane, accounts, cfg.catalog, cfg.director, recent, facts=facts, moment_type=moment_type
+    )
 
 
 # ── The recipe: what a variant render needs besides the style ─
@@ -138,6 +148,7 @@ def recipe_json(
     duck: Sequence[Span],
     payoff_s: float | None,
     payoff_emoji: str | None,
+    texts: Mapping[str, str] | None = None,
 ) -> dict[str, Any]:
     """The inputs of a render as JSON (times in clip time, boxes in source pixels). Pure."""
     return {
@@ -149,6 +160,7 @@ def recipe_json(
         "hook": hook,
         "payoff_s": payoff_s,
         "payoff_emoji": payoff_emoji,
+        "texts": dict(texts or {}),
         "layout": None
         if not isinstance(layout, LayoutA)
         else {"facecam_box": _box_json(layout.facecam_box), "gameplay_box": _box_json(layout.gameplay_box)},
@@ -333,7 +345,8 @@ def _render_one(
 ) -> None:
     """Render, check, upload and record one style. Raises nothing the caller must handle: the row says
     what happened."""
-    from sixstars.factory.pipeline import RenderJob, render_file  # the pipeline imports this module
+    # the pipeline imports this module
+    from sixstars.factory.pipeline import RenderJob, framed_layout, render_file
     from sixstars.gate import profiles
     from sixstars.gate import visual as visuals
 
@@ -372,9 +385,10 @@ def _render_one(
             payoff_s=recipe.get("payoff_s"),
             payoff_emoji=recipe.get("payoff_emoji"),
             style_id=style_id,
+            texts={str(k): str(v) for k, v in dict(recipe.get("texts") or {}).items() if v},
         )
         outcome = render_file(job)
-        kind = "C" if isinstance(job.layout, LayoutA) and entry.rules.facecam_top else job.layout.kind
+        kind = framed_layout(job.layout, entry.rules).kind
         settings = profiles.load()
         facts = visuals.measure_file(output, outcome.clip_duration_s, settings, layout_kind=kind)
         problems = file_problems(

@@ -51,8 +51,11 @@ The owner's second set of references (ten Instagram reels, development-plan/M18 
 | Style | Layout | Text | Pacing |
 |---|---|---|---|
 | `cam_top_viral` | C: facecam 1080x672 on top, gameplay 1080x1248 below, seam and progress bar between them | the section 2 captions in the lower gameplay (y 1400), title bar on the seam for `factory.hook_seconds` | punch-ins, zoom cuts, sound effects, compressor |
-| `cam_top_title` | C | no spoken captions; the hook plus the payoff emoji as a title bar on the seam for the whole clip (references R02-R04, R07) | calm: no punch-ins, no zoom cuts, no sound effects |
+| `cam_top_title` | C | no spoken captions; the writer's `title_line` (else the hook) plus the payoff emoji as a title bar on the seam for the whole clip (references R02-R04, R07) | calm: no punch-ins, no zoom cuts, no sound effects |
+| `cam_top_question` | C | the writer's `question` in big red capitals (Anton) with a black outline at the top of the gameplay, whole clip (reference R05) | calm |
+| `headline_card` | H: black frame, brand header (star avatar, `factory.watermark` name) and the writer's `headline` from y 300, the stream as a 4:3 crop 1080x810 at y 630 that keeps the streamer's facecam, credit under it; no watermark (reference R09) | headline only | calm |
+| `pov_fullframe` | P: the gameplay alone as a 3:4 crop 1080x1440 at y 240 between black bars, away from the facecam | the writer's `pov_line` centred on y 900, white with a black outline (reference R08) | calm |
 
 Without a facecam both styles use layout B. The director gives each account a style the catalogue allows for the lane, not the one of the account's last clip, and different from the other accounts of the same clip where possible; the pick is seeded with the clip id. The first render is made in the style of the reference account; each other style of the plan is rendered by the job `clip.variants` once the gate has approved the clip (`factory/variants.py`), checked like the gate checks a file, and uploaded to Storage as `<clip key>.<style>.mp4`. The console's clip page lists the renders and plays each one.
 
-Phase B adds `headline_card`, `pov_fullframe` and `cam_top_question`; Phase C the one-word captions and story cuts (development-plan/M18).
+A Phase B style needs the writer's text it shows (`requires`), so a clip without a question never gets `cam_top_question`. The clip writer also names the kind of moment (`moment_type`), and `factory.style_director.affinity` multiplies each style's weight for it (a discovery suits the news card and the question, a reaction the viral edit, an action the POV crop). Phase C adds the one-word captions and story cuts (development-plan/M18).

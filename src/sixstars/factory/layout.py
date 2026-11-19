@@ -8,6 +8,8 @@ the configured output size.
 Three frames exist (`LayoutKind`): "A" gameplay on top and the facecam below (docs/09), "C" the facecam on
 top and the gameplay below (decision D112, docs/27 section 5, the look of the owner's references) and "B"
 no facecam. A and C are both `LayoutA` (a facecam was found); the style decides which one is drawn.
+Two frames come from the style alone (development-plan/M18 Phase B): "H" the news card (`LayoutCard`) and
+"P" the POV crop (`LayoutPov`).
 """
 
 from dataclasses import dataclass
@@ -16,7 +18,7 @@ from typing import Literal
 from sixstars.factory.escape import render_filter
 from sixstars.factory.window import ZOOM_MAX, zoom_start_s
 
-LayoutKind = Literal["A", "B", "C"]
+LayoutKind = Literal["A", "B", "C", "H", "P"]
 
 REF_WIDTH = 1080
 REF_HEIGHT = 1920
@@ -29,6 +31,18 @@ A_SEAM_H = 6
 # 1080x1248 below it, 6 px seam at y=669.
 C_FACECAM_H = 672
 C_SEAM_H = 6
+# Layout H (news card, reference R09): black frame, brand header and headline drawn from y=300 (below the
+# LIVE badge), the stream as a 4:3 crop 1080x810 at y=630, the credit under it.
+H_HEADER_TOP = 300
+H_VIDEO_Y = 630
+H_VIDEO_H = 810
+# Layout P (POV, reference R08): the gameplay as a 3:4 crop 1080x1440 at y=240 between black bars, the
+# line centred on y=900.
+P_VIDEO_Y = 240
+P_VIDEO_H = 1440
+P_TEXT_CENTER_Y = 900
+# Layouts H and P: the credit line's bottom edge (no captions there to sit above).
+LOW_CREDIT_BOTTOM = 1480
 # Layout B: blurred cover background darkened 30%, 4:5 gameplay 1080x1350 at y=285.
 B_GAMEPLAY_H = 1350
 B_GAMEPLAY_Y = 285
@@ -47,6 +61,12 @@ PAYOFF_Y_C = 1000
 # Layout C: the title's bottom edge sits this far below the seam, so the pill straddles the facecam's
 # bottom edge like the references.
 C_TITLE_OVERLAP = 20
+# Layout C: a question title (style cam_top_question) starts this far below the seam, at the top of the
+# gameplay; the gate band starts below the tallest one (two lines of `cards.QUESTION_SIZES[0]`) and ends
+# above the credit line.
+C_QUESTION_GAP = 40
+C_BAND_TOP = 960
+C_BAND_BOTTOM = 1240
 # Overlays.
 HOOK_TOP = 260
 HOOK_BOTTOM = 420
@@ -95,7 +115,31 @@ class LayoutB:
         return "B"
 
 
-Layout = LayoutA | LayoutB
+@dataclass(frozen=True, slots=True)
+class LayoutCard:
+    """The news card (kind "H"): the stream as the streamer had it, cropped to 4:3 so that their facecam
+    (when one was found) stays in the picture."""
+
+    facecam_box: Box | None = None
+
+    @property
+    def kind(self) -> LayoutKind:
+        return "H"
+
+
+@dataclass(frozen=True, slots=True)
+class LayoutPov:
+    """The POV crop (kind "P"): the gameplay alone, cropped to 3:4 away from the facecam when one was
+    found."""
+
+    facecam_box: Box | None = None
+
+    @property
+    def kind(self) -> LayoutKind:
+        return "P"
+
+
+Layout = LayoutA | LayoutB | LayoutCard | LayoutPov
 
 
 def _even(value: float) -> int:
@@ -115,6 +159,10 @@ class Geometry:
     c_facecam_h: int
     c_gameplay_h: int
     c_seam_y: int
+    h_video_y: int
+    h_video_h: int
+    p_video_y: int
+    p_video_h: int
     b_gameplay_h: int
     b_gameplay_y: int
     b_blur_radius: int
@@ -139,6 +187,10 @@ class Geometry:
             c_facecam_h=c_facecam_h,
             c_gameplay_h=height - c_facecam_h,
             c_seam_y=c_facecam_h - max(1, round(C_SEAM_H * sy / 2)),
+            h_video_y=_even(H_VIDEO_Y * sy),
+            h_video_h=min(_even(H_VIDEO_H * sy), height - _even(H_VIDEO_Y * sy)),
+            p_video_y=_even(P_VIDEO_Y * sy),
+            p_video_h=min(_even(P_VIDEO_H * sy), height - _even(P_VIDEO_Y * sy)),
             b_gameplay_h=b_gameplay_h,
             b_gameplay_y=min(round(B_GAMEPLAY_Y * sy), height - b_gameplay_h),
             b_blur_radius=max(1, round(B_BLUR_RADIUS * sy)),
@@ -159,7 +211,11 @@ def gameplay_band(kind: LayoutKind | None) -> tuple[float, float]:
     and above the captions and the credit line of the layout. None (a clip rendered before layout C
     existed) gives the band of layouts A and B."""
     if kind == "C":
-        return (C_FACECAM_H + 60) / REF_HEIGHT, (CAPTION_Y_C - 250) / REF_HEIGHT
+        return C_BAND_TOP / REF_HEIGHT, C_BAND_BOTTOM / REF_HEIGHT
+    if kind == "H":
+        return (H_VIDEO_Y + 40) / REF_HEIGHT, (H_VIDEO_Y + H_VIDEO_H - 40) / REF_HEIGHT
+    if kind == "P":
+        return (P_VIDEO_Y + 60) / REF_HEIGHT, (P_TEXT_CENTER_Y - 140) / REF_HEIGHT
     return (HOOK_BOTTOM + 60) / REF_HEIGHT, (min(CAPTION_Y_A, CAPTION_Y_B) - 150) / REF_HEIGHT
 
 
@@ -180,6 +236,21 @@ def fit_crop(box: Box, aspect_w: int, aspect_h: int, source_w: int, source_h: in
     x = x0 + int((avail_w - w) // 4) * 2
     y = y0 + int((avail_h - h) // 4) * 2
     return Box(x, y, w, h)
+
+
+def card_crop(facecam: Box | None, source_w: int, source_h: int) -> Box:
+    """Layout H: the largest centred 4:3 crop of the source, moved sideways just far enough to keep the
+    facecam in it when it fits. Pure."""
+    crop = fit_crop(Box(0, 0, source_w, source_h), 4, 3, source_w, source_h)
+    if facecam is None or facecam.w > crop.w:
+        return crop
+    x = crop.x
+    if facecam.x < x:
+        x = facecam.x
+    elif facecam.x + facecam.w > x + crop.w:
+        x = facecam.x + facecam.w - crop.w
+    x = min(max(0, x), source_w - crop.w)
+    return Box(int(x // 2) * 2, crop.y, crop.w, crop.h)
 
 
 def gameplay_crop(layout: LayoutA, aspect_w: int, aspect_h: int, source_w: int, source_h: int) -> Box:
@@ -301,6 +372,19 @@ def layout_filters(
     With `punch_ins`, a full-frame close-up is cut in over the layout during each span.
     """
     g = geometry
+    if isinstance(layout, LayoutCard | LayoutPov):
+        return _framed_filters(
+            layout,
+            source_w=source_w,
+            source_h=source_h,
+            geometry=g,
+            fps=fps,
+            duration_s=duration_s,
+            zoom=zoom,
+            source=source,
+            out=out,
+            zoom_cut=zoom_cut,
+        )
     punch = punch_ins if punch_ins is not None and punch_ins.spans else None
     branches = 3 if punch is not None else 2
     head = f"[{source}]{render_filter('fps', [('fps', str(fps))])},split={branches}"
@@ -362,6 +446,43 @@ def layout_filters(
         close_up = fit_crop(Box(0, 0, source_w, source_h), g.width, g.height, source_w, source_h)
         chains += _punch_filters(close_up, punch, g, base_out, out)
     return chains
+
+
+def _framed_filters(
+    layout: "LayoutCard | LayoutPov",
+    *,
+    source_w: int,
+    source_h: int,
+    geometry: Geometry,
+    fps: int,
+    duration_s: float,
+    zoom: bool,
+    source: str,
+    out: str,
+    zoom_cut: ZoomCut | None,
+) -> list[str]:
+    """Layouts H and P: one crop of the source scaled to its band of the frame, black around it."""
+    g = geometry
+    if isinstance(layout, LayoutCard):
+        crop = card_crop(layout.facecam_box, source_w, source_h)
+        top, height = g.h_video_y, g.h_video_h
+    else:
+        top, height = g.p_video_y, g.p_video_h
+        if layout.facecam_box is not None:
+            crop = gameplay_crop(LayoutA(layout.facecam_box), g.width, height, source_w, source_h)
+        else:
+            crop = fit_crop(Box(0, 0, source_w, source_h), g.width, height, source_w, source_h)
+    chain = [
+        render_filter("fps", [("fps", str(fps))]),
+        _crop(crop),
+        *scale_filters(g.width, height, duration_s, zoom=zoom, zoom_cut=zoom_cut),
+        render_filter(
+            "pad",
+            [("w", str(g.width)), ("h", str(g.height)), ("x", "0"), ("y", str(top)), ("color", "black")],
+        ),
+        "setsar=1",
+    ]
+    return [f"[{source}]{','.join(chain)}[{out}]"]
 
 
 def _punch_filters(close_up: Box, punch: PunchIns, geometry: Geometry, base: str, out: str) -> list[str]:

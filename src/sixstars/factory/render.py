@@ -90,6 +90,8 @@ class RenderSpec:
     title_png: PurePath | None = None
     title_top: int = 0
     title_whole_clip: bool = False
+    # Burn in `factory.watermark` (off for the news card, whose header is the brand).
+    watermark: bool = True
 
     @property
     def _active_tracks(self) -> tuple[SfxTrack, ...]:
@@ -166,13 +168,17 @@ def build_video_filters(spec: RenderSpec) -> list[str]:
         chains += title_filters(spec, geometry, source="v_progress", out="v_titled")
         text_source = "v_titled"
     text_chain = [ass_filter(spec.ass_path, spec.fonts.fonts_dir)]
-    watermark = watermark_filter(
-        params.watermark,
-        geometry=geometry,
-        font_name=params.font,
-        fonts=spec.fonts,
-        start_s=min(params.hook_seconds, duration) if spec.hook_shown else 0.0,
-        y=spec.watermark_y,
+    watermark = (
+        None
+        if not spec.watermark
+        else watermark_filter(
+            params.watermark,
+            geometry=geometry,
+            font_name=params.font,
+            fonts=spec.fonts,
+            start_s=min(params.hook_seconds, duration) if spec.hook_shown else 0.0,
+            y=spec.watermark_y,
+        )
     )
     if watermark is not None:
         text_chain.append(watermark)
