@@ -35,6 +35,7 @@ from sixstars.clients.upload_post import AccountAuthError, PostRejected, RateLim
 from sixstars.clients.youtube import YouTubeClient
 from sixstars.guardian.claims import single_pass
 from sixstars.guardian.removal import youtube_id_from_url
+from sixstars.learning import delivery
 from sixstars.logging import get_logger
 
 SERVICE = "stats"
@@ -421,6 +422,7 @@ def collect(
         else:
             collect_upload_post(others, upload_post, result, deadline, clock)
         update_creator_averages()
+        delivery.run(now)
         events.emit(
             "stats.collected",
             message=f"stats: {result.accounts} account(s), {result.posts} post(s)",

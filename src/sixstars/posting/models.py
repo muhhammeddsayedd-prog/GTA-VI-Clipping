@@ -42,6 +42,7 @@ class Reason(StrEnum):
     ACCOUNT_DISABLED = "account_disabled"
     LANE_NOT_ALLOWED = "lane_not_allowed"
     ACCOUNT_PAUSED = "account_paused"
+    HOURLY_PAUSED = "hourly_paused"
     PRIVACY_INVALID = "privacy_invalid"
     STAGING_PRIVACY_NOT_PRIVATE = "staging_privacy_not_private"
     STAGING_INSTAGRAM_NOT_ALLOWED = "staging_instagram_not_allowed"
@@ -96,6 +97,7 @@ class Account:
     hourly_hours_utc: frozenset[int] | None = None  # None = all 24 hours; empty = no hour at all
     enabled: bool = True
     paused_until: datetime | None = None
+    hourly_paused_until: datetime | None = None  # the delivery guard pauses only the hourly lane
 
     def __post_init__(self) -> None:
         if self.cap_24h < 0 or self.spike_reserve < 0 or self.min_gap_s < 0:
@@ -104,6 +106,8 @@ class Account:
             raise ValueError(f"account {self.id}: hourly_hours_utc must be within 0..23")
         if self.paused_until is not None:
             ensure_utc(self.paused_until, "paused_until")
+        if self.hourly_paused_until is not None:
+            ensure_utc(self.hourly_paused_until, "hourly_paused_until")
 
     @property
     def channel(self) -> tuple[Platform, str]:
