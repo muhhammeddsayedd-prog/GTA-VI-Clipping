@@ -12,13 +12,14 @@ Two frames come from the style alone (development-plan/M18 Phase B): "H" the new
 "P" the POV crop (`LayoutPov`).
 """
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Literal
 
 from sixstars.factory.escape import render_filter
 from sixstars.factory.window import ZOOM_MAX, zoom_start_s
 
-LayoutKind = Literal["A", "B", "C", "H", "P"]
+LayoutKind = Literal["A", "B", "C", "H", "P", "M"]
 
 REF_WIDTH = 1080
 REF_HEIGHT = 1920
@@ -41,6 +42,15 @@ H_VIDEO_H = 810
 P_VIDEO_Y = 240
 P_VIDEO_H = 1440
 P_TEXT_CENTER_Y = 900
+# Layout M (montage, reference R10): a 3:4 letterbox 1080x1440 at y=240: gameplay 1080x720 on top, the
+# facecam 1080x720 below, a soft dark fade over the seam at y=960 (where the captions sit), the credit
+# at the top of the gameplay.
+M_TOP = 240
+M_GAME_H = 720
+M_FACE_H = 720
+M_SEAM_Y = M_TOP + M_GAME_H
+M_FADE_H = 220
+M_CREDIT_BOTTOM = M_TOP + 52
 # Layouts H and P: the credit line's bottom edge (no captions there to sit above).
 LOW_CREDIT_BOTTOM = 1480
 # Layout B: blurred cover background darkened 30%, 4:5 gameplay 1080x1350 at y=285.
@@ -139,7 +149,30 @@ class LayoutPov:
         return "P"
 
 
-Layout = LayoutA | LayoutB | LayoutCard | LayoutPov
+@dataclass(frozen=True, slots=True)
+class LayoutMontage:
+    """The montage (kind "M"): gameplay above the facecam in a 3:4 letterbox; B-roll cuts are laid over
+    the gameplay panel (`BrollCut`)."""
+
+    facecam_box: Box
+
+    @property
+    def kind(self) -> LayoutKind:
+        return "M"
+
+
+@dataclass(frozen=True, slots=True)
+class BrollCut:
+    """One B-roll insert of layout M: `duration_s` of the source from `source_start_s` (file time, read
+    as its own ffmpeg input `input_index`) over the gameplay panel from `at_s` (clip time)."""
+
+    input_index: int
+    source_start_s: float
+    at_s: float
+    duration_s: float
+
+
+Layout = LayoutA | LayoutB | LayoutCard | LayoutPov | LayoutMontage
 
 
 def _even(value: float) -> int:
@@ -163,6 +196,9 @@ class Geometry:
     h_video_h: int
     p_video_y: int
     p_video_h: int
+    m_top: int
+    m_game_h: int
+    m_face_h: int
     b_gameplay_h: int
     b_gameplay_y: int
     b_blur_radius: int
@@ -191,6 +227,9 @@ class Geometry:
             h_video_h=min(_even(H_VIDEO_H * sy), height - _even(H_VIDEO_Y * sy)),
             p_video_y=_even(P_VIDEO_Y * sy),
             p_video_h=min(_even(P_VIDEO_H * sy), height - _even(P_VIDEO_Y * sy)),
+            m_top=_even(M_TOP * sy),
+            m_game_h=_even(M_GAME_H * sy),
+            m_face_h=_even(M_FACE_H * sy),
             b_gameplay_h=b_gameplay_h,
             b_gameplay_y=min(round(B_GAMEPLAY_Y * sy), height - b_gameplay_h),
             b_blur_radius=max(1, round(B_BLUR_RADIUS * sy)),
@@ -216,6 +255,8 @@ def gameplay_band(kind: LayoutKind | None) -> tuple[float, float]:
         return (H_VIDEO_Y + 40) / REF_HEIGHT, (H_VIDEO_Y + H_VIDEO_H - 40) / REF_HEIGHT
     if kind == "P":
         return (P_VIDEO_Y + 60) / REF_HEIGHT, (P_TEXT_CENTER_Y - 140) / REF_HEIGHT
+    if kind == "M":
+        return (M_CREDIT_BOTTOM + 40) / REF_HEIGHT, (M_SEAM_Y - M_FADE_H // 2 - 20) / REF_HEIGHT
     return (HOOK_BOTTOM + 60) / REF_HEIGHT, (min(CAPTION_Y_A, CAPTION_Y_B) - 150) / REF_HEIGHT
 
 
@@ -366,12 +407,26 @@ def layout_filters(
     out: str = "v_layout",
     zoom_cut: ZoomCut | None = None,
     punch_ins: PunchIns | None = None,
+    broll: Sequence[BrollCut] = (),
 ) -> list[str]:
     """Filter chains from the source video link to a `geometry.width`x`geometry.height` frame.
 
     With `punch_ins`, a full-frame close-up is cut in over the layout during each span.
     """
     g = geometry
+    if isinstance(layout, LayoutMontage):
+        return _montage_filters(
+            layout,
+            source_w=source_w,
+            source_h=source_h,
+            geometry=g,
+            fps=fps,
+            duration_s=duration_s,
+            zoom=zoom,
+            source=source,
+            out=out,
+            broll=broll,
+        )
     if isinstance(layout, LayoutCard | LayoutPov):
         return _framed_filters(
             layout,
@@ -483,6 +538,62 @@ def _framed_filters(
         "setsar=1",
     ]
     return [f"[{source}]{','.join(chain)}[{out}]"]
+
+
+def _montage_filters(
+    layout: LayoutMontage,
+    *,
+    source_w: int,
+    source_h: int,
+    geometry: Geometry,
+    fps: int,
+    duration_s: float,
+    zoom: bool,
+    source: str,
+    out: str,
+    broll: Sequence[BrollCut],
+) -> list[str]:
+    """Layout M: the gameplay panel (with each B-roll cut laid over it for its span) stacked over the
+    facecam panel, padded into the frame with black above and below."""
+    g = geometry
+    game_crop = gameplay_crop(LayoutA(layout.facecam_box), g.width, g.m_game_h, source_w, source_h)
+    face_crop = fit_crop(layout.facecam_box, g.width, g.m_face_h, source_w, source_h)
+    head = f"[{source}]{render_filter('fps', [('fps', str(fps))])},split=2[m_game_in][m_face_in]"
+    game_chain = [_crop(game_crop), *scale_filters(g.width, g.m_game_h, duration_s, zoom=zoom)]
+    face_chain = [_crop(face_crop), *scale_filters(g.width, g.m_face_h, duration_s, zoom=False)]
+    chains = [
+        head,
+        f"[m_game_in]{','.join(game_chain)}[m_game_0]",
+        f"[m_face_in]{','.join(face_chain)}[m_face]",
+    ]
+    current = "m_game_0"
+    for n, cut in enumerate(broll):
+        clip = [
+            render_filter("trim", [("duration", _number(cut.duration_s))]),
+            f"setpts=PTS-STARTPTS+{_number(cut.at_s)}/TB",
+            render_filter("fps", [("fps", str(fps))]),
+            _crop(game_crop),
+            *scale_filters(g.width, g.m_game_h, cut.duration_s, zoom=False),
+        ]
+        until = _number(cut.at_s + cut.duration_s)
+        overlay = render_filter(
+            "overlay",
+            [
+                ("x", "0"),
+                ("y", "0"),
+                ("eof_action", "pass"),
+                ("enable", f"between(t,{_number(cut.at_s)},{until})"),
+            ],
+        )
+        chains.append(f"[{cut.input_index}:v]{','.join(clip)}[m_broll_{n}]")
+        chains.append(f"[{current}][m_broll_{n}]{overlay}[m_game_{n + 1}]")
+        current = f"m_game_{n + 1}"
+    pad = render_filter(
+        "pad",
+        [("w", str(g.width)), ("h", str(g.height)), ("x", "0"), ("y", str(g.m_top)), ("color", "black")],
+    )
+    chains.append(f"[{current}][m_face]vstack=inputs=2,{pad},setsar=1[{out}]")
+    return chains
 
 
 def _punch_filters(close_up: Box, punch: PunchIns, geometry: Geometry, base: str, out: str) -> list[str]:

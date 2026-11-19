@@ -32,7 +32,7 @@ from sixstars.ai.schemas import ClipWriting, SpikeVerdict
 from sixstars.clients.anthropic_client import AnthropicClient, BudgetKind
 from sixstars.clients.transcribe import Mode, Transcriber
 from sixstars.config import env
-from sixstars.factory import anchor, cards, effects, facecam, music, thumbs, tools, variants, writer
+from sixstars.factory import anchor, cards, effects, facecam, montage, music, thumbs, tools, variants, writer
 from sixstars.factory import transcript as transcripts
 from sixstars.factory.assets import FactoryAssets, load_assets
 from sixstars.factory.audio import SfxTrack, parse_loudnorm_report
@@ -46,6 +46,8 @@ from sixstars.factory.layout import (
     H_HEADER_TOP,
     HOOK_BOTTOM,
     HOOK_TOP,
+    M_FADE_H,
+    M_SEAM_Y,
     P_TEXT_CENTER_Y,
     REF_HEIGHT,
     REF_WIDTH,
@@ -54,6 +56,7 @@ from sixstars.factory.layout import (
     LayoutA,
     LayoutB,
     LayoutCard,
+    LayoutMontage,
     LayoutPov,
     PunchIns,
     ZoomCut,
@@ -287,13 +290,21 @@ class RenderJob:
     # The clip writer's texts for the design styles (`ClipWriting.style_texts`): title_line, headline,
     # question, pov_line.
     texts: Mapping[str, str] = field(default_factory=dict)
+    # Layout M (Phase E): the footage around the clip (file time) the B-roll may come from.
+    broll_from: ClipWindow | None = None
 
 
 def framed_layout(layout: Layout, style: StyleRules) -> Layout:
     """The layout a style draws: the news card (H) or the POV crop (P) when its `frame` says so; else with
     a facecam on top (layout C) when the style says so, or below (layout A); without a facecam, layout B.
     Pure."""
-    facecam = layout.facecam_box if isinstance(layout, LayoutA | LayoutCard | LayoutPov) else None
+    facecam = (
+        layout.facecam_box if isinstance(layout, LayoutA | LayoutCard | LayoutPov | LayoutMontage) else None
+    )
+    if style.frame == "montage":
+        return LayoutMontage(facecam_box=facecam) if facecam is not None else LayoutB()
+    if isinstance(layout, LayoutMontage):
+        layout = LayoutA(facecam_box=layout.facecam_box)
     if style.frame == "headline_card":
         return LayoutCard(facecam_box=facecam)
     if style.frame == "pov":
@@ -372,8 +383,9 @@ class Produced:
 WritingChooser = Callable[[writer.WriterInput], ClipWriting]
 LayoutChooser = Callable[[tools.MediaInfo, float], Layout]
 WritingHook = Callable[[ClipWriting, transcripts.WindowTranscript], None]
-# Picks the design style once the writer's reply and the facecam are known: (rules, catalogue id).
-StyleChooser = Callable[[ClipWriting, Layout], tuple[StyleRules, str]]
+# Picks the design style once the writer's reply, the facecam and the footage around the clip are known
+# (`has_broll`: enough of it for a montage): (rules, catalogue id).
+StyleChooser = Callable[[ClipWriting, Layout, bool], tuple[StyleRules, str]]
 
 
 def _caption_fonts(cfg: FactoryConfig, style: StyleRules) -> str:
@@ -474,6 +486,55 @@ def _title_bar(job: RenderJob, live_badge: bool) -> TitleBar | None:
         return None
 
 
+def _montage_broll(
+    job: RenderJob, duration_s: float, payoff_s: float | None, ffmpeg: str
+) -> tuple[tuple[float, float, float], ...]:
+    """Layout M: the B-roll cuts as (source start, clip time, length), from the busiest footage around the
+    clip (`montage`). Anything that goes wrong means no cuts, never a failed render."""
+    try:
+        return _plan_broll(job, duration_s, payoff_s, ffmpeg)
+    except (tools.FfmpegError, ValueError) as exc:
+        get_logger("factory").warning("montage_broll_failed", error=str(exc)[:200])
+        return ()
+
+
+def _plan_broll(
+    job: RenderJob, duration_s: float, payoff_s: float | None, ffmpeg: str
+) -> tuple[tuple[float, float, float], ...]:
+    style = job.style
+    if not isinstance(job.layout, LayoutMontage) or style.montage_every_s <= 0 or job.broll_from is None:
+        return ()
+    slots = montage.montage_timeline(duration_s, style.montage_every_s, payoff_s)
+    if not slots:
+        return ()
+    padded = job.broll_from
+    result = tools.run(
+        montage.motion_command(job.source_path, padded, ffmpeg=ffmpeg),
+        timeout_s=tools.RENDER_TIMEOUT_S,
+        what="montage motion",
+    )
+    motion = montage.parse_motion(result.stderr.decode("utf-8", errors="replace"), padded.start_s)
+    clip = ClipWindow(job.window.start_s, job.window.start_s + duration_s)
+    picks = montage.pick_broll(motion, clip, padded, length_s=style.montage_every_s, count=len(slots))
+    return tuple(
+        (round(pick.start_s, 3), round(slot.start_s, 3), round(min(slot.duration_s, pick.duration_s), 3))
+        for slot, pick in zip(slots, picks, strict=False)
+    )
+
+
+def _seam_fade(job: RenderJob) -> dict[str, Any]:
+    """Layout M: the soft dark band over the seam between gameplay and face (a PNG in the scratch
+    directory). Drawing it cannot fail the render."""
+    if not isinstance(job.layout, LayoutMontage):
+        return {}
+    try:
+        fade = montage.draw_seam_fade(job.scratch_dir / "fade.png", width=REF_WIDTH, height=M_FADE_H)
+    except OSError as exc:
+        get_logger("factory").warning("seam_fade_failed", error=str(exc)[:200])
+        return {}
+    return {"fade_png": fade.path, "fade_top": M_SEAM_Y - M_FADE_H // 2}
+
+
 def _own_title_top(kind: str, height: int, seam_y: int) -> int:
     """Top of a Phase B text on the reference canvas: the news card's header, the POV line centred on the
     gameplay, or the question title at the top of the gameplay. Pure."""
@@ -559,8 +620,11 @@ def render_file(job: RenderJob, *, ffmpeg: str = "ffmpeg", ffprobe: str = "ffpro
     if not style.payoff_fx or payoff_s is None or not 0 <= payoff_s < duration:
         payoff_s = None
     punch_spans = _punch_spans(spec, job, payoff_s, ffmpeg)
+    broll = _montage_broll(job, duration, payoff_s if payoff_s is not None else job.payoff_s, ffmpeg)
+    # The montage's cuts get the punch-in sounds (whoosh, impact); they are not punch-ins on screen.
+    sfx_spans = punch_spans or tuple(Span(at, at + length) for _start, at, length in broll)
     cues = effects.plan_sfx(
-        duration_s=duration, keyword_times=pop_times, punchins=punch_spans, payoff_s=payoff_s, rules=style
+        duration_s=duration, keyword_times=pop_times, punchins=sfx_spans, payoff_s=payoff_s, rules=style
     )
     sfx_times = tuple(cue.time_s for cue in cues if cue.kind == "pop")
     log.info(
@@ -568,6 +632,7 @@ def render_file(job: RenderJob, *, ffmpeg: str = "ffmpeg", ffprobe: str = "ffpro
         style_id=job.style_id,
         layout=job.layout.kind,
         punchins=[[span.start_s, span.end_s] for span in punch_spans],
+        broll=[list(cut) for cut in broll],
         payoff_s=payoff_s,
         sfx={
             kind: [cue.time_s for cue in cues if cue.kind == kind] for kind in sorted({c.kind for c in cues})
@@ -621,6 +686,8 @@ def render_file(job: RenderJob, *, ffmpeg: str = "ffmpeg", ffprobe: str = "ffpro
         title_png=bar.path if bar is not None else None,
         title_top=title_top,
         title_whole_clip=style.title_whole_clip,
+        broll=broll,
+        **_seam_fade(job),
     )
     ass = build_ass(
         job.lines,
@@ -920,8 +987,9 @@ def produce(
     started = time.monotonic()
     layout = choose_layout(media, (window.start_s + window.end_s) / 2)
     timed("layout", started)
+    room_s = (window.start_s - padded.start_s) + (padded.end_s - window.end_s)
     if choose_style is not None:
-        style, style_id = choose_style(writing, layout)
+        style, style_id = choose_style(writing, layout, room_s >= montage.MIN_ROOM_S)
         if deps.assets is None and style.caption_font != cfg.style.caption_font:
             assets = load_assets(cfg.params.font, caption_font=_caption_fonts(cfg, style))
 
@@ -948,6 +1016,7 @@ def produce(
         payoff_emoji=writing.payoff_emoji,
         style_id=style_id,
         texts=writing.style_texts(),
+        broll_from=padded,
     )
     outcome = render_file(job, ffmpeg=deps.ffmpeg, ffprobe=deps.ffprobe)
     timed("render", started)
@@ -1173,7 +1242,7 @@ def _finish(clip_id: str, item: RenderInput, cfg: FactoryConfig, produced: Produ
 
 
 def _prepare_variants(
-    clip_id: str, item: RenderInput, plan: StylePlan, produced: Produced, deps: Deps
+    clip_id: str, item: RenderInput, plan: StylePlan, produced: Produced, deps: Deps, cfg: FactoryConfig
 ) -> None:
     """Record the reference render and queue the other styles of the plan (`factory.variants`). Never
     raises: without variants every account gets the reference render."""
@@ -1181,6 +1250,14 @@ def _prepare_variants(
     if job is None:
         return
     outcome = produced.outcome
+    clip_span = ClipWindow(job.window.start_s, job.window.start_s + outcome.clip_duration_s)
+    # A montage among the other styles needs the footage around the clip too (Phase E).
+    montage_planned = any(
+        cfg.catalog.rules_for(style).frame == "montage"
+        for style in plan.styles
+        if style != plan.reference_style
+    )
+    copy_span = job.broll_from if montage_planned and job.broll_from is not None else clip_span
     try:
         recipe = variants.recipe_json(
             lines=job.lines,
@@ -1196,6 +1273,8 @@ def _prepare_variants(
             payoff_s=job.payoff_s,
             payoff_emoji=job.payoff_emoji,
             texts=job.texts,
+            window_start_s=clip_span.start_s - copy_span.start_s,
+            broll=montage_planned and job.broll_from is not None,
         )
         variants.after_reference(
             clip_id,
@@ -1206,7 +1285,7 @@ def _prepare_variants(
             duration_s=outcome.clip_duration_s,
             render_ms=outcome.render_ms,
             source=job.source_path,
-            window=ClipWindow(job.window.start_s, job.window.start_s + outcome.clip_duration_s),
+            window=copy_span,
             has_audio=job.media.has_audio,
             recipe=recipe,
             ffmpeg=deps.ffmpeg,
@@ -1353,7 +1432,7 @@ def render_story(
             storage=deps.storage,
             ffmpeg=deps.ffmpeg,
         )
-        _prepare_variants(row.id, story_item, plan, story, deps)
+        _prepare_variants(row.id, story_item, plan, story, deps, cfg)
         jobs.enqueue("normal", JOB_GATE, {"clip_id": row.id}, dedupe_key=f"{JOB_GATE}:{row.id}")
         events.emit(
             "clip.story_rendered",
@@ -1417,8 +1496,10 @@ def render_clip(item: RenderInput, *, deps: Deps | None = None, force: bool = Fa
         # type, texts) and the facecam are known; this render is the reference account's.
         planned: list[StylePlan] = []
 
-        def choose_style(writing: ClipWriting, layout: Layout) -> tuple[StyleRules, str]:
-            facts = clip_facts(writing.style_texts(), has_facecam=isinstance(layout, LayoutA))
+        def choose_style(writing: ClipWriting, layout: Layout, has_broll: bool) -> tuple[StyleRules, str]:
+            facts = clip_facts(
+                writing.style_texts(), has_facecam=isinstance(layout, LayoutA), broll=has_broll
+            )
             plan = variants.plan_for(row.id, item.lane, cfg, facts=facts, moment_type=writing.moment_type)
             planned.append(plan)
             log.info(
@@ -1469,7 +1550,7 @@ def render_clip(item: RenderInput, *, deps: Deps | None = None, force: bool = Fa
             shutil.rmtree(scratch, ignore_errors=True)
         _finish(row.id, item, cfg, produced)
         if planned:
-            _prepare_variants(row.id, item, planned[-1], produced, deps)
+            _prepare_variants(row.id, item, planned[-1], produced, deps, cfg)
         if produced.writing.has_story and wants_story(item, cfg):
             render_story(row.id, item, cfg, produced, deps)
         # The console's frame of the clip, made before the gate so a rejected clip has one too. Never

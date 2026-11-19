@@ -21,13 +21,14 @@ from sixstars.factory.style import (
     CAM_TOP_VIRAL,
     CAM_TOP_WORDCAP,
     HEADLINE_CARD,
+    HYPE_MONTAGE,
     POV_FULLFRAME,
     StyleRules,
 )
 
 LEGACY_STYLE_ID = "legacy"
 # What a style may require of a clip (`StyleEntry.requires`): a facecam, or one of the writer's texts.
-REQUIREMENTS = ("facecam", "title_line", "headline", "question", "pov_line")
+REQUIREMENTS = ("facecam", "broll", "title_line", "headline", "question", "pov_line")
 ALL_ACCOUNTS = "*"
 LANES = ("spike", "hourly")
 
@@ -71,6 +72,15 @@ DEFAULT_STYLES: dict[str, object] = {
         "accounts": ALL_ACCOUNTS,
         "requires": ["pov_line"],
         "rules": POV_FULLFRAME,
+    },
+    # Phase E (migration 0031): hourly only, it needs a facecam and footage around the moment.
+    "hype_montage": {
+        "enabled": True,
+        "weight": 1,
+        "lanes": ["hourly"],
+        "accounts": ALL_ACCOUNTS,
+        "requires": ["facecam", "broll"],
+        "rules": HYPE_MONTAGE,
     },
     # Phase C (migration 0029).
     "cam_top_wordcap": {

@@ -13,9 +13,11 @@ from sixstars.factory.escape import normalize_filter_path, render_filter
 from sixstars.factory.layout import (
     REF_HEIGHT,
     REF_WIDTH,
+    BrollCut,
     Geometry,
     Layout,
     LayoutA,
+    LayoutMontage,
     PunchIns,
     ZoomCut,
     layout_filters,
@@ -92,6 +94,11 @@ class RenderSpec:
     title_whole_clip: bool = False
     # Burn in `factory.watermark` (off for the news card, whose header is the brand).
     watermark: bool = True
+    # Layout M (Phase E): the B-roll inserts as (source start in file time, clip time, length), read as
+    # extra inputs after the sound effects, and the seam fade PNG laid over the frame at `fade_top`.
+    broll: tuple[tuple[float, float, float], ...] = ()
+    fade_png: PurePath | None = None
+    fade_top: int = 0
 
     @property
     def _active_tracks(self) -> tuple[SfxTrack, ...]:
@@ -123,6 +130,16 @@ def _path_arg(path: PurePath) -> str:
     return f"./{text}" if text.startswith("-") else text
 
 
+def broll_cuts(spec: RenderSpec) -> tuple[BrollCut, ...]:
+    """The B-roll inputs with their ffmpeg input numbers: after the source, the keyword pop and the other
+    sound effects. Pure."""
+    first = 1 + (1 if spec.sfx_path is not None and spec.sfx_times_s else 0) + len(spec._active_tracks)
+    return tuple(
+        BrollCut(first + n, source_start, at, length)
+        for n, (source_start, at, length) in enumerate(spec.broll)
+    )
+
+
 def build_video_filters(spec: RenderSpec) -> list[str]:
     """Video chains: layout, seam, progress bar, subtitles and overlays, then the end card."""
     params = spec.params
@@ -139,18 +156,30 @@ def build_video_filters(spec: RenderSpec) -> list[str]:
         out="v_layout",
         zoom_cut=spec.zoom_cut,
         punch_ins=spec.punch_ins,
+        broll=broll_cuts(spec) if isinstance(spec.layout, LayoutMontage) else (),
     )
+    if spec.fade_png is not None:
+        fade = render_filter("movie", [("filename", normalize_filter_path(str(spec.fade_png)))])
+        y = round(spec.fade_top * geometry.height / REF_HEIGHT)
+        if geometry.width != REF_WIDTH:
+            fade += "," + render_filter("scale", [("w", str(geometry.width)), ("h", "-2")])
+        chains.append(f"{fade},format=rgba[v_fade_img]")
+        overlay = render_filter("overlay", [("x", "0"), ("y", str(y))])
+        chains.append(f"[v_layout][v_fade_img]{overlay}[v_layout_f]")
     # The seam and the progress bar belong to the split frame: they are hidden while a punch-in fills it.
     shown = None
     if spec.punch_ins is not None and spec.punch_ins.spans:
         shown = f"not({spec.punch_ins.expression()})"
     # The progress bar goes under the text. In layout A it runs along the seam (the seam is its track), so
     # it never crosses the streamer's face; in layout B it sits at the bottom of the safe zone.
-    bar_source, bar_y = "v_layout", None
+    bar_source, bar_y = ("v_layout_f" if spec.fade_png is not None else "v_layout"), None
+    if isinstance(spec.layout, LayoutMontage):
+        # Layout M: the bar runs along the bottom of the letterbox, under the face.
+        bar_y = geometry.m_top + geometry.m_game_h + geometry.m_face_h - geometry.progress_h
     if isinstance(spec.layout, LayoutA):
         seam_y = geometry.seam_y(spec.layout.kind)
         seam = seam_filter(geometry, SEAM_TRACK_COLOR, enable=shown, y=seam_y)
-        chains.append(f"[v_layout]{seam}[v_seam]")
+        chains.append(f"[{bar_source}]{seam}[v_seam]")
         bar_source = "v_seam"
         bar_y = seam_y - max(0, (geometry.progress_h - geometry.a_seam_h) // 2)
     chains += progress_filters(
@@ -283,6 +312,8 @@ def _input_args(spec: RenderSpec) -> list[str]:
         args += ["-i", _path_arg(spec.sfx_path)]
     for track in spec._active_tracks:
         args += ["-i", _path_arg(track.path)]
+    for source_start, _at, length in spec.broll if isinstance(spec.layout, LayoutMontage) else ():
+        args += ["-ss", _seconds(source_start), "-t", _seconds(length), "-i", _path_arg(spec.source.path)]
     return args
 
 

@@ -41,8 +41,8 @@ DEFAULT_DIRECTOR: dict[str, object] = {
     "no_repeat_n": 1,
     "diverse_across_accounts": True,
     "affinity": {
-        "reaction": {"cam_top_viral": 3},
-        "discovery": {"headline_card": 3, "cam_top_question": 3},
+        "reaction": {"cam_top_viral": 3, "hype_montage": 2},
+        "discovery": {"headline_card": 3, "cam_top_question": 3, "hype_montage": 3},
         "action": {"pov_fullframe": 3, "cam_top_viral": 2},
         "story": {"cam_top_title": 3, "cam_top_wordcap": 3},
         "npc_funny": {"cam_top_title": 2, "pov_fullframe": 2},
@@ -230,11 +230,11 @@ def bandit_pick(
     return max(usable, key=lambda entry: draws[entry.id]), "exploit"
 
 
-def clip_facts(texts: Mapping[str, str], *, has_facecam: bool) -> frozenset[str]:
-    """What a clip offers the styles (`StyleEntry.requires`): `facecam` and the names of the writer's
-    texts it has. Pure."""
+def clip_facts(texts: Mapping[str, str], *, has_facecam: bool, broll: bool = False) -> frozenset[str]:
+    """What a clip offers the styles (`StyleEntry.requires`): `facecam`, `broll` (enough footage around it
+    for a montage) and the names of the writer's texts it has. Pure."""
     found = {name for name, text in texts.items() if text}
-    return frozenset(found | ({"facecam"} if has_facecam else set()))
+    return frozenset(found | ({"facecam"} if has_facecam else set()) | ({"broll"} if broll else set()))
 
 
 def reference_account(accounts: Sequence[AccountSlot], lane: str) -> str | None:

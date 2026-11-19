@@ -138,14 +138,15 @@ export function ClipPlayer({ clip }: { clip: ClipDetail }) {
   );
 }
 
-const LAYOUT_NAMES: Record<string, string> = { A: "gameplay on top", B: "no facecam", C: "facecam on top", H: "news card", P: "POV crop" };
+const LAYOUT_NAMES: Record<string, string> = { A: "gameplay on top", B: "no facecam", C: "facecam on top", H: "news card", P: "POV crop", M: "montage" };
 
 /** Human name of a design style id (development-plan/M18). */
 export function styleName(id: string | null | undefined): string {
   if (!id) return "—";
   const known: Record<string, string> = {
     cam_top_viral: "Facecam top · viral", cam_top_title: "Facecam top · title", cam_top_question: "Facecam top · question",
-    headline_card: "News card", pov_fullframe: "POV full frame", legacy: "Single style (legacy)",
+    headline_card: "News card", pov_fullframe: "POV full frame", cam_top_wordcap: "Facecam top · word captions",
+    hype_montage: "Hype montage", legacy: "Single style (legacy)",
   };
   return known[id] ?? humanize(id);
 }

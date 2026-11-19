@@ -185,6 +185,8 @@ def recipe_json(
     payoff_s: float | None,
     payoff_emoji: str | None,
     texts: Mapping[str, str] | None = None,
+    window_start_s: float = 0.0,
+    broll: bool = False,
 ) -> dict[str, Any]:
     """The inputs of a render as JSON (times in clip time, boxes in source pixels). Pure."""
     return {
@@ -197,6 +199,10 @@ def recipe_json(
         "payoff_s": payoff_s,
         "payoff_emoji": payoff_emoji,
         "texts": dict(texts or {}),
+        # Where the clip starts in the source copy, and whether the copy holds the footage around it for a
+        # montage's B-roll (Phase E).
+        "window_start_s": window_start_s,
+        "broll": broll,
         "layout": None
         if not isinstance(layout, LayoutA)
         else {"facecam_box": _box_json(layout.facecam_box), "gameplay_box": _box_json(layout.gameplay_box)},
@@ -398,12 +404,13 @@ def _render_one(
     try:
         media = tools.probe(source)
         duration = float(recipe["duration_s"])
+        offset = float(recipe.get("window_start_s") or 0.0)
         assets = load_assets(cfg.params.font, caption_font=entry.rules.caption_font)
         keywords = {int(key): tuple(words) for key, words in dict(recipe.get("keywords", {})).items()}
         job = RenderJob(
             source_path=source,
             media=media,
-            window=ClipWindow(0.0, min(duration, media.duration_s)),
+            window=ClipWindow(offset, min(offset + duration, media.duration_s)),
             lines=lines_from_recipe(recipe),
             layout=layout_from_recipe(recipe),
             params=cfg.params,
@@ -422,6 +429,7 @@ def _render_one(
             payoff_emoji=recipe.get("payoff_emoji"),
             style_id=style_id,
             texts={str(k): str(v) for k, v in dict(recipe.get("texts") or {}).items() if v},
+            broll_from=ClipWindow(0.0, media.duration_s) if recipe.get("broll") else None,
         )
         outcome = render_file(job)
         kind = framed_layout(job.layout, entry.rules).kind

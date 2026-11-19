@@ -54,6 +54,8 @@ The style (`factory.styles` → `rules.facecam_top`) decides between A and C; de
 
 **P — POV crop** (style `pov_fullframe`): the source cropped to 3:4 away from the facecam and scaled to 1080×1440 at y = 240, black bars above and below; the POV line centred on y = 900; credit bottom at y = 1480.
 
+**M — montage** (style `hype_montage`, Phase E): a 3:4 letterbox 1080×1440 at y = 240: the gameplay 1080×720 on top, the facecam 1080×720 below, a soft dark fade (220 px) over the seam at y = 960 where the captions sit; the credit at the top of the gameplay (bottom y = 292); the progress bar along the bottom of the letterbox. B-roll cuts are laid over the gameplay panel (docs/27 section 7).
+
 **B — no facecam**:
 | Region | Placement |
 |---|---|
