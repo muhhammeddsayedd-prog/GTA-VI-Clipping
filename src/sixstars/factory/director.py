@@ -12,16 +12,29 @@ For each account, in a fixed order:
    plan. Each weight is multiplied by the `affinity` of the clip writer's `moment_type` for the style
    (development-plan/M18 Phase B: a discovery suits the news card, a reaction the viral edit).
 
+With `mode` "bandit" (development-plan/M18 Phase D) step 4 learns from the posts' views per account
+(`performance`, `bandit_pick`): with probability `explore_floor` the pick stays the weighted one above;
+while one of the allowed styles has fewer than `min_samples` scored posts on the account, the pick is
+weighted among those; otherwise each style's mean score is drawn from its posterior (Thompson sampling),
+nudged by `affinity_weight` times the log of its affinity, and the highest wins, without the no-repeat
+and diversity steps (it is the account's best style for this kind of moment).
+
 The reference account is the one the first render is made for: the first account (by id) that posts the
 clip's lane, else the first account. The other accounts get their own render only when their style
 differs (`factory.variants`).
 """
 
+import math
 import random
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
+from typing import Literal
 
+from sixstars.factory.performance import StyleStats, pooled_sigma
 from sixstars.factory.styles import StyleCatalog, StyleEntry
+
+Mode = Literal["weighted", "bandit"]
+Branch = Literal["weighted", "explore", "learn", "exploit"]
 
 # The setting of migrations 0027 and 0028; `config.OFFLINE_DEFAULTS` and the tests use it.
 DEFAULT_DIRECTOR: dict[str, object] = {
@@ -35,6 +48,14 @@ DEFAULT_DIRECTOR: dict[str, object] = {
         "npc_funny": {"cam_top_title": 2, "pov_fullframe": 2},
         "fail": {"cam_top_viral": 2, "pov_fullframe": 2},
     },
+    # Phase D (migration 0030).
+    "mode": "bandit",
+    "explore_floor": 0.1,
+    "min_samples": 20,
+    "affinity_weight": 0.3,
+    "prior_n": 2,
+    "min_age_h": 48,
+    "window_d": 14,
 }
 
 
@@ -46,6 +67,14 @@ class DirectorRules:
     diverse_across_accounts: bool = True
     # moment_type -> style id -> weight multiplier (a missing pair is 1).
     affinity: Mapping[str, Mapping[str, float]] = field(default_factory=dict)
+    # Phase D: learn from the posts' views (`bandit`) or keep the weighted pick (`weighted`).
+    mode: Mode = "weighted"
+    explore_floor: float = 0.1
+    min_samples: int = 20
+    affinity_weight: float = 0.3
+    prior_n: float = 2.0
+    min_age_h: float = 48.0
+    window_d: float = 14.0
 
     def multiplier(self, moment_type: str | None, style_id: str) -> float:
         return float(self.affinity.get(moment_type or "", {}).get(style_id, 1.0))
@@ -67,10 +96,25 @@ class DirectorRules:
                     for style, value in styles.items()
                     if isinstance(value, int | float) and not isinstance(value, bool) and value >= 0
                 }
+        base = cls()
+
+        def number(key: str, fallback: float, low: float, high: float) -> float:
+            value = raw.get(key)
+            ok = isinstance(value, int | float) and not isinstance(value, bool) and low <= value <= high
+            return float(value) if ok else fallback  # type: ignore[arg-type]
+
+        mode = raw.get("mode")
         return cls(
             no_repeat_n=n if isinstance(n, int) and not isinstance(n, bool) and n >= 0 else 1,
             diverse_across_accounts=diverse if isinstance(diverse, bool) else True,
             affinity=affinity,
+            mode="bandit" if mode == "bandit" else "weighted",
+            explore_floor=number("explore_floor", base.explore_floor, 0.0, 1.0),
+            min_samples=int(number("min_samples", base.min_samples, 0, 10_000)),
+            affinity_weight=number("affinity_weight", base.affinity_weight, 0.0, 10.0),
+            prior_n=number("prior_n", base.prior_n, 0.0, 1_000.0),
+            min_age_h=number("min_age_h", base.min_age_h, 0.0, 24 * 30),
+            window_d=number("window_d", base.window_d, 1.0, 365.0),
         )
 
 
@@ -90,6 +134,7 @@ class Choice:
     dropped_repeat: tuple[str, ...] = ()
     dropped_taken: tuple[str, ...] = ()
     unmet: tuple[str, ...] = ()
+    branch: Branch = "weighted"
 
 
 @dataclass(frozen=True, slots=True)
@@ -123,6 +168,7 @@ class StylePlan:
                     "dropped_repeat": list(choice.dropped_repeat),
                     "dropped_taken": list(choice.dropped_taken),
                     "unmet": list(choice.unmet),
+                    "branch": choice.branch,
                 }
                 for account, choice in self.choices.items()
             },
@@ -152,6 +198,38 @@ def _without(entries: Sequence[StyleEntry], drop: set[str]) -> tuple[tuple[Style
     return kept, tuple(entry.id for entry in entries if entry.id in drop)
 
 
+def bandit_pick(
+    usable: Sequence[StyleEntry],
+    kept: Sequence[StyleEntry],
+    seed: str,
+    rules: DirectorRules,
+    stats: Mapping[str, StyleStats],
+    moment_type: str | None,
+) -> tuple[StyleEntry, Branch]:
+    """Phase D: the style for one account. `usable` is every style the clip and the account allow, `kept`
+    the same after the no-repeat and diversity steps; `stats` the account's scores per style. Pure and
+    reproducible for one `seed`."""
+    rng = random.Random(f"{seed}:bandit")  # noqa: S311 - a reproducible pick, not security
+    weights = [entry.weight * rules.multiplier(moment_type, entry.id) for entry in kept]
+    if rng.random() < rules.explore_floor:
+        return _weighted(kept, seed, weights), "explore"
+    young = [entry for entry in kept if stats.get(entry.id, StyleStats()).n < rules.min_samples]
+    if not young:
+        young = [entry for entry in usable if stats.get(entry.id, StyleStats()).n < rules.min_samples]
+    if young:
+        young_weights = [entry.weight * rules.multiplier(moment_type, entry.id) for entry in young]
+        return _weighted(young, seed, young_weights), "learn"
+    sigma = pooled_sigma({entry.id: stats[entry.id] for entry in usable if entry.id in stats})
+
+    def draw(entry: StyleEntry) -> float:
+        mean, sd = stats.get(entry.id, StyleStats()).posterior(rules.prior_n, sigma)
+        nudge = rules.affinity_weight * math.log(max(rules.multiplier(moment_type, entry.id), 1e-6))
+        return mean + sd * rng.gauss(0.0, 1.0) + nudge
+
+    draws = {entry.id: draw(entry) for entry in usable}
+    return max(usable, key=lambda entry: draws[entry.id]), "exploit"
+
+
 def clip_facts(texts: Mapping[str, str], *, has_facecam: bool) -> frozenset[str]:
     """What a clip offers the styles (`StyleEntry.requires`): `facecam` and the names of the writer's
     texts it has. Pure."""
@@ -176,11 +254,13 @@ def plan_styles(
     recent: Mapping[str, Sequence[str]] | None = None,
     facts: frozenset[str] = frozenset(),
     moment_type: str | None = None,
+    stats: Mapping[str, Mapping[str, StyleStats]] | None = None,
 ) -> StylePlan:
     """The style of every account for one clip. `recent` maps an account id to the styles of its latest
-    clips, newest first; `facts` is what the clip has (`facecam` and the names of the writer's texts) and
-    `moment_type` the writer's kind of moment. Without accounts (or without a usable style for one) the
-    first usable style of the catalogue that fits the clip is used, so a clip always gets a style."""
+        clips, newest first; `facts` is what the clip has (`facecam` and the names of the writer's texts) and
+        `moment_type` the writer's kind of moment; `stats` (bandit mode) maps an account to its scores per
+    style. Without accounts (or without a usable style for one) the
+        first usable style of the catalogue that fits the clip is used, so a clip always gets a style."""
     recent = recent or {}
     lane_styles = catalog.usable(lane, None)
     fallback = [entry for entry in lane_styles if entry.fits(facts)] or lane_styles or catalog.entries
@@ -202,11 +282,18 @@ def plan_styles(
         dropped_taken: tuple[str, ...] = ()
         if rules.diverse_across_accounts:
             kept, dropped_taken = _without(kept, set(by_account.values()))
-        weights = [entry.weight * rules.multiplier(moment_type, entry.id) for entry in kept]
-        picked = _weighted(kept, f"{clip_id}:{account.id}", weights)
+        seed = f"{clip_id}:{account.id}"
+        branch: Branch = "weighted"
+        if rules.mode == "bandit":
+            picked, branch = bandit_pick(
+                usable, kept, seed, rules, (stats or {}).get(account.id, {}), moment_type
+            )
+        else:
+            weights = [entry.weight * rules.multiplier(moment_type, entry.id) for entry in kept]
+            picked = _weighted(kept, seed, weights)
         by_account[account.id] = picked.id
         choices[account.id] = Choice(
-            picked.id, tuple(entry.id for entry in usable), dropped_repeat, dropped_taken, unmet
+            picked.id, tuple(entry.id for entry in usable), dropped_repeat, dropped_taken, unmet, branch
         )
     reference_style = by_account.get(reference, default_style) if reference is not None else default_style
     return StylePlan(reference, reference_style, by_account, choices, tuple(sorted(facts)), moment_type)

@@ -11,6 +11,7 @@ detail queries. Every list is keyset-paginated on `(<time column>, id)`, newest 
 
 import base64
 import binascii
+import math
 import re
 import uuid
 from collections.abc import Iterable, Iterator, Mapping, Sequence
@@ -1335,6 +1336,73 @@ def clip_renders(clip_id: str) -> list[Row]:
         """,
         (clip_id,),
     )
+
+
+def style_performance() -> dict[str, Any]:
+    """The design styles page (development-plan/M18 Phase D): the director's settings, the catalogue and,
+    per account and style, the scored posts (`performance`), their mean score, the views they mean against
+    the account's usual and the posts of the last 7 days."""
+    from sixstars.factory import variants
+    from sixstars.factory.director import DirectorRules
+    from sixstars.factory.performance import post_scores, summarise
+    from sixstars.factory.styles import StyleCatalog
+
+    rules = DirectorRules.from_setting(settings.get("factory.style_director", None))
+    catalog = StyleCatalog.from_setting(
+        settings.get("factory.styles", None), settings.get("factory.style", None)
+    )
+    accounts = variants.load_accounts()
+    ids = [account.id for account in accounts]
+    rows = variants.scored_posts(ids, rules)
+    stats = summarise(post_scores(rows))
+    views: dict[tuple[str, str], list[int]] = {}
+    for account_id, style_id, count in rows:
+        if style_id:
+            views.setdefault((account_id, style_id), []).append(count)
+    recent = db.fetch_all(
+        """
+        select p.account_id, coalesce(r.style_id, c.style_id) as style_id, count(*) as n
+        from posts p join clips c on c.id = p.clip_id left join clip_renders r on r.id = p.render_id
+        where p.account_id = any(%s) and p.created_at >= now() - interval '7 days'
+          and p.status in ('pending', 'published', 'skipped')
+        group by 1, 2
+        """,
+        (ids,),
+    )
+    posted = {(str(row["account_id"]), row["style_id"]): int(row["n"]) for row in recent if row["style_id"]}
+    out_accounts = []
+    for account in accounts:
+        account_stats = stats.get(account.id, {})
+        styles = []
+        for entry in catalog.entries:
+            item = account_stats.get(entry.id)
+            counts = views.get((account.id, entry.id), [])
+            styles.append(
+                {
+                    "style_id": entry.id,
+                    "scored": item.n if item else 0,
+                    "mean_score": round(item.mean, 3) if item else None,
+                    "views_ratio": round(math.exp(item.mean), 2) if item else None,
+                    "avg_views": round(sum(counts) / len(counts)) if counts else None,
+                    "posts_7d": posted.get((account.id, entry.id), 0),
+                    "learned": bool(item and item.n >= rules.min_samples),
+                }
+            )
+        out_accounts.append({"account_id": account.id, "platform": account.platform, "styles": styles})
+    return {
+        "director": {
+            "mode": rules.mode,
+            "explore_floor": rules.explore_floor,
+            "min_samples": rules.min_samples,
+            "min_age_h": rules.min_age_h,
+            "window_d": rules.window_d,
+        },
+        "styles": [
+            {"id": e.id, "enabled": e.enabled, "weight": e.weight, "requires": list(e.requires)}
+            for e in catalog.entries
+        ],
+        "accounts": out_accounts,
+    }
 
 
 def clip_family(clip_id: str) -> list[Row]:

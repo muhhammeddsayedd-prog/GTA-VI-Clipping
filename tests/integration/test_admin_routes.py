@@ -400,6 +400,17 @@ def test_clip_renders_and_their_media(client: TestClient, world: dict[str, str])
     get(client, f"clips/{clip}/media?render=nope", 404)
 
 
+def test_design_styles_page(client: TestClient, world: dict[str, str]) -> None:
+    """development-plan/M18 Phase D: one row per style and account, with the director's settings."""
+    body = get(client, "styles")
+    assert body["director"]["mode"] in ("weighted", "bandit")
+    ids = [style["id"] for style in body["styles"]]
+    assert "cam_top_viral" in ids and "headline_card" in ids
+    for account in body["accounts"]:
+        assert [row["style_id"] for row in account["styles"]] == ids
+        assert all(row["scored"] == 0 or row["mean_score"] is not None for row in account["styles"])
+
+
 def test_console_media_fields(
     client: TestClient, world: dict[str, str], monkeypatch: pytest.MonkeyPatch
 ) -> None:

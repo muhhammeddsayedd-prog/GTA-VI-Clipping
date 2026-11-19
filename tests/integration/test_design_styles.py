@@ -442,3 +442,39 @@ def test_the_vod_lane_widens_its_sections_only_while_story_cuts_are_on(staging_a
     app_settings.set("factory.story", {"enabled": False})
     assert not story_rules().enabled
     assert story_rules().widen(1000.0, 1060.0) == (1000.0, 1060.0)
+
+
+def test_only_published_public_posts_of_the_right_age_are_scored(staging_accounts: None) -> None:
+    """Phase D: the bandit reads views of published, not dry-run posts between min_age_h and window_d old,
+    with the style of the render that was posted."""
+    from sixstars.factory.director import DirectorRules
+
+    creator = add_creator()
+    clip = add_clip(creator, status="posted", style_id="cam_top_viral")
+    render = db.fetch_one(
+        "insert into clip_renders (clip_id, style_id, status) values (%s, 'cam_top_title', 'ready') "
+        "returning id::text as id",
+        (clip,),
+    )
+    assert render is not None
+
+    def post(
+        key: str, hours_ago: float, views: int, *, dry: bool = False, render_id: str | None = None
+    ) -> None:
+        db.execute(
+            "insert into posts (clip_id, account_id, platform, lane, status, idempotency_key, dry_run, "
+            "published_at, views, render_id) values (%s, 'tiktok_main', 'tiktok', 'hourly', 'published', "
+            "%s, %s, now() - make_interval(secs => %s), %s, %s)",
+            (clip, key, dry, hours_ago * 3600, views, render_id),
+        )
+
+    post("old-enough", 72, 1000)
+    post("from-render", 60, 4000, render_id=render["id"])
+    post("too-young", 10, 99999)
+    post("too-old", 24 * 20, 99999)
+    post("dry", 72, 99999, dry=True)
+    rules = DirectorRules.from_setting({"mode": "bandit", "min_age_h": 48, "window_d": 14})
+    rows = sorted(variants.scored_posts(["tiktok_main"], rules))
+    assert rows == [("tiktok_main", "cam_top_title", 4000), ("tiktok_main", "cam_top_viral", 1000)]
+    stats = variants.style_stats(["tiktok_main"], rules)["tiktok_main"]
+    assert stats["cam_top_title"].mean > 0 > stats["cam_top_viral"].mean
