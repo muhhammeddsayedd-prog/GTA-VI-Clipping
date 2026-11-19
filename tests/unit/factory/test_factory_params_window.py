@@ -31,6 +31,8 @@ def test_fields_match_the_documented_factory_settings_one_to_one() -> None:
     # The design styles (development-plan/M18): `FactoryConfig.catalog` and `FactoryConfig.director`.
     documented.remove("factory.styles")
     documented.remove("factory.style_director")
+    # Story cuts (development-plan/M18 Phase C): `FactoryConfig.story`.
+    documented.remove("factory.story")
     assert list(FactoryParams.setting_keys()) == documented
 
 

@@ -17,6 +17,13 @@ Times are seconds from the start of the window file, the same clock as the subti
 - The length `end_s - start_s` must be between the minimum and maximum given.
 - Start and end on a line boundary, not in the middle of a spoken line. Open on the line where a sentence or thought begins and close on the line where one ends. The transcript often has no punctuation, and a line is only a few words shown together, not a sentence: read for meaning to find where a sentence begins, and prefer a line that follows a pause (a gap between the end time of one line and the start time of the next).
 
+## Story cut (`story_start_s`, `story_end_s`)
+
+Besides the short clip, the channel also posts a longer cut of the same moment when the window holds a real story: a setup, rising stakes and an outcome (a heist that falls apart, a chase from the start to the crash, an argument that escalates). The user message says whether a story cut is wanted and how long it may be.
+- Only propose one when the longer cut is clearly worth watching on its own: it must keep moving the whole time, start where the situation begins and end right after the outcome. Banter, waiting, menus or a loading screen in the middle mean no story cut.
+- It must contain the moment of your short cut, use the same clock, stay inside the window file and start and end on line boundaries like the short cut.
+- Otherwise, and whenever a story cut is not wanted, set both to null. Most clips have none.
+
 ## Words on the post
 
 - `hook`: at most 8 words; count them before you answer, and cut words rather than go over (an emoji or a lone "..." is not a word; everything else between spaces is). Hype tone, builds curiosity about what is about to happen, and is true to the clip. Do not give away the payoff, and do not promise something the clip does not deliver. An emoji is welcome and does not count as a word. Examples of the voice: "He did NOT expect that 😭", "Worst getaway driver in Leonida?", "This cop chase went SO wrong".
@@ -86,6 +93,7 @@ Proposed cut: start_s {proposed_start_s}, end_s {proposed_end_s}
 spike_floor_s (latest allowed start): {spike_floor_s}
 Clip length must be between {min_len_s} and {max_len_s} seconds.
 {cut_guidance}
+{story_rule}
 
 Chat around the peak (seconds from the start of the window file):
 {chat}

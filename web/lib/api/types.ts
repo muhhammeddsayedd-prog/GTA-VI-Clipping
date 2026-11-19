@@ -139,6 +139,8 @@ export interface Clip {
   gate_profile: string | null; created_at: Iso; approved_at: Iso | null; posted_at: Iso | null; has_file: boolean;
   /** Signed URL of a frame of the rendered clip ("frame"), or the source video's thumbnail ("source"). */
   thumb_url?: string | null; thumb_kind?: "frame" | "source" | null;
+  /** M18 Phase C: "story" for the longer cut of `parent_clip_id`. */
+  version?: "short" | "story"; parent_clip_id?: string | null;
 }
 export interface GateCheck { ok?: boolean; value?: Json; limit?: Json; codes?: string[]; reasons?: string[] }
 export interface GateResult {
@@ -160,6 +162,8 @@ export interface ClipDetail extends Clip {
   style_id?: string | null; layout_kind?: string | null; style_plan?: Json;
   /** One render per design style, the reference first; absent on clips rendered before migration 0027. */
   renders?: ClipRender[];
+  /** M18 Phase C: the other clips of this clip's family (its short clip and its story cut). */
+  family?: { id: string; series_no: number | null; version: "short" | "story"; status: string; duration_s: number | null; created_at: Iso }[];
 }
 export interface ClipRender {
   id: string; style_id: string; layout_kind: string | null; is_reference: boolean;

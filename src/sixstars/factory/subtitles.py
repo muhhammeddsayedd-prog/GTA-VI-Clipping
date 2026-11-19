@@ -7,7 +7,7 @@ inside the safe zone. The hook box, LIVE badge and creator credit are events in 
 """
 
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 from sixstars.factory.bleep import ProfanityMatcher, mask_word, normalize_word
 from sixstars.factory.escape import ass_color, ass_field, ass_override_color, ass_text, ass_text_emoji
@@ -88,6 +88,9 @@ class SubtitleStyle:
     chunk_chars: int = 22
     caps: bool = False
     font: str = ""
+    # M18 Phase C: the caption's centre (0: the layout's) and the spoken word's colour (empty: none).
+    centre_y: int = 0
+    active_color: str = ""
 
     @classmethod
     def from_rules(cls, rules: StyleRules) -> "SubtitleStyle":
@@ -107,6 +110,8 @@ class SubtitleStyle:
             chunk_chars=rules.caption_chars,
             caps=rules.caption_caps,
             font=rules.caption_font,
+            centre_y=rules.caption_y,
+            active_color=rules.caption_active_color,
         )
 
 
@@ -132,9 +137,16 @@ def caption_bottom(layout: LayoutKind, params: FactoryParams, style: SubtitleSty
     """
     style = style or SubtitleStyle()
     zone = safe_zone(params)
-    centre = {"A": CAPTION_Y_A, "B": CAPTION_Y_B, "C": CAPTION_Y_C, "H": CAPTION_Y_B, "P": CAPTION_Y_B}[
-        layout
-    ]
+    centre = (
+        style.centre_y
+        or {
+            "A": CAPTION_Y_A,
+            "B": CAPTION_Y_B,
+            "C": CAPTION_Y_C,
+            "H": CAPTION_Y_B,
+            "P": CAPTION_Y_B,
+        }[layout]
+    )
     bottom = min(centre + style.size / 2, zone.bottom - style.outline - style.shadow)
     return max(bottom, zone.top + style.size + style.outline)
 
@@ -144,7 +156,8 @@ def credit_bottom(layout: LayoutKind, params: FactoryParams, style: SubtitleStyl
     in layouts H and P (no captions) at `LOW_CREDIT_BOTTOM`, under the stream or on the gameplay."""
     if layout in ("H", "P"):
         return float(LOW_CREDIT_BOTTOM)
-    style = style or SubtitleStyle()
+    # The credit keeps the layout's place even when a style moves its captions (`centre_y`).
+    style = replace(style, centre_y=0) if style is not None else SubtitleStyle()
     return caption_bottom(layout, params, style) - style.size - style.outline - style.credit_gap
 
 
@@ -272,6 +285,7 @@ def chunk_events(
     max_width = REF_WIDTH - 2 * style.margin_x
     ordered = sorted(lines, key=lambda line: line.start_s)
     shown = {line.index: _display_words(line, params, profanity) for line in ordered}
+    by_index = {line.index: line for line in ordered}
     flags = {
         line.index: keyword_flags([word.text for word in line.words], keywords.get(line.index, ()))
         for line in ordered
@@ -297,17 +311,34 @@ def chunk_events(
         width = measure(" ".join(texts), style.size) + WORD_GAP_EXTRA * (len(texts) - 1)
         size = style.size if width <= max_width else max(style.min_size, int(style.size * max_width / width))
         pop = CHUNK_KEYWORD_POP if any(marked) else CHUNK_POP
-        prefix = (
-            f"{{\\an2\\pos({REF_WIDTH // 2},{bottom})"
-            + (f"\\fs{size}" if size != style.size else "")
-            + pop
-            + "}"
-        )
+        place = f"{{\\an2\\pos({REF_WIDTH // 2},{bottom})" + (f"\\fs{size}" if size != style.size else "")
+        if style.active_color:
+            # The spoken word in the active colour: one event per word of the chunk, the pop on the first.
+            active = ass_override_color(style.active_color)
+            line = by_index[chunk.line_index]
+            for k, word_index in enumerate(chunk.words):
+                word_start = start if k == 0 else max(start, line.words[word_index].start_s)
+                word_end = end
+                if k + 1 < len(chunk.words):
+                    word_end = min(end, max(word_start, line.words[chunk.words[k + 1]].start_s))
+                if round(word_end * 100) <= round(word_start * 100):
+                    continue
+                parts = [
+                    f"{{\\1c{active}}}{ass_text(text)}{{\\1c{white}}}" if j == k else ass_text(text)
+                    for j, text in enumerate(texts)
+                ]
+                tags = place + (pop if k == 0 else "") + "}"
+                events.append(
+                    dialogue(LAYER_CAPTION, word_start, word_end, "Caption", tags + WORD_GAP.join(parts))
+                )
+            continue
         parts = [
             f"{{\\1c{accent}}}{ass_text(text)}{{\\1c{white}}}" if keyword else ass_text(text)
             for text, keyword in zip(texts, marked, strict=True)
         ]
-        events.append(dialogue(LAYER_CAPTION, start, end, "Caption", prefix + WORD_GAP.join(parts)))
+        events.append(
+            dialogue(LAYER_CAPTION, start, end, "Caption", place + pop + "}" + WORD_GAP.join(parts))
+        )
     return events
 
 

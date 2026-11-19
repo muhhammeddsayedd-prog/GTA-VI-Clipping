@@ -202,6 +202,9 @@ class ClipContext:
     reject_topics: Sequence[str] | None = None
     clip_id: str | None = None
     cut_guidance: str = ""  # scoring_config cut.adaptive: target length and the anchor point
+    # development-plan/M18 Phase C: the length limits of the story cut (0: no story cut asked for).
+    story_min_s: float = 0.0
+    story_max_s: float = 0.0
 
 
 @dataclass(frozen=True, slots=True)
@@ -464,6 +467,12 @@ def write_clip(
         "min_len_s": f"{ctx.min_len_s:g}",
         "max_len_s": f"{ctx.max_len_s:g}",
         "cut_guidance": ctx.cut_guidance,
+        "story_rule": (
+            f"Story cut: wanted when the window holds one, between {ctx.story_min_s:g} and "
+            f"{ctx.story_max_s:g} seconds long."
+            if ctx.story_max_s > 0
+            else "Story cut: not wanted for this clip; set story_start_s and story_end_s to null."
+        ),
         "chat": _chat_block(ctx.chat),
         "lines": "\n".join(
             f"[{line.index}] {_seconds(line.start_s)}-{_seconds(line.end_s)} | {line.text}"
@@ -476,6 +485,8 @@ def write_clip(
         ctx.min_len_s,
         ctx.max_len_s,
         {line.index: line.text for line in ctx.lines},
+        ctx.story_min_s,
+        ctx.story_max_s,
     )
     reply = _ask(P2, schema, _writer_model(), values, client, ref_id=ctx.clip_id)
     writing = enforce_policy(reply, now, block_until)

@@ -4,6 +4,7 @@ helpers, ffprobe parsing, emoji font switching and the Storage client. No networ
 import json
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
 import httpx
 import numpy as np
@@ -71,15 +72,19 @@ def test_config_rejects_bad_values() -> None:
         FactoryConfig.from_mapping({"spikes.min_len_s": 15, "spikes.max_len_s": 60}, "hourly")
 
 
-def migrated_style_settings(first: str, second: str) -> dict[str, object]:
-    """`factory.styles` and `factory.style_director` after migration 0027 (`first`) and 0028 (`second`):
-    0028 sets cam_top_title's title_source, adds three styles and the director's affinity."""
+def migrated_style_settings(first: str, second: str, third: str) -> dict[str, object]:
+    """`factory.styles` and `factory.style_director` after migrations 0027 (`first`), 0028 (`second`) and
+    0029 (`third`): 0028 sets cam_top_title's title_source, adds three styles and the director's affinity;
+    0029 adds cam_top_wordcap and its story affinity."""
     styles = json.loads(first.split("('factory.styles',", 1)[1].split("'", 2)[1])
     director = json.loads(first.split("('factory.style_director',", 1)[1].split("'", 2)[1])
     styles["cam_top_title"]["rules"]["title_source"] = "title_line"
     added = json.loads(second.split("set value = '", 2)[1].split("'::jsonb || value", 1)[0])
     affinity = json.loads(second.split("set value = value || '", 1)[1].split("'::jsonb", 1)[0])
-    return {"factory.styles": {**added, **styles}, "factory.style_director": {**director, **affinity}}
+    wordcap = json.loads(third.split("set value = value || '", 1)[1].split("'::jsonb", 1)[0])
+    merged_director: dict[str, Any] = {**director, **affinity}
+    merged_director["affinity"]["story"]["cam_top_wordcap"] = 3
+    return {"factory.styles": {**added, **styles, **wordcap}, "factory.style_director": merged_director}
 
 
 def test_offline_defaults_follow_the_seed_migration() -> None:
@@ -90,6 +95,7 @@ def test_offline_defaults_follow_the_seed_migration() -> None:
     style = (migrations / "0021_viral_style.sql").read_text(encoding="utf-8")
     styles = (migrations / "0027_design_styles.sql").read_text(encoding="utf-8")
     styles_b = (migrations / "0028_design_styles_b.sql").read_text(encoding="utf-8")
+    styles_c = (migrations / "0029_story_cuts.sql").read_text(encoding="utf-8")
     # Migration 0021 moves these seeded values to the docs/27 look and adds factory.style.
     restyled = ("factory.accent_color", "factory.end_card_s", "factory.loudness_lufs")
     for key, value in OFFLINE_DEFAULTS.items():
@@ -104,7 +110,11 @@ def test_offline_defaults_follow_the_seed_migration() -> None:
             continue
         if key in ("factory.styles", "factory.style_director"):
             # Added by migration 0027 and extended by 0028 (development-plan/M18).
-            assert migrated_style_settings(styles, styles_b)[key] == value, key
+            assert migrated_style_settings(styles, styles_b, styles_c)[key] == value, key
+            continue
+        if key == "factory.story":
+            raw = styles_c.split("('factory.story',", 1)[1].split("'", 2)[1]
+            assert json.loads(raw) == value
             continue
         assert f"('{key}', '{json.dumps(value)}'::jsonb" in seed, key
     cfg = FactoryConfig.offline("spike", {"factory.crf": 18, "vod.whisper_model": "small"})

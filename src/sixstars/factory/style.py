@@ -13,6 +13,8 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Literal
 
+from sixstars.factory.escape import parse_hex_color
+
 HookMode = Literal["box", "title_bar"]
 Frame = Literal["auto", "headline_card", "pov"]
 TitleSource = Literal["hook", "title_line", "headline", "question", "pov_line"]
@@ -54,6 +56,9 @@ class StyleRules:
       missing). `title_look`: `bar` (white bar) or `question` (big red capitals with a black outline
       at the top of the gameplay).
     * `watermark`: burn in `factory.watermark` (off for the headline card, whose header is the brand).
+    * `caption_y`: the caption line's centre on the 1080x1920 canvas (0: the layout's own place).
+    * `caption_active_color`: the spoken word of a caption chunk in this colour (empty: no highlight).
+    * `show_title`: draw the title at all (off for the one-word caption style).
     """
 
     caption_words: int = 0
@@ -80,6 +85,9 @@ class StyleRules:
     title_source: TitleSource = "hook"
     title_look: TitleLook = "bar"
     watermark: bool = True
+    caption_y: int = 0
+    caption_active_color: str = ""
+    show_title: bool = True
 
     def __post_init__(self) -> None:
         if self.caption_words < 0 or self.caption_chars < 1:
@@ -94,6 +102,10 @@ class StyleRules:
             or self.title_look not in _TITLE_LOOKS
         ):
             raise ValueError("frame, title_source or title_look is unknown")
+        if self.caption_y and not 200 <= self.caption_y <= 1720:
+            raise ValueError("caption_y must be 0 or within 200..1720")
+        if self.caption_active_color:
+            parse_hex_color(self.caption_active_color)
         if self.punchin_max < 0 or self.punchin_len_s <= 0 or self.punchin_min_gap_s < 0:
             raise ValueError("punch-in counts and lengths must not be negative")
         if not 1.0 <= self.punchin_zoom <= 3.0 or not 1.0 <= self.zoomcut_scale <= 1.5:
@@ -175,6 +187,9 @@ class StyleRules:
                 title_source=title_source if title_source in _TITLE_SOURCES else base.title_source,
                 title_look=title_look if title_look in _TITLE_LOOKS else base.title_look,
                 watermark=flag("watermark", base.watermark),
+                caption_y=integer("caption_y", base.caption_y),
+                caption_active_color=text("caption_active_color", base.caption_active_color),
+                show_title=flag("show_title", base.show_title),
             )
         except ValueError:
             return base
@@ -247,3 +262,18 @@ HEADLINE_CARD: dict[str, object] = {
     "watermark": False,
 }
 POV_FULLFRAME: dict[str, object] = {**_CALM, "frame": "pov", "title_source": "pov_line"}
+# Phase C (development-plan/M18): the one-word captions of reference R06: one or two heavy words at a time on
+# the bottom edge of the facecam, the spoken one in yellow; no title, calm cut. Suits the story cuts.
+CAM_TOP_WORDCAP: dict[str, object] = {
+    **_CALM,
+    "facecam_top": True,
+    "captions": True,
+    "caption_words": 2,
+    "caption_chars": 16,
+    "caption_font": "Montserrat Black",
+    "caption_size": 92,
+    "caption_caps": True,
+    "caption_y": 580,
+    "caption_active_color": "#FFD400",
+    "show_title": False,
+}

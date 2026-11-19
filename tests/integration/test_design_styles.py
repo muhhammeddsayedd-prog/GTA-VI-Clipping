@@ -5,6 +5,7 @@ tests)."""
 
 import shutil
 import subprocess
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
@@ -12,7 +13,10 @@ from posting_support import add_creator, clean_posting_tables, seed
 from psycopg.types.json import Jsonb
 
 from sixstars import config, db
-from sixstars.factory import variants
+from sixstars.clients.fakes import FakeAnthropicClient, FakeTranscriber
+from sixstars.clients.transcribe import Transcript
+from sixstars.clients.transcribe import Word as ClientWord
+from sixstars.factory import pipeline, variants
 from sixstars.factory.config import FactoryConfig
 from sixstars.factory.director import clip_facts, plan_styles
 from sixstars.factory.layout import Box, LayoutA
@@ -70,9 +74,10 @@ def test_the_plan_covers_the_enabled_accounts_and_skips_their_last_style(staging
         "cam_top_question",
         "cam_top_title",
         "cam_top_viral",
+        "cam_top_wordcap",
         "headline_card",
         "pov_fullframe",
-    ), "migrations 0027 and 0028"
+    ), "migrations 0027 to 0029"
     assert cfg.catalog.rules_for("cam_top_title").title_source == "title_line"
     assert cfg.director.multiplier("discovery", "headline_card") == 3.0
 
@@ -159,7 +164,7 @@ def test_an_approved_clip_gets_its_other_style_rendered_checked_and_uploaded(
     clip_id = add_clip(creator, status="gating")
     cfg = FactoryConfig.load("hourly")
     plan = plan_styles(clip_id, "hourly", variants.load_accounts(), cfg.catalog, cfg.director)
-    assert len(plan.styles) == 2
+    assert len(plan.styles) >= 2, "three accounts, three styles that need nothing of the clip"
     other = plan.styles[1]
     reference_file = data_dir / "ready" / f"{clip_id}.mp4"
     reference_file.parent.mkdir(parents=True)
@@ -286,6 +291,7 @@ def test_a_clip_with_every_text_gets_three_styles_rendered(
         "cam_top_viral": "C",
         "cam_top_title": "C",
         "cam_top_question": "C",
+        "cam_top_wordcap": "C",
         "headline_card": "H",
         "pov_fullframe": "P",
     }
@@ -293,3 +299,146 @@ def test_a_clip_with_every_text_gets_three_styles_rendered(
         assert row["status"] == "ready", (row["style_id"], row["error"])
         assert row["layout_kind"] == expected_kind[row["style_id"]]
         assert row["checks"]["problems"] == []
+
+
+def test_a_story_cut_is_rendered_as_its_own_clip_and_queued_for_the_gate(
+    staging_accounts: None, data_dir: Path, tmp_path: Path
+) -> None:
+    """Phase C: the writer proposes a story trim; after the short clip the same job renders it as a second
+    clip (version story, parent the short one) in a style for story moments, and queues its gate."""
+    ffmpeg, ffprobe = shutil.which("ffmpeg"), shutil.which("ffprobe")
+    if ffmpeg is None or ffprobe is None:
+        pytest.skip("ffmpeg/ffprobe not installed")
+    source = tmp_path / "long.mp4"
+    command = [ffmpeg, "-hide_banner", "-loglevel", "error", "-nostdin", "-y", "-f", "lavfi"]
+    command += ["-i", "testsrc2=size=1920x1080:rate=30:duration=150", "-f", "lavfi"]
+    command += ["-i", "sine=frequency=440:sample_rate=48000:duration=150", "-c:v", "libx264"]
+    command += ["-preset", "ultrafast", "-pix_fmt", "yuv420p", "-c:a", "aac", "-shortest", str(source)]
+    subprocess.run(command, check=True, capture_output=True, timeout=600)
+
+    words = tuple(
+        ClientWord(f"word{i}", round(2.0 + i * 0.8, 3), round(2.0 + i * 0.8 + 0.5, 3)) for i in range(175)
+    )
+    reply = {
+        "start_s": 60.0,
+        "end_s": 85.0,
+        "hook": "No way this happened",
+        "title": "A long chase",
+        "caption": "From the start to the crash.",
+        "hashtags": ["gta", "chase", "crash"],
+        "topic": "police chase ends in crash",
+        "keywords": [],
+        "spoiler": False,
+        "safety": {},
+        "score": 8,
+        "score_parts": {"hook": 8, "clarity": 8, "payoff": 8, "rewatch": 8},
+        "reject": False,
+        "reject_reason": None,
+        "moment_type": "action",
+        "story_start_s": 10.0,
+        "story_end_s": 100.0,
+    }
+    deps = pipeline.Deps(
+        transcriber=FakeTranscriber(
+            Transcript(language="en", words=words, duration_s=150.0, provider="fake")
+        ),
+        ai_client=FakeAnthropicClient(
+            {
+                "p2_clip_writer": reply,
+                "p4_layout_detect": {
+                    "facecam": None,
+                    "gameplay": {"x": 0, "y": 0, "w": 1280, "h": 720},
+                    "confidence": 0.92,
+                },
+            }
+        ),
+        skip_music=True,
+        storage=FakeClipStorage(),
+    )
+    creator = add_creator()
+    item = pipeline.RenderInput(
+        source_path=source,
+        window_start_s=60.0,
+        window_end_s=85.0,
+        creator="test_streamer",
+        creator_id=creator,
+        platform="youtube",
+        source_id="vid-story",
+        source_url="https://youtube.com/watch?v=vid-story",
+        source_type="vod",
+        lane="hourly",
+        mode="normal",
+        spike_floor_s=70.0,
+        pad_start_s=0.0,
+        pad_end_s=150.0,
+    )
+    short_id = pipeline.render_clip(item, deps=deps)
+
+    short = db.fetch_one("select status, version, parent_clip_id from clips where id = %s", (short_id,))
+    assert short is not None and (short["status"], short["version"], short["parent_clip_id"]) == (
+        "gating",
+        "short",
+        None,
+    )
+    story = db.fetch_one(
+        "select id::text as id, status, version, lane, duration_s, hook, topic, style_plan from clips "
+        "where parent_clip_id = %s",
+        (short_id,),
+    )
+    assert story is not None, "the story clip was not created"
+    assert (story["status"], story["version"], story["lane"]) == ("gating", "story", "hourly")
+    assert 60.0 <= float(story["duration_s"]) <= 150.0
+    assert story["hook"] == "No way this happened" and story["topic"] == "police-chase-ends-in-crash"
+    assert story["style_plan"]["moment_type"] == "story"
+    gate_job = db.fetch_one("select payload from jobs where type = 'clip.gate'", ())
+    assert gate_job is not None and gate_job["payload"] == {"clip_id": story["id"]}
+    assert (data_dir / "ready" / f"{story['id']}.mp4").is_file()
+    family = db.fetch_one(
+        "select count(*) as n from clips where coalesce(parent_clip_id, id) = %s::uuid", (short_id,)
+    )
+    assert family is not None and family["n"] == 2
+
+    # A retried job does not make a second story.
+    assert pipeline.claim_story_clip(short_id, item, ClipWindow(0.0, 90.0)) is None
+
+
+def test_the_gate_does_not_count_a_clips_own_family_as_a_duplicate(staging_accounts: None) -> None:
+    from sixstars.gate import store as gate_store
+    from sixstars.gate.profiles import load as load_gate_settings
+
+    creator = add_creator()
+    short = add_clip(creator, status="approved", topic="police-chase-ends-in-crash", start_s=100, end_s=130)
+    story = add_clip(
+        creator,
+        status="gating",
+        topic="police-chase-ends-in-crash",
+        start_s=40,
+        end_s=150,
+        version="story",
+        parent_clip_id=short,
+    )
+    stranger = add_clip(
+        creator, status="approved", topic="police-chase-ends-in-crash", start_s=500, end_s=520
+    )
+    row = gate_store.get_clip(story)
+    assert row is not None and row.version == "story" and row.family_id == short
+    recent = gate_store.recent_clips(row, load_gate_settings(), datetime.now(UTC))
+    assert {item.id for item in recent} == {stranger}, "the short clip of the family is not a duplicate"
+    from sixstars.gate.gate import story_limits
+
+    limits = story_limits(row, load_gate_settings()).hourly
+    assert (limits.min_len_s, limits.max_len_s) == (60.0, 150.0)
+
+
+def test_the_vod_lane_widens_its_sections_only_while_story_cuts_are_on(staging_accounts: None) -> None:
+    from sixstars import settings as app_settings
+    from sixstars.vod import sections
+    from sixstars.vod.process import story_rules
+
+    rules = story_rules()
+    assert rules.enabled, "migration 0029 turns story cuts on"
+    start, end = rules.widen(1000.0, 1060.0)
+    assert sections.section_for(start, end, 7200.0) == sections.section_for(910.0, 1090.0, 7200.0)
+    app_settings.set("factory.story", {"enabled": False})
+    assert not story_rules().enabled
+    assert story_rules().widen(1000.0, 1060.0) == (1000.0, 1060.0)

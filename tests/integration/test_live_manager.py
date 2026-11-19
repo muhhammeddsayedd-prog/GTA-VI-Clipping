@@ -16,6 +16,7 @@ import pytest
 from typer.testing import CliRunner
 
 from sixstars import config, db, jobs, settings
+from sixstars import settings as story_settings
 from sixstars.ai import calls
 from sixstars.chat.models import ChatMessage, Platform
 from sixstars.cli import app
@@ -29,6 +30,14 @@ from sixstars.live.recorder import RunHandle
 from sixstars.live.session import LiveSession, SessionDeps
 from sixstars.services import live_manager, worker
 from sixstars.spikes import DetectedSpike
+
+
+@pytest.fixture(autouse=True)
+def no_story_cuts(database: None) -> None:
+    """These tests pin the lane's own windows; story cuts (development-plan/M18 Phase C) widen them and have
+    their own tests (`test_design_styles.py`)."""
+    story_settings.set("factory.story", {"enabled": False})
+
 
 BOT_CHECK = (
     "[plugins.youtube][error] Could not get video info - LOGIN_REQUIRED: Sign in to confirm you're not "
