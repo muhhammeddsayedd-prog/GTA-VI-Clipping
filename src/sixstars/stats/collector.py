@@ -1,4 +1,4 @@
-"""Stats collection: `POST /v1/stats/collect` (WF05, every 2 hours).
+"""Stats collection: `POST /v1/stats/collect` (WF05) and the worker job `stats.collect`.
 
 - Account level: one Upload-Post call per profile (`GET /api/analytics/{profile}?platforms=...`) gives
   followers, reach and impressions per platform; one `account_stats` row per account.
@@ -30,16 +30,20 @@ from typing import Any
 
 from psycopg.types.json import Jsonb
 
-from sixstars import db, events, settings
+from sixstars import db, events, jobs, settings
 from sixstars.clients.upload_post import AccountAuthError, PostRejected, RateLimited, UploadPostClient
 from sixstars.clients.youtube import YouTubeClient
+from sixstars.clients.youtube_analytics import YouTubeAnalyticsClient
 from sixstars.guardian.claims import single_pass
 from sixstars.guardian.removal import youtube_id_from_url
-from sixstars.learning import delivery
+from sixstars.learning import delivery, snapshots
 from sixstars.logging import get_logger
+from sixstars.scoring import config as scoring_config
+from sixstars.stats import snapshot_pass
 
 SERVICE = "stats"
 LOCK_NAME = "sixstars.stats.collect"
+JOB_COLLECT = "stats.collect"
 RAW_DROPPED_SUFFIXES = ("_timeseries", "_demographics")
 RAW_DROPPED_KEYS = frozenset({"breakdowns", "metric_labels", "available_metrics"})
 
@@ -77,6 +81,9 @@ class CollectResult:
     posts: int = 0
     skipped: int = 0
     rate_limited: bool = False
+    snapshots: int = 0
+    snapshots_left: int = 0
+    handed_to_job: bool = False
     errors: list[str] = field(default_factory=list)
 
     def as_dict(self) -> dict[str, Any]:
@@ -86,6 +93,9 @@ class CollectResult:
             "posts": self.posts,
             "skipped": self.skipped,
             "rate_limited": self.rate_limited,
+            "snapshots": self.snapshots,
+            "snapshots_left": self.snapshots_left,
+            "handed_to_job": self.handed_to_job,
             "errors": self.errors,
         }
 
@@ -382,6 +392,10 @@ def collect_upload_post(
         result.posts += 1
 
 
+def _save_snapshot_totals(post_id: str, numbers: snapshots.SnapshotNumbers) -> None:
+    save_post(post_id, PostNumbers(numbers.views, numbers.likes, numbers.comments, numbers.shares))
+
+
 def update_creator_averages() -> int:
     return db.execute(
         """
@@ -403,18 +417,47 @@ def collect(
     youtube: YouTubeClient,
     now: datetime,
     clock: Callable[[], float] = time.monotonic,
+    *,
+    analytics: YouTubeAnalyticsClient | None = None,
+    budget_s: float | None = None,
+    from_job: bool = False,
 ) -> CollectResult:
-    """One stats pass."""
+    """One stats pass. With `learning.snapshots` on, the due fixed-age readings go first; readings left
+    when the budget ends are handed to the worker job `stats.collect` (not from inside that job)."""
     with single_pass(LOCK_NAME) as locked:
         if not locked:
             return CollectResult(status="already_running")
         result = CollectResult()
-        deadline = clock() + settings.get_float("stats.collect_budget_s")
+        budget = budget_s if budget_s is not None else settings.get_float("stats.collect_budget_s")
+        deadline = clock() + budget
         if not upload_post.is_configured():
             result.errors.append("upload-post: no API key")
         else:
             collect_accounts(upload_post, result)
-        rows = posts_due(now)
+        refreshed: set[str] = set()
+        flag = scoring_config.flag(snapshots.FLAG)
+        if flag is not None:
+            snap = snapshot_pass.run(
+                now,
+                snapshots.SnapshotRules.from_flag(flag),
+                flag,
+                upload_post,
+                youtube,
+                analytics,
+                deadline,
+                clock,
+                _save_snapshot_totals,
+                save_link,
+                parse_post_link,
+            )
+            refreshed = snap.refreshed
+            result.snapshots, result.snapshots_left = snap.taken, snap.left
+            result.errors.extend(snap.errors)
+            result.rate_limited = result.rate_limited or snap.rate_limited
+            if snap.left and not from_job and not snap.rate_limited:
+                job = jobs.enqueue("normal", JOB_COLLECT, {}, dedupe_key=JOB_COLLECT)
+                result.handed_to_job = job is not None
+        rows = [row for row in posts_due(now) if row["id"] not in refreshed]
         rest = collect_youtube([row for row in rows if row["platform"] == "youtube"], youtube, result)
         others = [*rest, *(row for row in rows if row["platform"] != "youtube")]
         if result.rate_limited or not upload_post.is_configured():

@@ -9,6 +9,7 @@ from sixstars.ai import calls
 from sixstars.ai.schemas import TakedownVerdict
 from sixstars.clients.upload_post import UploadPostClient
 from sixstars.clients.youtube import YouTubeClient
+from sixstars.clients.youtube_analytics import YouTubeAnalyticsClient
 from sixstars.guardian import claims, takedowns
 from sixstars.guardian import config as guardian_config
 from sixstars.stats import collector, report
@@ -50,7 +51,9 @@ def handle_takedown(
 
 def collect_stats(now: datetime | None = None) -> dict[str, Any]:
     used = clients()
-    return collector.collect(used.upload_post, used.youtube, now or utcnow()).as_dict()
+    return collector.collect(
+        used.upload_post, used.youtube, now or utcnow(), analytics=YouTubeAnalyticsClient(used.youtube)
+    ).as_dict()
 
 
 def daily_report(day: date | None = None, now: datetime | None = None) -> dict[str, Any]:

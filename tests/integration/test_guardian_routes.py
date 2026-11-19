@@ -209,6 +209,9 @@ def test_stats_collect_route(client: TestClient, platforms: Platforms) -> None:
         "posts": 1,
         "skipped": 0,
         "rate_limited": False,
+        "snapshots": 0,
+        "snapshots_left": 0,
+        "handed_to_job": False,
         "errors": [],
     }
     assert row("posts", post_id)["views"] == 5000 and heartbeat_names() == {"trigger:stats"}
