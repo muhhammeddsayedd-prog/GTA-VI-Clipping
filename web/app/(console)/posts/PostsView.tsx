@@ -9,6 +9,8 @@ import { useApi } from "@/lib/api/client";
 import type { AccountSummary, Page, Post } from "@/lib/api/types";
 import { fmtNum, humanize, series } from "@/lib/format";
 import { useListParams } from "@/lib/use-list";
+import { AccountName } from "@/components/domain/AccountName";
+import { accountLabel } from "@/lib/use-accounts";
 
 const KEYS = ["status", "account_id", "lane", "clip_id"];
 const DEFAULTS = {};
@@ -16,7 +18,7 @@ const STATUSES = ["published", "pending", "failed", "removed", "remove_failed", 
 
 const COLS: Col<Post>[] = [
   { key: "clip", head: "Clip", render: (p) => <div className="row"><div style={{ width: 30, flex: "none" }}><Thumb seed={p.clip_id} src={p.clip_thumb_url} /></div><div style={{ minWidth: 0 }}><div className="semi pc">{series(p.clip_series_no)}</div><div className="sub ellipsis" style={{ maxWidth: 200 }}>{p.clip_hook ?? ""}</div></div></div> },
-  { key: "acc", head: "Account", render: (p) => <span className="row" style={{ gap: 8 }}><Plat p={p.platform} /><span className="semi">{p.account_id}</span></span> },
+  { key: "acc", head: "Account", render: (p) => <span className="row" style={{ gap: 8 }}><Plat p={p.platform} /><AccountName id={p.account_id} className="semi" /></span> },
   { key: "lane", head: "Lane", mobile: "hide", render: (p) => <Badge tone={laneTone(p.lane)}>{p.lane}</Badge> },
   { key: "st", head: "Status", mobile: "aside", render: (p) => <Badge status={p.status} /> },
   { key: "pub", head: "Published", mobile: "meta", render: (p) => <When iso={p.published_at} /> },
@@ -49,7 +51,7 @@ export function PostsView() {
       </Grid>
       <div className="filters" style={{ flexWrap: "wrap" }}>
         <SelectField label="Account" value={lp.get("account_id")} onChange={(v) => lp.set("account_id", v)}
-          options={[{ value: "", label: "All accounts" }, ...(accounts.data?.items ?? []).map((a) => ({ value: a.id, label: a.handle ? `${a.id} · ${a.handle}` : a.id }))]} />
+          options={[{ value: "", label: "All accounts" }, ...(accounts.data?.items ?? []).map((a) => ({ value: a.id, label: accountLabel(a, a.id) }))]} />
         <SelectField label="Lane" value={lp.get("lane")} onChange={(v) => lp.set("lane", v)} width={140}
           options={[{ value: "", label: "All lanes" }, { value: "hourly", label: "Hourly" }, { value: "spike", label: "Spike" }]} />
         {lp.get("clip_id") && <button type="button" className="chip p" onClick={() => lp.set("clip_id", "")} aria-label="Remove clip filter">One clip only ✕</button>}

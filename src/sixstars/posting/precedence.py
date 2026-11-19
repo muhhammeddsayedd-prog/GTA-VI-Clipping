@@ -56,13 +56,48 @@ def clip_block(
     return None
 
 
+# R12: the batch is released this long before its freshest clip would turn too old, at the latest, so a
+# held clip always keeps time to post.
+HOLD_AGE_MARGIN_S = 120
+
+
+def hold_release_at(clips: Iterable[Clip], params: PostingParams) -> datetime | None:
+    """R12 holding window: when the waiting spike clips may post.
+
+    Approved spike-lane clips wait until `posting.spike_hold_s` after the first of them was approved, then
+    they are all decided together, best rank first, so a better clip that arrives during the wait takes
+    the spike post. The release never comes later than `HOLD_AGE_MARGIN_S` before any of them reaches
+    `posting.spike_max_age_s`. None when holding is off or no clip is waiting.
+    """
+    if params.spike_hold_s <= 0:
+        return None
+    waiting = [c for c in clips if c.status == CLIP_APPROVED and c.lane is Lane.SPIKE and c.approved_at]
+    if not waiting:
+        return None
+    release = min(ensure_utc(c.approved_at, "approved_at") for c in waiting if c.approved_at is not None)
+    release += timedelta(seconds=params.spike_hold_s)
+    latest = [
+        ensure_utc(c.spike_at, "spike_at") + timedelta(seconds=params.spike_max_age_s - HOLD_AGE_MARGIN_S)
+        for c in waiting
+        if c.spike_at is not None
+    ]
+    return min([release, *latest])
+
+
 def decide_spike(
-    clip: Clip, account: Account, history: Sequence[PostRecord], now: datetime, params: PostingParams
+    clip: Clip,
+    account: Account,
+    history: Sequence[PostRecord],
+    now: datetime,
+    params: PostingParams,
+    *,
+    hold_until: datetime | None = None,
 ) -> Decision:
-    """May the spike lane post `clip` to `account` now? (R1, R4, R6, R7, R8, R11.)
+    """May the spike lane post `clip` to `account` now? (R1, R4, R6, R7, R8, R11, R12.)
 
     `SKIP` means the spike lane gives up on this account (the clip is "demoted" there); `DEFER` means the
-    minimum gap is not met yet and waiting until `defer_until` is within the allowed wait (R4).
+    clip waits until `defer_until`: for the holding window (`hold_until`, R12) or because the minimum gap
+    is not met yet and waiting is within the allowed wait (R4).
     """
     now = ensure_utc(now, "now")
     gate = check_gate(account, Lane.SPIKE, now, params)
@@ -98,6 +133,17 @@ def decide_spike(
             Reason.SPIKE_HOURLY_LIMIT,
             f"{account.id} had {state.spikes_1h} spike posts in the last hour, "
             f"posting.spike_max_per_hour is {params.spike_max_per_hour}",
+        )
+    if hold_until is not None and now < hold_until:
+        return Decision(
+            Action.DEFER,
+            Reason.SPIKE_HOLD,
+            f"holding spike clips until {hold_until.isoformat()} so the best of them posts first",
+            account.id,
+            Lane.SPIKE,
+            dry_run=dry,
+            clip_id=clip.id,
+            defer_until=hold_until,
         )
     if not state.gap_ok and state.gap_ends_at is not None:
         gap_end = state.gap_ends_at
@@ -237,6 +283,7 @@ def planned_post(clip: Clip, account: Account, decision: Decision, now: datetime
         dry_run=decision.dry_run,
         creator_id=clip.creator_id,
         slot_at=decision.slot_at,
+        family_id=clip.family_id,
     )
 
 
@@ -262,10 +309,12 @@ def plan_spikes(
     duplicates = duplicate_channels(accounts)
     working = list(history)
     plans: list[SpikePlan] = []
-    for clip in spike_order(clips):
+    ordered = spike_order(clips)
+    hold_until = hold_release_at(ordered, params)
+    for clip in ordered:
         decisions: list[Decision] = []
         for account in sorted(accounts, key=lambda a: a.id):
-            decision = decide_spike(clip, account, working, now, params)
+            decision = decide_spike(clip, account, working, now, params, hold_until=hold_until)
             if account.id in duplicates and decision.code is not Reason.EMERGENCY_STOP:
                 decision = Decision(
                     Action.SKIP,

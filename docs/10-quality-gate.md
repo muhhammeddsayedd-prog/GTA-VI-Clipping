@@ -16,7 +16,7 @@ The first failing check becomes `clips.reject_reason`. Never post a clip that fa
 | Spoiler | `spoiler = false` while now < `gate.spoiler_block_until`; spoilers never in hook/title (checked by P2 and a keyword check) | same |
 | Safety | P2 safety flags all false; no `gate.reject_topics`; no slur as the focus | same |
 | Watermark / other logos | P5 vision: no other account watermark, no TikTok/Instagram/YouTube logos, no "subscribe" end screens | same |
-| Visual | ffmpeg `blackdetect` (d ≥ 2 s fails), `freezedetect` (n=0.003, d ≥ 2 s fails); P5: not a menu/loading/pause screen; facecam crop not empty | same |
+| Visual | ffmpeg `blackdetect` (d ≥ 2 s fails), `freezedetect` (n=0.003, d ≥ 2 s fails), also in the gameplay band of the clip's layout (`layout.gameplay_band`; layout C, facecam on top, has its own); P5: not a menu/loading/pause screen; facecam crop not empty | same |
 | Subtitle sync | max |subtitle word start − transcript word start| ≤ 0.3 s | same |
 | Score | P2 score ≥ 7 | ≥ 8 |
 | Duplicate topic | no clip with the same `topic` approved/posted in the last 48 h | 6 h |
@@ -44,3 +44,11 @@ Limits of the pre-check: the public API does not expose every Content ID claim (
 - `status = approved`, `approved_at = now()`. (`series_no` was already assigned with `nextval('clip_series_seq')` at render start, because the end card shows it; gaps from rejected clips are accepted.)
 - Ranking (`docs/11` §5) computes `rank_score`.
 - Upload MP4 to Storage.
+
+## Design-style renders (development-plan/M18)
+
+The gate judges the first render of a clip. The other design styles of the clip (`clip_renders`, job `clip.variants`) are rendered only after it approved the clip and get the technical checks only (frame size, file length within `gate.checks.duration_tolerance_s`, black and frozen picture within `max_black_s` / `max_freeze_s` in their own band). A render that fails is not posted: its accounts get the first render. Score, music, safety, duplicates and P5 are the same for every style (same source, same cut).
+
+## Story cuts (development-plan/M18 Phase C)
+
+A story cut (`clips.version = 'story'`) is judged by the hourly profile with the length limits of `factory.story` (`min_s`..`max_s`) instead of `gate.hourly`'s. The duplicate checks (topic, transcript, source range) ignore the clip's own family: the short clip and its story cut cover the same moment on purpose. The posting engine keeps them apart (docs/11).

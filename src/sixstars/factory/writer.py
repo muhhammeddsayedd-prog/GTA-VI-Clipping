@@ -49,6 +49,9 @@ class WriterInput:
     clip_id: str | None = None
     snap: SnapRules = SnapRules()
     cut_guidance: str = ""
+    # development-plan/M18 Phase C: the story cut's length limits (0: no story cut asked for).
+    story_min_s: float = 0.0
+    story_max_s: float = 0.0
 
     @property
     def effective_min_len_s(self) -> float:
@@ -82,6 +85,8 @@ def build_context(item: WriterInput) -> ClipContext:
         profanity_hint=tuple(item.profanity_hint),
         clip_id=item.clip_id,
         cut_guidance=item.cut_guidance,
+        story_min_s=item.story_min_s,
+        story_max_s=item.story_max_s,
     )
 
 
@@ -190,4 +195,7 @@ def clip_columns(writing: ClipWriting) -> dict[str, object]:
         "safety_flags": Jsonb(writing.safety.model_dump()),
         "score": writing.score,
         "score_parts": Jsonb(writing.score_parts.model_dump()),
+        # development-plan/M18 Phase B (migration 0028).
+        "moment_type": writing.moment_type,
+        "style_texts": Jsonb(writing.style_texts()),
     }

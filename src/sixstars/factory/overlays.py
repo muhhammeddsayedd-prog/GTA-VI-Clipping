@@ -246,12 +246,14 @@ def _seconds(value: float) -> str:
     return f"{value:.3f}".rstrip("0").rstrip(".") or "0"
 
 
-def seam_filter(geometry: Geometry, accent_color: str, *, enable: str | None = None) -> str:
-    """Layout A seam: accent line across the frame where gameplay meets facecam, drawn while `enable` (an
-    ffmpeg expression) is non-zero, or always."""
+def seam_filter(
+    geometry: Geometry, accent_color: str, *, enable: str | None = None, y: int | None = None
+) -> str:
+    """Seam of layouts A and C: accent line across the frame where gameplay meets facecam (at row `y`, by
+    default the layout A seam), drawn while `enable` (an ffmpeg expression) is non-zero, or always."""
     options = [
         ("x", "0"),
-        ("y", str(geometry.a_seam_y)),
+        ("y", str(geometry.a_seam_y if y is None else y)),
         ("w", str(geometry.width)),
         ("h", str(geometry.a_seam_h)),
         ("color", ffmpeg_color(accent_color)),

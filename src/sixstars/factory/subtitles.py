@@ -7,7 +7,7 @@ inside the safe zone. The hook box, LIVE badge and creator credit are events in 
 """
 
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 from sixstars.factory.bleep import ProfanityMatcher, mask_word, normalize_word
 from sixstars.factory.escape import ass_color, ass_field, ass_override_color, ass_text, ass_text_emoji
@@ -18,8 +18,19 @@ from sixstars.factory.layout import (
     BADGE_Y,
     CAPTION_Y_A,
     CAPTION_Y_B,
+    CAPTION_Y_C,
+    H_VIDEO_H,
+    H_VIDEO_Y,
     HOOK_BOTTOM,
     HOOK_TOP,
+    LOW_CREDIT_BOTTOM,
+    M_CREDIT_BOTTOM,
+    M_GAME_H,
+    M_SEAM_Y,
+    M_TOP,
+    P_VIDEO_H,
+    P_VIDEO_Y,
+    PAYOFF_Y_C,
     REF_HEIGHT,
     REF_WIDTH,
     LayoutKind,
@@ -81,6 +92,11 @@ class SubtitleStyle:
     chunk_chars: int = 22
     caps: bool = False
     font: str = ""
+    # M18 Phase C: the caption's centre (0: the layout's) and the spoken word's colour (empty: none).
+    centre_y: int = 0
+    active_color: str = ""
+    # Phase E: two-tier chunks (a keyword big, italic and glowing; the other words small above it).
+    tiers: bool = False
 
     @classmethod
     def from_rules(cls, rules: StyleRules) -> "SubtitleStyle":
@@ -100,6 +116,9 @@ class SubtitleStyle:
             chunk_chars=rules.caption_chars,
             caps=rules.caption_caps,
             font=rules.caption_font,
+            centre_y=rules.caption_y,
+            active_color=rules.caption_active_color,
+            tiers=rules.caption_tiers,
         )
 
 
@@ -120,19 +139,35 @@ def safe_zone(params: FactoryParams) -> SafeZone:
 def caption_bottom(layout: LayoutKind, params: FactoryParams, style: SubtitleStyle | None = None) -> float:
     """Y of the caption's bottom edge (captions are bottom-anchored, so a wrapped line grows upwards).
 
-    A one-line caption is centred on y=1150 (layout A) or y=1450 (layout B), then pushed up if its outline
-    and shadow would cross the bottom of the safe zone.
+    A one-line caption is centred on y=1150 (layout A), y=1450 (layout B) or y=1400 (layout C), then pushed
+    up if its outline and shadow would cross the bottom of the safe zone.
     """
     style = style or SubtitleStyle()
     zone = safe_zone(params)
-    centre = CAPTION_Y_A if layout == "A" else CAPTION_Y_B
+    centre = (
+        style.centre_y
+        or {
+            "A": CAPTION_Y_A,
+            "B": CAPTION_Y_B,
+            "C": CAPTION_Y_C,
+            "H": CAPTION_Y_B,
+            "P": CAPTION_Y_B,
+            "M": M_SEAM_Y,
+        }[layout]
+    )
     bottom = min(centre + style.size / 2, zone.bottom - style.outline - style.shadow)
     return max(bottom, zone.top + style.size + style.outline)
 
 
 def credit_bottom(layout: LayoutKind, params: FactoryParams, style: SubtitleStyle | None = None) -> float:
-    """Y of the credit's bottom edge: just above a one-line caption, at the bottom of the gameplay area."""
-    style = style or SubtitleStyle()
+    """Y of the credit's bottom edge: just above a one-line caption, at the bottom of the gameplay area;
+    in layouts H and P (no captions) at `LOW_CREDIT_BOTTOM`, under the stream or on the gameplay."""
+    if layout in ("H", "P"):
+        return float(LOW_CREDIT_BOTTOM)
+    if layout == "M":
+        return float(M_CREDIT_BOTTOM)
+    # The credit keeps the layout's place even when a style moves its captions (`centre_y`).
+    style = replace(style, centre_y=0) if style is not None else SubtitleStyle()
     return caption_bottom(layout, params, style) - style.size - style.outline - style.credit_gap
 
 
@@ -260,6 +295,7 @@ def chunk_events(
     max_width = REF_WIDTH - 2 * style.margin_x
     ordered = sorted(lines, key=lambda line: line.start_s)
     shown = {line.index: _display_words(line, params, profanity) for line in ordered}
+    by_index = {line.index: line for line in ordered}
     flags = {
         line.index: keyword_flags([word.text for word in line.words], keywords.get(line.index, ()))
         for line in ordered
@@ -285,17 +321,54 @@ def chunk_events(
         width = measure(" ".join(texts), style.size) + WORD_GAP_EXTRA * (len(texts) - 1)
         size = style.size if width <= max_width else max(style.min_size, int(style.size * max_width / width))
         pop = CHUNK_KEYWORD_POP if any(marked) else CHUNK_POP
-        prefix = (
-            f"{{\\an2\\pos({REF_WIDTH // 2},{bottom})"
-            + (f"\\fs{size}" if size != style.size else "")
-            + pop
-            + "}"
-        )
+        place = f"{{\\an2\\pos({REF_WIDTH // 2},{bottom})" + (f"\\fs{size}" if size != style.size else "")
+        if style.tiers and any(marked):
+            # Two tiers: the keyword words big, italic and glowing; the others small above them.
+            main = WORD_GAP.join(ass_text(t) for t, m in zip(texts, marked, strict=True) if m)
+            lead = WORD_GAP.join(ass_text(t) for t, m in zip(texts, marked, strict=True) if not m)
+            # A glow is two layers: the keyword's accent halo (a wide, blurred, half-transparent outline) and
+            # the crisp white keyword with a thin dark outline over it.
+            halo = (
+                f"\\i1\\1c{accent}\\3c{accent}\\3a&H40&\\bord{max(6, size // 10)}"
+                f"\\blur{max(8, size // 8)}\\shad0"
+            )
+            crisp = f"\\i1\\1c{white}\\3c{ass_override_color(BLACK)}\\bord{max(2, size // 40)}\\shad0"
+            lead_size = max(style.min_size // 2, round(size * 0.42))
+            lead_place = f"{{\\an2\\pos({REF_WIDTH // 2},{bottom - size})\\fs{lead_size}"
+            events.append(dialogue(LAYER_CAPTION, start, end, "Caption", place + pop + halo + "}" + main))
+            events.append(
+                dialogue(LAYER_CAPTION + 1, start, end, "Caption", place + pop + crisp + "}" + main)
+            )
+            if lead:
+                events.append(dialogue(LAYER_CAPTION, start, end, "Caption", lead_place + pop + "}" + lead))
+            continue
+        if style.active_color:
+            # The spoken word in the active colour: one event per word of the chunk, the pop on the first.
+            active = ass_override_color(style.active_color)
+            line = by_index[chunk.line_index]
+            for k, word_index in enumerate(chunk.words):
+                word_start = start if k == 0 else max(start, line.words[word_index].start_s)
+                word_end = end
+                if k + 1 < len(chunk.words):
+                    word_end = min(end, max(word_start, line.words[chunk.words[k + 1]].start_s))
+                if round(word_end * 100) <= round(word_start * 100):
+                    continue
+                parts = [
+                    f"{{\\1c{active}}}{ass_text(text)}{{\\1c{white}}}" if j == k else ass_text(text)
+                    for j, text in enumerate(texts)
+                ]
+                tags = place + (pop if k == 0 else "") + "}"
+                events.append(
+                    dialogue(LAYER_CAPTION, word_start, word_end, "Caption", tags + WORD_GAP.join(parts))
+                )
+            continue
         parts = [
             f"{{\\1c{accent}}}{ass_text(text)}{{\\1c{white}}}" if keyword else ass_text(text)
             for text, keyword in zip(texts, marked, strict=True)
         ]
-        events.append(dialogue(LAYER_CAPTION, start, end, "Caption", prefix + WORD_GAP.join(parts)))
+        events.append(
+            dialogue(LAYER_CAPTION, start, end, "Caption", place + pop + "}" + WORD_GAP.join(parts))
+        )
     return events
 
 
@@ -304,7 +377,14 @@ def payoff_events(emoji: str, *, payoff_s: float, duration_s: float, layout: Lay
     text = " ".join(emoji.split())
     if not text or not 0 <= payoff_s < duration_s:
         return []
-    centre_y = A_GAMEPLAY_H // 2 if layout == "A" else B_GAMEPLAY_Y + B_GAMEPLAY_H // 2
+    centre_y = {
+        "A": A_GAMEPLAY_H // 2,
+        "B": B_GAMEPLAY_Y + B_GAMEPLAY_H // 2,
+        "C": PAYOFF_Y_C,
+        "H": H_VIDEO_Y + H_VIDEO_H // 2,
+        "P": P_VIDEO_Y + P_VIDEO_H // 2,
+        "M": M_TOP + M_GAME_H // 2,
+    }[layout]
     end = min(payoff_s + PAYOFF_EMOJI_S, duration_s)
     tags = f"{{\\an5\\pos({REF_WIDTH // 2},{centre_y})\\fs{PAYOFF_EMOJI_SIZE}{PAYOFF_POP}}}"
     return [dialogue(LAYER_PAYOFF, payoff_s, end, "Caption", tags + ass_text_emoji(text))]
@@ -393,35 +473,42 @@ def build_ass(
     payoff_s: float | None = None,
     payoff_emoji: str | None = None,
     caption_measure: TextMeasurer | None = None,
+    captions: bool = True,
+    hook_top: float | None = None,
+    hook_whole_clip: bool = False,
 ) -> str:
     """The complete `.ass` file for one clip: captions plus hook box, LIVE badge, creator credit and the
     payoff emoji.
 
     `duration_s` is the clip length without the end card; nothing is drawn after it. On spike-lane clips
     (`live_badge`) the hook box moves down so it clears the badge. The hook shows for the first
-    `factory.hook_seconds` in every `hook_mode`. `payoff_s` is in clip time.
+    `factory.hook_seconds` in every `hook_mode` (the whole clip with `hook_whole_clip`), its box at
+    `hook_top` when given. `payoff_s` is in clip time. Without `captions` the spoken words are not shown (a
+    title-only style).
     """
     style = style or SubtitleStyle()
     zone = safe_zone(params)
     badge_top = max(float(BADGE_Y), zone.top)
-    hook_top = hook_box_top(params, live_badge=live_badge)
+    if hook_top is None:
+        hook_top = hook_box_top(params, live_badge=live_badge)
     events: list[str] = []
     if creator:
         events += credit_events(creator, end_s=duration_s, bottom=credit_bottom(layout, params, style))
-    events += caption_events(
-        lines,
-        layout=layout,
-        params=params,
-        duration_s=duration_s,
-        keywords=keywords,
-        profanity=profanity,
-        style=style,
-        measure=caption_measure or measure,
-    )
+    if captions:
+        events += caption_events(
+            lines,
+            layout=layout,
+            params=params,
+            duration_s=duration_s,
+            keywords=keywords,
+            profanity=profanity,
+            style=style,
+            measure=caption_measure or measure,
+        )
     if live_badge:
         events += badge_events(end_s=duration_s, top=badge_top, measure=measure)
     if hook:
-        hook_end = min(params.hook_seconds, duration_s)
+        hook_end = duration_s if hook_whole_clip else min(params.hook_seconds, duration_s)
         events += hook_events(hook, end_s=hook_end, top=hook_top, measure=measure)
     if payoff_s is not None and payoff_emoji:
         events += payoff_events(payoff_emoji, payoff_s=payoff_s, duration_s=duration_s, layout=layout)

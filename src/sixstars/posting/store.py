@@ -33,7 +33,8 @@ SPIKE_RETRY_MARGIN = timedelta(seconds=1)  # a deferred spike is tried just afte
 _CLIP_SQL = """
 select c.id::text as id, c.creator_id::text as creator_id, c.lane, c.rank_score, c.status, c.approved_at,
        s.spike_wall, cr.handle as creator_handle, c.source_platform, c.title, c.caption, c.hook,
-       c.hashtags, c.local_path, c.spike_id::text as spike_id
+       c.hashtags, c.local_path, c.spike_id::text as spike_id,
+       coalesce(c.parent_clip_id, c.id)::text as family_id, c.duration_s
 from clips c
 join creators cr on cr.id = c.creator_id
 left join spikes s on s.id = c.spike_id
@@ -99,7 +100,10 @@ class PublisherStore(Protocol):
     def get_account(self, account_id: str) -> Account | None: ...
     def get_clip(self, clip_id: str) -> LoadedClip | None: ...
     def load_history(self, now: datetime, clip_ids: Iterable[str] = ()) -> list[PostRecord]: ...
-    def mark_sending(self, post_id: str, request_id: str) -> None: ...
+    def file_for_post(
+        self, clip_id: str, account_id: str, fallback: str | None
+    ) -> tuple[str | None, str | None]: ...
+    def mark_sending(self, post_id: str, request_id: str, render_id: str | None = None) -> None: ...
     def mark_published(
         self, post_id: str, platform_post_id: str | None, post_url: str | None, now: datetime
     ) -> bool: ...
@@ -161,6 +165,7 @@ def record_from_row(row: Mapping[str, Any]) -> PostRecord:
         dry_run=bool(row["dry_run"]),
         creator_id=row["creator_id"],
         slot_at=_utc(row["slot_at"]),
+        family_id=row.get("family_id"),
     )
 
 
@@ -180,6 +185,8 @@ def clip_from_row(row: Mapping[str, Any]) -> LoadedClip:
         caption=row["caption"],
         hook=row["hook"],
         hashtags=tuple(row["hashtags"] or ()),
+        family_id=row.get("family_id"),
+        duration_s=float(row["duration_s"]) if row.get("duration_s") is not None else None,
     )
     return LoadedClip(clip=clip, local_path=row["local_path"], spike_id=row["spike_id"])
 
@@ -258,7 +265,8 @@ class DbStore:
         rows = db.fetch_all(
             """
             select p.account_id, p.platform, p.clip_id::text as clip_id, p.lane, p.status, p.created_at,
-                   p.published_at, p.dry_run, p.slot_at, c.creator_id::text as creator_id
+                   p.published_at, p.dry_run, p.slot_at, c.creator_id::text as creator_id,
+                   coalesce(c.parent_clip_id, c.id)::text as family_id
             from posts p
             join clips c on c.id = p.clip_id
             where p.created_at >= %(since)s
@@ -345,11 +353,21 @@ class DbStore:
         )
         return None if row is None else str(row["id"])
 
-    def mark_sending(self, post_id: str, request_id: str) -> None:
+    def file_for_post(
+        self, clip_id: str, account_id: str, fallback: str | None
+    ) -> tuple[str | None, str | None]:
+        """`(clip_renders.id, local file)` of the account's design style (development-plan/M18), or
+        `(None, fallback)` for a clip rendered before migration 0027."""
+        from sixstars.factory.variants import render_for_post
+
+        render_id, path = render_for_post(clip_id, account_id)
+        return (render_id, path) if path else (None, fallback)
+
+    def mark_sending(self, post_id: str, request_id: str, render_id: str | None = None) -> None:
         db.execute(
-            "update posts set attempts = attempts + 1, upload_request_id = %s "
-            "where id = %s and status = 'pending'",
-            (request_id, post_id),
+            "update posts set attempts = attempts + 1, upload_request_id = %s, "
+            "render_id = coalesce(%s::uuid, render_id) where id = %s and status = 'pending'",
+            (request_id, render_id, post_id),
         )
 
     def mark_published(

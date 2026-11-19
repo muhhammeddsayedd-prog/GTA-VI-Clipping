@@ -34,6 +34,9 @@ SFX_POP = "pop.wav"
 # docs/27 edit sound effects by kind (`effects.SfxKind`); the pop is `SFX_POP`.
 SFX_FILES = {"whoosh": "whoosh.wav", "impact": "impact.wav", "boom": "boom.wav"}
 LOGO = "star.png"
+# development-plan/M18: the round avatar of the headline card's brand header, and the question title font.
+AVATAR = "logo.png"
+QUESTION_FONT = "anton"
 PROFANITY_LIST = "profanity.txt"
 
 
@@ -61,6 +64,8 @@ class FactoryAssets:
     title_font_file: Path | None = None
     emoji_font_file: Path | None = None
     emoji_colour: bool = False
+    avatar: Path | None = None
+    question_font_file: Path | None = None
 
     def profanity(self) -> ProfanityMatcher:
         """The profanity matcher (empty when the list file is missing)."""
@@ -97,6 +102,7 @@ def load_assets(font_name: str, root: Path | None = None, *, caption_font: str =
     sfx = base / "sfx" / SFX_POP
     profanity = base / PROFANITY_LIST
     logo = base / "brand" / LOGO
+    avatar = base / "brand" / AVATAR
     return FactoryAssets(
         root=base,
         fonts=FontFiles(fonts_dir=fonts_dir if fonts_dir.is_dir() else None, font_file=font_file),
@@ -109,4 +115,6 @@ def load_assets(font_name: str, root: Path | None = None, *, caption_font: str =
         title_font_file=_bundled_font(fonts_dir, TITLE_FONT),
         emoji_font_file=colour or (mono if mono.is_file() else None),
         emoji_colour=colour is not None,
+        avatar=avatar if avatar.is_file() else None,
+        question_font_file=_bundled_font(fonts_dir, QUESTION_FONT),
     )

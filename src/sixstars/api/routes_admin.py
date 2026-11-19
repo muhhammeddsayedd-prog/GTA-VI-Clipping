@@ -241,7 +241,7 @@ def spike(spike_id: str) -> JSONResponse:
 CLIP_DETAIL_COLUMNS = """
 c.caption, c.hashtags, c.commentary, c.transcript, c.keywords, c.safety_flags, c.score_parts, c.spoiler,
 c.profanity_count, c.gate_result, c.precheck_result, c.render_ms, c.file_size_bytes, c.storage_path,
-c.start_s, c.end_s, c.original_language
+c.start_s, c.end_s, c.original_language, c.style_id, c.layout_kind, c.style_plan
 """
 
 
@@ -276,6 +276,8 @@ def clip(clip_id: str) -> JSONResponse:
             q.fetch_detail(q.CLIP_COLUMNS, q.CLIP_SOURCE, "c.id", clip_id, CLIP_DETAIL_COLUMNS), "clip"
         )
         row["posts"] = q.posts_where("p.clip_id = %s", (clip_id,))
+        row["renders"] = q.clip_renders(clip_id)
+        row["family"] = q.clip_family(clip_id)
         row["events"] = q.entity_events("clip", clip_id)
         row["trace"] = q.build_trace(clip_id=clip_id)
     return answer(row)
@@ -286,11 +288,16 @@ def media_answer(reason: str, url: str | None = None, expires_at: datetime | Non
 
 
 @router.get("/clips/{clip_id}/media")
-def clip_media(clip_id: str) -> JSONResponse:
-    """A signed URL (1 h) for the rendered clip, or why there is none."""
+def clip_media(clip_id: str, render: Annotated[str | None, Query()] = None) -> JSONResponse:
+    """A signed URL (1 h) for the rendered clip, or for one of its design-style renders (`render`, a
+    `clip_renders.id`), or why there is none."""
     q.require_uuid(clip_id, "clip")
+    if render is not None:
+        q.require_uuid(render, "render")
     with read_tx():
         row = detail(db.fetch_one("select storage_path from clips where id = %s", (clip_id,)), "clip")
+        if render is not None:
+            row = detail(q.render_storage_path(clip_id, render), "render")
     key = row["storage_path"]
     if not key:
         return media_answer("no_file")
@@ -310,6 +317,14 @@ def clip_media(clip_id: str) -> JSONResponse:
     except ValueError:
         return media_answer("no_file")  # not a storage key
     return media_answer("ok", url, _now() + timedelta(seconds=SIGNED_URL_TTL_S))
+
+
+@router.get("/styles")
+def styles() -> JSONResponse:
+    """The design styles and how each performs per account (development-plan/M18 Phase D)."""
+    with read_tx():
+        body = q.style_performance()
+    return answer(body)
 
 
 # ── queue, posts ─────────────────────────────────────────────

@@ -135,3 +135,8 @@ Errors use the existing shape of the control API (docs/17), `{"error": "<message
 ## Screens
 
 There is one route per page in `web/app/(console)/`. The mockups in the owner's "Screen designs" folder are the visual reference. The sitemap is the one in the M17 plan: Overview, Pipeline, Content (Live, VOD, Spikes, Clips, Queue, Posts), Sources (Discovery, Creators, Accounts), Guardian, Operations (Health, Alerts, Jobs, Events), Insights (Spend, Reports) and Settings.
+
+## Design styles (development-plan/M18)
+
+- Clip page: a "Design styles" card lists each render of the clip (style, layout, which accounts get it, status, render time) with a player per render (`GET /v1/admin/clips/{id}/media?render=<id>`); a story cut shows a "story cut" badge and links to its short clip and back.
+- Insights → Design styles (`/styles`, `GET /v1/admin/styles`): the picker's mode and settings, and per account a row per style with the posts of the last 7 days, the scored posts, their average views, the views against the account's usual and whether the style is still being learned.

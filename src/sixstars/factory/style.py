@@ -13,9 +13,17 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Literal
 
+from sixstars.factory.escape import parse_hex_color
+
 HookMode = Literal["box", "title_bar"]
+Frame = Literal["auto", "headline_card", "pov", "montage"]
+TitleSource = Literal["hook", "title_line", "headline", "question", "pov_line"]
+TitleLook = Literal["bar", "question"]
 
 _HOOK_MODES: tuple[HookMode, ...] = ("box", "title_bar")
+_FRAMES: tuple[Frame, ...] = ("auto", "headline_card", "pov", "montage")
+_TITLE_SOURCES: tuple[TitleSource, ...] = ("hook", "title_line", "headline", "question", "pov_line")
+_TITLE_LOOKS: tuple[TitleLook, ...] = ("bar", "question")
 
 
 @dataclass(frozen=True, slots=True)
@@ -37,6 +45,24 @@ class StyleRules:
     * `sfx_gain_db`: level of every sound effect. `cut_sfx`: whoosh and impact on each punch-in.
       `payoff_fx`: emoji and bass hit at the payoff the clip writer names.
     * `compress`: a compressor before loudness normalisation, for the dense sound of the references.
+    * `facecam_top`: with a facecam, draw it on top and the gameplay below (layout C, decision D112)
+      instead of gameplay on top (layout A).
+    * `captions`: burn in the spoken words (off: a title-only style, docs/27 section 5).
+    * `title_whole_clip`: the title bar stays for the whole clip instead of `factory.hook_seconds`.
+    * `frame`: `auto` draws layout A, B or C from the facecam and `facecam_top`; `headline_card` the
+      news card (layout H: brand header, headline, the stream as the streamer had it); `pov` the
+      gameplay alone in a tall crop with black bars and a centred line (layout P).
+    * `title_source`: which of the clip writer's texts the title shows (the hook when that one is
+      missing). `title_look`: `bar` (white bar) or `question` (big red capitals with a black outline
+      at the top of the gameplay).
+    * `watermark`: burn in `factory.watermark` (off for the headline card, whose header is the brand).
+    * `caption_y`: the caption line's centre on the 1080x1920 canvas (0: the layout's own place).
+    * `caption_active_color`: the spoken word of a caption chunk in this colour (empty: no highlight).
+    * `show_title`: draw the title at all (off for the one-word caption style).
+    * `frame` `montage` (Phase E, reference R10): gameplay above the facecam in a 3:4 letterbox with a
+      soft fade between them; every other `montage_every_s` seconds the gameplay cuts to B-roll from
+      the footage around the moment. `caption_tiers`: a chunk with a keyword shows its other words
+      small above the keyword, which is big, italic and glowing in the accent colour.
     """
 
     caption_words: int = 0
@@ -56,6 +82,18 @@ class StyleRules:
     cut_sfx: bool = False
     payoff_fx: bool = False
     compress: bool = False
+    facecam_top: bool = False
+    captions: bool = True
+    title_whole_clip: bool = False
+    frame: Frame = "auto"
+    title_source: TitleSource = "hook"
+    title_look: TitleLook = "bar"
+    watermark: bool = True
+    caption_y: int = 0
+    caption_active_color: str = ""
+    show_title: bool = True
+    montage_every_s: float = 0.0
+    caption_tiers: bool = False
 
     def __post_init__(self) -> None:
         if self.caption_words < 0 or self.caption_chars < 1:
@@ -64,6 +102,18 @@ class StyleRules:
             raise ValueError("caption_size must be within 24..200")
         if self.hook_mode not in _HOOK_MODES:
             raise ValueError(f"hook_mode must be one of {_HOOK_MODES}")
+        if (
+            self.frame not in _FRAMES
+            or self.title_source not in _TITLE_SOURCES
+            or self.title_look not in _TITLE_LOOKS
+        ):
+            raise ValueError("frame, title_source or title_look is unknown")
+        if self.caption_y and not 200 <= self.caption_y <= 1720:
+            raise ValueError("caption_y must be 0 or within 200..1720")
+        if self.montage_every_s < 0:
+            raise ValueError("montage_every_s must not be negative")
+        if self.caption_active_color:
+            parse_hex_color(self.caption_active_color)
         if self.punchin_max < 0 or self.punchin_len_s <= 0 or self.punchin_min_gap_s < 0:
             raise ValueError("punch-in counts and lengths must not be negative")
         if not 1.0 <= self.punchin_zoom <= 3.0 or not 1.0 <= self.zoomcut_scale <= 1.5:
@@ -116,6 +166,9 @@ class StyleRules:
             return " ".join(value.split()) if isinstance(value, str) else fallback
 
         hook_mode = raw.get("hook_mode")
+        frame = raw.get("frame")
+        title_source = raw.get("title_source")
+        title_look = raw.get("title_look")
         try:
             return cls(
                 caption_words=integer("caption_words", base.caption_words),
@@ -135,6 +188,18 @@ class StyleRules:
                 cut_sfx=flag("cut_sfx", base.cut_sfx),
                 payoff_fx=flag("payoff_fx", base.payoff_fx),
                 compress=flag("compress", base.compress),
+                facecam_top=flag("facecam_top", base.facecam_top),
+                captions=flag("captions", base.captions),
+                title_whole_clip=flag("title_whole_clip", base.title_whole_clip),
+                frame=frame if frame in _FRAMES else base.frame,
+                title_source=title_source if title_source in _TITLE_SOURCES else base.title_source,
+                title_look=title_look if title_look in _TITLE_LOOKS else base.title_look,
+                watermark=flag("watermark", base.watermark),
+                caption_y=integer("caption_y", base.caption_y),
+                caption_active_color=text("caption_active_color", base.caption_active_color),
+                show_title=flag("show_title", base.show_title),
+                montage_every_s=number("montage_every_s", base.montage_every_s),
+                caption_tiers=flag("caption_tiers", base.caption_tiers),
             )
         except ValueError:
             return base
@@ -159,4 +224,88 @@ VIRAL_STYLE: dict[str, object] = {
     "cut_sfx": True,
     "payoff_fx": True,
     "compress": True,
+}
+
+
+# The styles of migration 0027 (development-plan/M18, docs/27 section 5). `config.OFFLINE_DEFAULTS`, the
+# catalogue's fallback and the tests use them as the reference; the services read `factory.styles`.
+CAM_TOP_VIRAL: dict[str, object] = {**VIRAL_STYLE, "facecam_top": True}
+CAM_TOP_TITLE: dict[str, object] = {
+    "caption_words": 0,
+    "captions": False,
+    "hook_mode": "title_bar",
+    "title_whole_clip": True,
+    "title_source": "title_line",
+    "facecam_top": True,
+    "punchin_max": 0,
+    "zoomcut_every_s": 0,
+    "cut_sfx": False,
+    "payoff_fx": False,
+    "compress": True,
+    "sfx_gain_db": -10,
+}
+# Phase B (development-plan/M18): the calm styles of the references R05 (question), R08 (POV) and R09 (news
+# card). None has spoken captions, punch-ins or zoom cuts; each shows one of the writer's texts for the
+# whole clip.
+_CALM: dict[str, object] = {
+    "caption_words": 0,
+    "captions": False,
+    "hook_mode": "title_bar",
+    "title_whole_clip": True,
+    "punchin_max": 0,
+    "zoomcut_every_s": 0,
+    "cut_sfx": False,
+    "payoff_fx": False,
+    "compress": True,
+    "sfx_gain_db": -10,
+}
+CAM_TOP_QUESTION: dict[str, object] = {
+    **_CALM,
+    "facecam_top": True,
+    "title_source": "question",
+    "title_look": "question",
+}
+HEADLINE_CARD: dict[str, object] = {
+    **_CALM,
+    "frame": "headline_card",
+    "title_source": "headline",
+    "watermark": False,
+}
+POV_FULLFRAME: dict[str, object] = {**_CALM, "frame": "pov", "title_source": "pov_line"}
+# Phase C (development-plan/M18): the one-word captions of reference R06: one or two heavy words at a time on
+# the bottom edge of the facecam, the spoken one in yellow; no title, calm cut. Suits the story cuts.
+CAM_TOP_WORDCAP: dict[str, object] = {
+    **_CALM,
+    "facecam_top": True,
+    "captions": True,
+    "caption_words": 2,
+    "caption_chars": 16,
+    "caption_font": "Montserrat Black",
+    "caption_size": 92,
+    "caption_caps": True,
+    "caption_y": 580,
+    "caption_active_color": "#FFD400",
+    "show_title": False,
+}
+# Phase E (development-plan/M18): the hype montage of reference R10. Gameplay over the streamer's face in a
+# 3:4 letterbox, cuts to B-roll every other 3 s, two-tier kinetic words on the seam, a whoosh on each cut and
+# the payoff emoji; no title. Needs a facecam and spare footage around the moment (`requires`).
+HYPE_MONTAGE: dict[str, object] = {
+    "frame": "montage",
+    "montage_every_s": 3.0,
+    "captions": True,
+    "caption_tiers": True,
+    "caption_words": 2,
+    "caption_chars": 16,
+    "caption_font": "Anton",
+    "caption_size": 120,
+    "caption_caps": True,
+    "show_title": False,
+    "hook_mode": "title_bar",
+    "punchin_max": 0,
+    "zoomcut_every_s": 0,
+    "cut_sfx": True,
+    "payoff_fx": True,
+    "compress": True,
+    "sfx_gain_db": -12,
 }

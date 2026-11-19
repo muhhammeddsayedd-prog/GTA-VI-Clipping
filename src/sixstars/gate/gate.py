@@ -17,19 +17,21 @@ the worker process must call it once at start.
 """
 
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import structlog
 
 from sixstars import events, jobs, notify
+from sixstars import settings as app_settings
 from sixstars import storage as clip_storage
 from sixstars.ai.calls import BudgetExceededError
 from sixstars.clients.anthropic_client import AnthropicClient, BudgetKind
 from sixstars.clients.upload_post import UploadPostClient
 from sixstars.clients.youtube import YouTubeClient
 from sixstars.factory import pipeline, tools
+from sixstars.factory.story import StoryRules
 from sixstars.gate import overhaul, profiles, rescore, store
 from sixstars.gate import visual as visuals
 from sixstars.gate.decision import decide
@@ -121,7 +123,12 @@ def _measure(row: store.ClipRow, settings: GateSettings, deps: GateDeps) -> File
         return None
     try:
         return visuals.measure_file(
-            Path(row.local_path), row.duration_s, settings, ffmpeg=deps.ffmpeg, ffprobe=deps.ffprobe
+            Path(row.local_path),
+            row.duration_s,
+            settings,
+            ffmpeg=deps.ffmpeg,
+            ffprobe=deps.ffprobe,
+            layout_kind=row.layout_kind,
         )
     except tools.FfmpegError as exc:
         get_logger("gate").warning("gate_file_unreadable", error=str(exc)[:300])
@@ -288,6 +295,16 @@ def _hand_off(clip_id: str, deps: GateDeps) -> tuple[SpikeRun | None, str | None
         return None, error
 
 
+def story_limits(row: store.ClipRow, settings: GateSettings) -> GateSettings:
+    """A story cut (development-plan/M18 Phase C) is judged by the hourly profile with the story's length
+    limits (`factory.story`); any other clip by the settings as they are."""
+    if row.version != "story":
+        return settings
+    story = StoryRules.from_setting(app_settings.get("factory.story", None))
+    hourly = replace(settings.hourly, min_len_s=story.min_s, max_len_s=story.max_s)
+    return replace(settings, hourly=hourly)
+
+
 def run_gate(clip_id: str, *, deps: GateDeps | None = None) -> GateOutcome:
     """Judge the clip `clip_id` if it is in `gating`. Safe to call again: a judged clip is left alone.
 
@@ -306,7 +323,7 @@ def run_gate(clip_id: str, *, deps: GateDeps | None = None) -> GateOutcome:
             get_logger("gate").info("gate_skipped", status=row.status)
             return GateOutcome(clip_id, row.status, skipped=f"status is {row.status}")
         notes = overhaul.Adjustments()
-        settings = overhaul.adjust_settings(row, profiles.load(), notes)
+        settings = story_limits(row, overhaul.adjust_settings(row, profiles.load(), notes))
         file = _measure(row, settings, deps)
         # Would the clip be rejected even if the pictures were fine? Then P5 is not asked.
         now = deps.clock()
@@ -353,7 +370,7 @@ def resolve_precheck(clip_id: str, state: PrecheckState, *, deps: GateDeps | Non
         if state is PrecheckState.AVAILABLE:
             raise ValueError("resolve_precheck needs the outcome of the pre-check, not 'available'")
         notes = overhaul.Adjustments()
-        settings = overhaul.adjust_settings(row, profiles.load(), notes)
+        settings = story_limits(row, overhaul.adjust_settings(row, profiles.load(), notes))
         row = overhaul.boost_row(row, notes)
         inputs = (row.gate_result or {}).get("inputs")
         stored = inputs if isinstance(inputs, dict) else {}

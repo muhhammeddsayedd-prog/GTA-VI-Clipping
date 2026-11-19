@@ -32,13 +32,35 @@ from sixstars.ai.schemas import ClipWriting, SpikeVerdict
 from sixstars.clients.anthropic_client import AnthropicClient, BudgetKind
 from sixstars.clients.transcribe import Mode, Transcriber
 from sixstars.config import env
-from sixstars.factory import anchor, effects, facecam, music, thumbs, tools, writer
+from sixstars.factory import anchor, cards, effects, facecam, montage, music, thumbs, tools, variants, writer
 from sixstars.factory import transcript as transcripts
 from sixstars.factory.assets import FactoryAssets, load_assets
 from sixstars.factory.audio import SfxTrack, parse_loudnorm_report
 from sixstars.factory.bleep import Span, bleep_spans
 from sixstars.factory.config import FactoryConfig
-from sixstars.factory.layout import REF_HEIGHT, Layout, PunchIns, ZoomCut
+from sixstars.factory.director import StylePlan, clip_facts
+from sixstars.factory.layout import (
+    B_GAMEPLAY_Y,
+    C_QUESTION_GAP,
+    C_TITLE_OVERLAP,
+    H_HEADER_TOP,
+    HOOK_BOTTOM,
+    HOOK_TOP,
+    M_FADE_H,
+    M_SEAM_Y,
+    P_TEXT_CENTER_Y,
+    REF_HEIGHT,
+    REF_WIDTH,
+    Geometry,
+    Layout,
+    LayoutA,
+    LayoutB,
+    LayoutCard,
+    LayoutMontage,
+    LayoutPov,
+    PunchIns,
+    ZoomCut,
+)
 from sixstars.factory.lines import Line, clip_lines, group_lines
 from sixstars.factory.params import FactoryParams
 from sixstars.factory.presets import RenderMode, uses_nvenc
@@ -58,6 +80,8 @@ from sixstars.logging import get_logger
 from sixstars.scoring import log as scoring_log
 
 JOB_CLIP_RENDER = "clip.render"
+# The gate's job (`gate.gate.JOB_GATE`; the gate imports this module, so the name is repeated here).
+JOB_GATE = "clip.gate"
 JOB_EXPRESS_RENDER = "express.render"
 ASS_NAME = "clip.ass"
 TITLE_PNG = "title.png"
@@ -65,6 +89,8 @@ SCRATCH_OUTPUT = "render.mp4"
 # The finished file may differ from the planned length by this much (container rounding).
 DURATION_TOLERANCE_S = 0.2
 # docs/27 title-bar hook: the watermark sits this far below the hook box (reference canvas pixels).
+# A question title in layout A starts here (below the LIVE badge, at the top of the gameplay).
+QUESTION_TOP_A = 310
 WATERMARK_HOOK_GAP = 14
 # A job deferred because the daily AI budget is used up runs again this long after 00:00 UTC.
 BUDGET_RETRY_MARGIN_S = 120
@@ -125,6 +151,9 @@ class RenderInput:
     upload: bool = False
     moment_chosen: bool = False
     whole_window: bool = False
+    # development-plan/M18 Phase C: "story" for the longer cut of a short clip (`parent_clip_id`).
+    version: str = "short"
+    parent_clip_id: str | None = None
 
     def __post_init__(self) -> None:
         if self.lane not in LANES:
@@ -256,6 +285,64 @@ class RenderJob:
     # docs/27 payoff, in clip time (the writer's `payoff_s` shifted to the final cut).
     payoff_s: float | None = None
     payoff_emoji: str | None = None
+    # The catalogue id of `style` (factory.styles), for the logs and the clip_renders row.
+    style_id: str = ""
+    # The clip writer's texts for the design styles (`ClipWriting.style_texts`): title_line, headline,
+    # question, pov_line.
+    texts: Mapping[str, str] = field(default_factory=dict)
+    # Layout M (Phase E): the footage around the clip (file time) the B-roll may come from.
+    broll_from: ClipWindow | None = None
+
+
+def framed_layout(layout: Layout, style: StyleRules) -> Layout:
+    """The layout a style draws: the news card (H) or the POV crop (P) when its `frame` says so; else with
+    a facecam on top (layout C) when the style says so, or below (layout A); without a facecam, layout B.
+    Pure."""
+    facecam = (
+        layout.facecam_box if isinstance(layout, LayoutA | LayoutCard | LayoutPov | LayoutMontage) else None
+    )
+    if style.frame == "montage":
+        return LayoutMontage(facecam_box=facecam) if facecam is not None else LayoutB()
+    if isinstance(layout, LayoutMontage):
+        layout = LayoutA(facecam_box=layout.facecam_box)
+    if style.frame == "headline_card":
+        return LayoutCard(facecam_box=facecam)
+    if style.frame == "pov":
+        return LayoutPov(facecam_box=facecam)
+    if isinstance(layout, LayoutCard | LayoutPov):
+        layout = LayoutA(facecam_box=facecam) if facecam is not None else LayoutB()
+    if isinstance(layout, LayoutA) and layout.cam_top != style.facecam_top:
+        return replace(layout, cam_top=style.facecam_top)
+    return layout
+
+
+def has_emoji(text: str) -> bool:
+    """Does `text` contain a pictographic character (an emoji)? Pure."""
+    return any(ord(char) >= 0x2190 and not char.isalnum() for char in text)
+
+
+def chosen_title(
+    hook: str | None, texts: Mapping[str, str], emoji: str | None, style: StyleRules
+) -> str | None:
+    """The text a style shows: the writer's text named by `title_source`, else the hook. The payoff emoji
+    is added to a whole-clip hook or title line that has none. Pure."""
+    source = style.title_source
+    picked = texts.get(source) if source != "hook" else None
+    if picked:
+        if source == "title_line":
+            return title_text(picked, emoji, whole_clip=style.title_whole_clip)
+        return picked
+    return title_text(hook, emoji, whole_clip=style.title_whole_clip)
+
+
+def title_text(hook: str | None, emoji: str | None, *, whole_clip: bool) -> str | None:
+    """The text of the title bar: the hook, plus the payoff emoji for a title that stays for the whole
+    clip (like the references' "NPC has a pet alligator 😭") when the hook has none. Pure."""
+    if not hook:
+        return None
+    if whole_clip and emoji and not has_emoji(hook):
+        return f"{hook} {emoji.strip()}"
+    return hook
 
 
 @dataclass(frozen=True, slots=True)
@@ -286,11 +373,27 @@ class Produced:
     music: music.MusicAnalysis | None
     outcome: RenderOutcome
     timings_ms: dict[str, int]
+    # The render as made: `factory.variants` renders the other styles of the plan from it.
+    job: RenderJob | None = None
+    # Where the padded window starts in the file, and the writer's input: a story cut reuses both.
+    offset_s: float = 0.0
+    writer_input: writer.WriterInput | None = None
 
 
 WritingChooser = Callable[[writer.WriterInput], ClipWriting]
 LayoutChooser = Callable[[tools.MediaInfo, float], Layout]
 WritingHook = Callable[[ClipWriting, transcripts.WindowTranscript], None]
+# Picks the design style once the writer's reply, the facecam and the footage around the clip are known
+# (`has_broll`: enough of it for a montage): (rules, catalogue id).
+StyleChooser = Callable[[ClipWriting, Layout, bool], tuple[StyleRules, str]]
+
+
+def _caption_fonts(cfg: FactoryConfig, style: StyleRules) -> str:
+    """The caption font to load: the render's own style first, else any style of the catalogue that names
+    one (so the variants of the plan find it too)."""
+    if style.caption_font:
+        return style.caption_font
+    return next((entry.rules.caption_font for entry in cfg.catalog.entries if entry.rules.caption_font), "")
 
 
 def _measurer(assets: FactoryAssets) -> TextMeasurer:
@@ -320,22 +423,130 @@ def _punch_spans(spec: RenderSpec, job: RenderJob, payoff_s: float | None, ffmpe
 
 
 def _title_bar(job: RenderJob, live_badge: bool) -> TitleBar | None:
-    """docs/27 title bar PNG for the hook, in the scratch directory. None when the title font is missing
-    or drawing fails: the hook box of the subtitle file is used instead, never a failed render."""
+    """The title PNG of the style, in the scratch directory: the news card (layout H), the POV line
+    (layout P), the red question title (`title_look` question) or the docs/27 title bar. None when the
+    font is missing or drawing fails: the hook box of the subtitle file is used instead, never a failed
+    render."""
     font = job.assets.title_font_file
     if not job.hook or font is None:
         return None
+    path = job.scratch_dir / TITLE_PNG
+    emoji, colour = job.assets.emoji_font_file, job.assets.emoji_colour
     try:
-        return draw_title_bar(
-            job.hook,
-            job.scratch_dir / TITLE_PNG,
-            font_file=font,
-            emoji_font=job.assets.emoji_font_file,
-            emoji_colour=job.assets.emoji_colour,
-        )
+        drawn: cards.Drawn | None = None
+        kind = job.layout.kind
+        if kind == "H":
+            drawn = cards.draw_headline_card(
+                job.params.watermark or "",
+                job.hook,
+                path,
+                font_file=font,
+                avatar=job.assets.avatar,
+                emoji_font=emoji,
+                emoji_colour=colour,
+            )
+        elif kind == "P":
+            drawn = cards.draw_outline_text(
+                job.hook,
+                path,
+                font_file=font,
+                weight=cards.POV_WEIGHT,
+                sizes=cards.POV_SIZES,
+                max_width=cards.POV_MAX_WIDTH,
+                fill=cards.WHITE,
+                stroke=cards.POV_STROKE,
+                emoji_font=emoji,
+                emoji_colour=colour,
+            )
+        elif job.style.title_look == "question":
+            drawn = cards.draw_outline_text(
+                job.hook,
+                path,
+                font_file=job.assets.question_font_file or font,
+                weight=None,
+                sizes=cards.QUESTION_SIZES,
+                max_width=cards.QUESTION_MAX_WIDTH,
+                fill=cards.QUESTION_RED,
+                stroke=cards.QUESTION_STROKE,
+                emoji_font=emoji,
+                emoji_colour=colour,
+                caps=True,
+            )
+        else:
+            return draw_title_bar(
+                job.hook,
+                path,
+                font_file=font,
+                emoji_font=emoji,
+                emoji_colour=colour,
+            )
+        return None if drawn is None else TitleBar(drawn.path, drawn.width, drawn.height)
     except OSError as exc:
         get_logger("factory").warning("title_bar_failed", error=str(exc)[:200])
         return None
+
+
+def _montage_broll(
+    job: RenderJob, duration_s: float, payoff_s: float | None, ffmpeg: str
+) -> tuple[tuple[float, float, float], ...]:
+    """Layout M: the B-roll cuts as (source start, clip time, length), from the busiest footage around the
+    clip (`montage`). Anything that goes wrong means no cuts, never a failed render."""
+    try:
+        return _plan_broll(job, duration_s, payoff_s, ffmpeg)
+    except (tools.FfmpegError, ValueError) as exc:
+        get_logger("factory").warning("montage_broll_failed", error=str(exc)[:200])
+        return ()
+
+
+def _plan_broll(
+    job: RenderJob, duration_s: float, payoff_s: float | None, ffmpeg: str
+) -> tuple[tuple[float, float, float], ...]:
+    style = job.style
+    if not isinstance(job.layout, LayoutMontage) or style.montage_every_s <= 0 or job.broll_from is None:
+        return ()
+    slots = montage.montage_timeline(duration_s, style.montage_every_s, payoff_s)
+    if not slots:
+        return ()
+    padded = job.broll_from
+    result = tools.run(
+        montage.motion_command(job.source_path, padded, ffmpeg=ffmpeg),
+        timeout_s=tools.RENDER_TIMEOUT_S,
+        what="montage motion",
+    )
+    motion = montage.parse_motion(result.stderr.decode("utf-8", errors="replace"), padded.start_s)
+    clip = ClipWindow(job.window.start_s, job.window.start_s + duration_s)
+    picks = montage.pick_broll(motion, clip, padded, length_s=style.montage_every_s, count=len(slots))
+    return tuple(
+        (round(pick.start_s, 3), round(slot.start_s, 3), round(min(slot.duration_s, pick.duration_s), 3))
+        for slot, pick in zip(slots, picks, strict=False)
+    )
+
+
+def _seam_fade(job: RenderJob) -> dict[str, Any]:
+    """Layout M: the soft dark band over the seam between gameplay and face (a PNG in the scratch
+    directory). Drawing it cannot fail the render."""
+    if not isinstance(job.layout, LayoutMontage):
+        return {}
+    try:
+        fade = montage.draw_seam_fade(job.scratch_dir / "fade.png", width=REF_WIDTH, height=M_FADE_H)
+    except OSError as exc:
+        get_logger("factory").warning("seam_fade_failed", error=str(exc)[:200])
+        return {}
+    return {"fade_png": fade.path, "fade_top": M_SEAM_Y - M_FADE_H // 2}
+
+
+def _own_title_top(kind: str, height: int, seam_y: int) -> int:
+    """Top of a Phase B text on the reference canvas: the news card's header, the POV line centred on the
+    gameplay, or the question title at the top of the gameplay. Pure."""
+    if kind == "H":
+        return H_HEADER_TOP
+    if kind == "P":
+        return max(0, P_TEXT_CENTER_Y - height // 2)
+    if kind == "C":
+        return seam_y + C_QUESTION_GAP
+    if kind == "B":
+        return B_GAMEPLAY_Y + C_QUESTION_GAP
+    return QUESTION_TOP_A
 
 
 def _sfx_tracks(cues: Sequence[effects.SfxCue], assets: FactoryAssets) -> tuple[SfxTrack, ...]:
@@ -374,6 +585,13 @@ def render_file(job: RenderJob, *, ffmpeg: str = "ffmpeg", ffprobe: str = "ffpro
     """
     log = get_logger("factory")
     params = job.params
+    style = job.style
+    job = replace(
+        job,
+        layout=framed_layout(job.layout, style),
+        hook=chosen_title(job.hook, job.texts, job.payoff_emoji, style) if style.show_title else None,
+    )
+    cam_top = job.layout.kind == "C"
     words = [word for line in job.lines for word in line.words]
     matcher = job.assets.profanity()
     profane = matcher.find([word.text for word in words])
@@ -393,23 +611,28 @@ def render_file(job: RenderJob, *, ffmpeg: str = "ffmpeg", ffprobe: str = "ffpro
         hook_shown=bool(job.hook),
     )
     duration = spec.clip_duration_s
-    style = job.style
     live_badge = job.lane == "spike"
     bleeps = tuple(bleep_spans(words, profane, duration)) if params.bleep else ()
     pop_times: tuple[float, ...] = ()
-    if job.assets.sfx_pop is not None:
+    if job.assets.sfx_pop is not None and style.captions:
         pop_times = writer.outside_spans(writer.keyword_times(job.lines, job.keywords), bleeps)
     payoff_s = job.payoff_s
     if not style.payoff_fx or payoff_s is None or not 0 <= payoff_s < duration:
         payoff_s = None
     punch_spans = _punch_spans(spec, job, payoff_s, ffmpeg)
+    broll = _montage_broll(job, duration, payoff_s if payoff_s is not None else job.payoff_s, ffmpeg)
+    # The montage's cuts get the punch-in sounds (whoosh, impact); they are not punch-ins on screen.
+    sfx_spans = punch_spans or tuple(Span(at, at + length) for _start, at, length in broll)
     cues = effects.plan_sfx(
-        duration_s=duration, keyword_times=pop_times, punchins=punch_spans, payoff_s=payoff_s, rules=style
+        duration_s=duration, keyword_times=pop_times, punchins=sfx_spans, payoff_s=payoff_s, rules=style
     )
     sfx_times = tuple(cue.time_s for cue in cues if cue.kind == "pop")
     log.info(
         "clip_edit_effects",
+        style_id=job.style_id,
+        layout=job.layout.kind,
         punchins=[[span.start_s, span.end_s] for span in punch_spans],
+        broll=[list(cut) for cut in broll],
         payoff_s=payoff_s,
         sfx={
             kind: [cue.time_s for cue in cues if cue.kind == kind] for kind in sorted({c.kind for c in cues})
@@ -421,7 +644,22 @@ def render_file(job: RenderJob, *, ffmpeg: str = "ffmpeg", ffprobe: str = "ffpro
     watermark_y = None
     bar = _title_bar(job, live_badge) if title_bar else None
     title_top = title_bar_top(params, live_badge=live_badge)
-    if bar is not None:
+    # Layout C: the title sits on the seam (its bottom just below it), over the streamer's chest, never
+    # on the face; the watermark keeps its corner and shows from the start.
+    seam_ref = Geometry.for_canvas(REF_WIDTH, REF_HEIGHT).c_seam_y
+    hook_top: float | None = None
+    kind = job.layout.kind
+    own_place = kind in ("H", "P") or style.title_look == "question"
+    if own_place:
+        # Phase B styles: the text has its own place and the watermark keeps its corner.
+        top = _own_title_top(kind, bar.height if bar is not None else HOOK_BOTTOM - HOOK_TOP, seam_ref)
+        hook_top = float(top)
+        title_top = top
+    elif cam_top:
+        hook_top = float(seam_ref + C_TITLE_OVERLAP - (HOOK_BOTTOM - HOOK_TOP))
+        if bar is not None:
+            title_top = max(0, seam_ref + C_TITLE_OVERLAP - bar.height)
+    elif bar is not None:
         # The TikTok-style bar (an image) replaces the hook box of the subtitle file.
         watermark_y = round((title_top + bar.height + WATERMARK_HOOK_GAP) * params.height / REF_HEIGHT)
     elif title_bar:
@@ -442,10 +680,14 @@ def render_file(job: RenderJob, *, ffmpeg: str = "ffmpeg", ffprobe: str = "ffpro
             if punch_spans
             else None
         ),
-        hook_shown=bool(job.hook) and not title_bar,
+        hook_shown=bool(job.hook) and not title_bar and not cam_top and not own_place,
+        watermark=style.watermark,
         watermark_y=watermark_y,
         title_png=bar.path if bar is not None else None,
         title_top=title_top,
+        title_whole_clip=style.title_whole_clip,
+        broll=broll,
+        **_seam_fade(job),
     )
     ass = build_ass(
         job.lines,
@@ -463,6 +705,9 @@ def render_file(job: RenderJob, *, ffmpeg: str = "ffmpeg", ffprobe: str = "ffpro
         hook_mode=style.hook_mode,
         payoff_s=payoff_s,
         payoff_emoji=job.payoff_emoji,
+        captions=style.captions,
+        hook_top=hook_top,
+        hook_whole_clip=style.title_whole_clip,
     )
     job.scratch_dir.mkdir(parents=True, exist_ok=True)
     Path(spec.ass_path).write_text(ass, encoding="utf-8", newline="\n")
@@ -496,6 +741,7 @@ def render_file(job: RenderJob, *, ffmpeg: str = "ffmpeg", ffprobe: str = "ffpro
     size = job.output_path.stat().st_size
     log.info(
         "clip_render_done",
+        style_id=job.style_id,
         mode=job.mode,
         layout=job.layout.kind,
         render_ms=render_ms,
@@ -537,6 +783,20 @@ def keep_window(writing: ClipWriting, proposed: ClipWindow) -> ClipWriting:
     return writing.model_copy(update={"start_s": proposed.start_s, "end_s": proposed.end_s})
 
 
+def wants_story(item: RenderInput, cfg: FactoryConfig) -> bool:
+    """Is a story cut asked for this render (development-plan/M18 Phase C)? Not for a story itself, not for
+    a clip whose window was cut by someone else (`whole_window`), and only where `factory.story` applies."""
+    if item.version != "short" or item.whole_window:
+        return False
+    return cfg.story.applies(lane=item.lane, mode=item.mode, source_type=item.source_type)
+
+
+def _story_limits(item: RenderInput, cfg: FactoryConfig) -> dict[str, float]:
+    if not wants_story(item, cfg):
+        return {}
+    return {"story_min_s": cfg.story.min_s, "story_max_s": cfg.story.max_s}
+
+
 def transcription_modes(mode: str) -> tuple[Mode, ...]:
     """Local first for a normal render, hosted first for an express one; the other is the fallback."""
     return ("hosted", "local") if mode == "express" else ("local", "hosted")
@@ -568,19 +828,25 @@ def produce(
     choose_layout: LayoutChooser,
     on_writing: WritingHook | None = None,
     clip_id: str | None = None,
+    style: StyleRules | None = None,
+    style_id: str = "",
+    choose_style: StyleChooser | None = None,
 ) -> Produced:
     """Transcribe, write, trim, analyse and render one clip. Touches no database table itself.
 
     `choose_writing` returns the clip writer's reply (P2, or values typed by hand); `choose_layout` gets
     the source info and the time of the middle of the final window. `on_writing` is called with the reply
     before the render starts. Raises `ClipSkippedError` when there is no speech or the writer rejects.
+    `style` is the design style of this render (`style_id` its catalogue id); None means `cfg.style`.
+    `choose_style`, when given, picks the style after the writer and the layout detection instead.
     """
+    style = style or cfg.style
     timings: dict[str, int] = {}
 
     def timed(name: str, started: float) -> None:
         timings[name] = int((time.monotonic() - started) * 1000)
 
-    assets = deps.assets or load_assets(cfg.params.font, caption_font=cfg.style.caption_font)
+    assets = deps.assets or load_assets(cfg.params.font, caption_font=_caption_fonts(cfg, style))
     media = tools.probe(item.source_path, deps.ffprobe)
     if not media.has_video or media.width < 2 or media.height < 2 or media.duration_s <= 0:
         raise tools.FfmpegError(f"{item.source_path.name} has no usable video stream")
@@ -653,6 +919,7 @@ def produce(
         clip_id=clip_id,
         snap=cfg.snap,
         cut_guidance=cut_guidance,
+        **_story_limits(item, cfg),
     )
     started = time.monotonic()
     writing = choose_writing(writer_input)
@@ -720,43 +987,51 @@ def produce(
     started = time.monotonic()
     layout = choose_layout(media, (window.start_s + window.end_s) / 2)
     timed("layout", started)
+    room_s = (window.start_s - padded.start_s) + (padded.end_s - window.end_s)
+    if choose_style is not None:
+        style, style_id = choose_style(writing, layout, room_s >= montage.MIN_ROOM_S)
+        if deps.assets is None and style.caption_font != cfg.style.caption_font:
+            assets = load_assets(cfg.params.font, caption_font=_caption_fonts(cfg, style))
 
     started = time.monotonic()
-    outcome = render_file(
-        RenderJob(
-            source_path=item.source_path,
-            media=media,
-            window=window,
-            lines=clip_text,
-            layout=layout,
-            params=cfg.params,
-            assets=assets,
-            output_path=output_path,
-            scratch_dir=scratch_dir,
-            series_no=series_no,
-            mode="express" if item.mode == "express" else "normal",
-            lane=item.lane,
-            creator=item.creator,
-            hook=writing.hook,
-            keywords=writing.keyword_map(),
-            duck=music.duck_spans(analysis, cfg.max_music_ratio, window.duration_s),
-            style=cfg.style,
-            payoff_s=None if writing.payoff_s is None else writing.payoff_s - window_w.start_s,
-            payoff_emoji=writing.payoff_emoji,
-        ),
-        ffmpeg=deps.ffmpeg,
-        ffprobe=deps.ffprobe,
+    job = RenderJob(
+        source_path=item.source_path,
+        media=media,
+        window=window,
+        lines=clip_text,
+        layout=layout,
+        params=cfg.params,
+        assets=assets,
+        output_path=output_path,
+        scratch_dir=scratch_dir,
+        series_no=series_no,
+        mode="express" if item.mode == "express" else "normal",
+        lane=item.lane,
+        creator=item.creator,
+        hook=writing.hook,
+        keywords=writing.keyword_map(),
+        duck=music.duck_spans(analysis, cfg.max_music_ratio, window.duration_s),
+        style=style,
+        payoff_s=None if writing.payoff_s is None else writing.payoff_s - window_w.start_s,
+        payoff_emoji=writing.payoff_emoji,
+        style_id=style_id,
+        texts=writing.style_texts(),
+        broll_from=padded,
     )
+    outcome = render_file(job, ffmpeg=deps.ffmpeg, ffprobe=deps.ffprobe)
     timed("render", started)
     return Produced(
         transcript=transcript,
         writing=writing,
         window=window,
         lines=tuple(clip_text),
-        layout=layout,
+        layout=framed_layout(layout, style),
         music=analysis,
         outcome=outcome,
         timings_ms=timings,
+        job=job,
+        offset_s=offset,
+        writer_input=writer_input,
     )
 
 
@@ -949,6 +1224,7 @@ def _finish(clip_id: str, item: RenderInput, cfg: FactoryConfig, produced: Produ
                 "lane": item.lane,
                 "mode": item.mode,
                 "layout": produced.layout.kind,
+                "style_id": produced.job.style_id if produced.job is not None else None,
                 "duration_s": round(outcome.clip_duration_s, 3),
                 "file_duration_s": round(outcome.media.duration_s, 3),
                 "render_ms": outcome.render_ms,
@@ -963,6 +1239,218 @@ def _finish(clip_id: str, item: RenderInput, cfg: FactoryConfig, produced: Produ
                 "nvenc": outcome.nvenc,
             },
         )
+
+
+def _prepare_variants(
+    clip_id: str, item: RenderInput, plan: StylePlan, produced: Produced, deps: Deps, cfg: FactoryConfig
+) -> None:
+    """Record the reference render and queue the other styles of the plan (`factory.variants`). Never
+    raises: without variants every account gets the reference render."""
+    job = produced.job
+    if job is None:
+        return
+    outcome = produced.outcome
+    clip_span = ClipWindow(job.window.start_s, job.window.start_s + outcome.clip_duration_s)
+    # A montage among the other styles needs the footage around the clip too (Phase E).
+    montage_planned = any(
+        cfg.catalog.rules_for(style).frame == "montage"
+        for style in plan.styles
+        if style != plan.reference_style
+    )
+    copy_span = job.broll_from if montage_planned and job.broll_from is not None else clip_span
+    try:
+        recipe = variants.recipe_json(
+            lines=job.lines,
+            layout=job.layout,
+            duration_s=outcome.clip_duration_s,
+            series_no=job.series_no,
+            mode=job.mode,
+            lane=job.lane,
+            creator=job.creator,
+            hook=job.hook,
+            keywords=job.keywords,
+            duck=job.duck,
+            payoff_s=job.payoff_s,
+            payoff_emoji=job.payoff_emoji,
+            texts=job.texts,
+            window_start_s=clip_span.start_s - copy_span.start_s,
+            broll=montage_planned and job.broll_from is not None,
+        )
+        variants.after_reference(
+            clip_id,
+            plan,
+            layout_kind=produced.layout.kind,
+            output_path=outcome.output_path,
+            file_size_bytes=outcome.file_size_bytes,
+            duration_s=outcome.clip_duration_s,
+            render_ms=outcome.render_ms,
+            source=job.source_path,
+            window=copy_span,
+            has_audio=job.media.has_audio,
+            recipe=recipe,
+            ffmpeg=deps.ffmpeg,
+        )
+    except Exception as exc:  # noqa: BLE001 - see the docstring
+        get_logger("factory").error("variants_prepare_failed", error=f"{type(exc).__name__}: {exc}"[:300])
+
+
+def story_window(produced: Produced, story_min_s: float, story_max_s: float) -> ClipWindow | None:
+    """The story cut in window time: the writer's story trim under the trim rules with the story's length
+    limits, snapped like the short cut (`writer.final_window`). None without a story trim. Pure."""
+    writing, base = produced.writing, produced.writer_input
+    if base is None or writing.story_start_s is None or writing.story_end_s is None:
+        return None
+    story_writing = writing.model_copy(
+        update={"start_s": writing.story_start_s, "end_s": writing.story_end_s}
+    )
+    story_input = replace(
+        base,
+        proposed=ClipWindow(writing.story_start_s, writing.story_end_s),
+        spike_floor_s=base.window_s,
+        min_len_s=story_min_s,
+        max_len_s=story_max_s,
+    )
+    return writer.final_window(story_writing, story_input)
+
+
+def claim_story_clip(parent_id: str, item: RenderInput, window: ClipWindow) -> ClipRow | None:
+    """The `clips` row of the story cut of `parent_id` (a new one in `rendering`, under the next series
+    number), or None when the parent already has one (a retried job)."""
+    with db.transaction():
+        db.execute("select pg_advisory_xact_lock(hashtextextended(%s, 0))", (f"clip.story:{parent_id}",))
+        existing = db.fetch_one(
+            "select id from clips where parent_clip_id = %s and version = 'story'", (parent_id,)
+        )
+        if existing is not None:
+            return None
+        row = db.fetch_one(
+            """
+            insert into clips
+              (series_no, creator_id, source_platform, source_id, source_url, source_type, lane, start_s,
+               end_s, gate_profile, status, version, parent_clip_id)
+            values
+              (nextval('clip_series_seq'), %s, %s, %s, %s, %s, 'hourly', %s, %s, 'hourly', 'rendering',
+               'story', %s)
+            returning id::text as id, series_no
+            """,
+            (
+                item.creator_id,
+                item.platform,
+                item.source_id,
+                item.source_url,
+                item.source_type,
+                round(item.source_offset_s + window.start_s, 3),
+                round(item.source_offset_s + window.end_s, 3),
+                parent_id,
+            ),
+        )
+        assert row is not None
+        story_id = str(row["id"])
+        events.emit(
+            "clip.render_started",
+            entity_type="clip",
+            entity_id=story_id,
+            data={"version": "story", "parent_clip_id": parent_id, "lane": "hourly", "creator": item.creator},
+        )
+        return ClipRow(story_id, int(row["series_no"]), "rendering", created=True)
+
+
+def render_story(
+    parent_id: str, item: RenderInput, cfg: FactoryConfig, produced: Produced, deps: Deps
+) -> str | None:
+    """Render the story cut of a short clip (development-plan/M18 Phase C) as its own clip, from the same
+    source, transcript, writer reply and layout, then queue it for the gate. Never raises: a story that
+    cannot be made is logged (and its row rejected) and the short clip is unaffected. Returns its id."""
+    log = get_logger("factory")
+    window_w = story_window(produced, cfg.story.min_s, cfg.story.max_s)
+    job = produced.job
+    if window_w is None or job is None:
+        return None
+    window = ClipWindow(window_w.start_s + produced.offset_s, window_w.end_s + produced.offset_s)
+    story_item = replace(item, spike_id=None, lane="hourly", version="story", parent_clip_id=parent_id)
+    row: ClipRow | None = None
+    scratch: Path | None = None
+    try:
+        row = claim_story_clip(parent_id, story_item, window)
+        if row is None:
+            return None
+        lines = group_lines(produced.transcript.words)
+        clip_text = clip_lines(lines, window_w)
+        if not clip_text:
+            raise ClipSkippedError("no_speech")
+        writing = produced.writing.model_copy(update={"start_s": window_w.start_s, "end_s": window_w.end_s})
+        _store_writing(row.id, writing, produced.transcript)
+        analysis: music.MusicAnalysis | None = None
+        if not deps.skip_music:
+            try:
+                analysis = music.analyse(
+                    job.source_path,
+                    window,
+                    detector=deps.music_detector,
+                    has_audio=job.media.has_audio,
+                    ffmpeg=deps.ffmpeg,
+                )
+            except music.MusicDetectorUnavailableError as exc:
+                log.warning("music_detector_unavailable", error=str(exc)[:200])
+        facts = clip_facts(dict(job.texts), has_facecam=isinstance(job.layout, LayoutA))
+        plan = variants.plan_for(row.id, "hourly", cfg, facts=facts, moment_type="story")
+        payoff = produced.writing.payoff_s
+        scratch = scratch_dir_for(row.id)
+        scratch.mkdir(parents=True, exist_ok=True)
+        story_job = replace(
+            job,
+            window=window,
+            lines=clip_text,
+            output_path=ready_path_for(row.id),
+            scratch_dir=scratch,
+            series_no=row.series_no,
+            lane="hourly",
+            duck=music.duck_spans(analysis, cfg.max_music_ratio, window.duration_s),
+            style=cfg.catalog.rules_for(plan.reference_style),
+            style_id=plan.reference_style,
+            payoff_s=None if payoff is None else payoff - window_w.start_s,
+        )
+        started = time.monotonic()
+        outcome = render_file(story_job, ffmpeg=deps.ffmpeg, ffprobe=deps.ffprobe)
+        story = replace(
+            produced,
+            writing=writing,
+            window=window,
+            lines=tuple(clip_text),
+            layout=framed_layout(job.layout, story_job.style),
+            music=analysis,
+            outcome=outcome,
+            timings_ms={"render": int((time.monotonic() - started) * 1000)},
+            job=story_job,
+        )
+        _finish(row.id, story_item, cfg, story)
+        thumbs.try_make_thumb(
+            row.id,
+            str(outcome.output_path),
+            created_at=None,
+            duration_s=outcome.clip_duration_s,
+            storage=deps.storage,
+            ffmpeg=deps.ffmpeg,
+        )
+        _prepare_variants(row.id, story_item, plan, story, deps, cfg)
+        jobs.enqueue("normal", JOB_GATE, {"clip_id": row.id}, dedupe_key=f"{JOB_GATE}:{row.id}")
+        events.emit(
+            "clip.story_rendered",
+            entity_type="clip",
+            entity_id=parent_id,
+            data={"story_clip_id": row.id, "duration_s": round(outcome.clip_duration_s, 3)},
+        )
+        log.info("story_rendered", story_clip_id=row.id, duration_s=round(outcome.clip_duration_s, 2))
+        return row.id
+    except Exception as exc:  # noqa: BLE001 - see the docstring
+        log.error("story_failed", error=f"{type(exc).__name__}: {exc}"[:300])
+        if row is not None:
+            reason = exc.reason if isinstance(exc, ClipSkippedError) else f"render_failed: {exc}"
+            _reject(row.id, story_item, reason[:500], failed=not isinstance(exc, ClipSkippedError))
+        return None
+    finally:
+        if scratch is not None:
+            shutil.rmtree(scratch, ignore_errors=True)
 
 
 def upload_clip(clip_id: str, *, storage: clip_storage.ClipStorage | None = None) -> str:
@@ -1004,6 +1492,24 @@ def render_clip(item: RenderInput, *, deps: Deps | None = None, force: bool = Fa
         cfg = FactoryConfig.load(item.lane)
         scratch = scratch_dir_for(row.id)
         ai_lane: BudgetKind = "express" if item.mode == "express" else "vod"
+        # development-plan/M18: one style per platform account, picked once the writer's reply (moment
+        # type, texts) and the facecam are known; this render is the reference account's.
+        planned: list[StylePlan] = []
+
+        def choose_style(writing: ClipWriting, layout: Layout, has_broll: bool) -> tuple[StyleRules, str]:
+            facts = clip_facts(
+                writing.style_texts(), has_facecam=isinstance(layout, LayoutA), broll=has_broll
+            )
+            plan = variants.plan_for(row.id, item.lane, cfg, facts=facts, moment_type=writing.moment_type)
+            planned.append(plan)
+            log.info(
+                "style_plan",
+                reference_style=plan.reference_style,
+                by_account=plan.by_account,
+                moment_type=writing.moment_type,
+                facts=sorted(facts),
+            )
+            return cfg.catalog.rules_for(plan.reference_style), plan.reference_style
 
         def choose_writing(writer_input: writer.WriterInput) -> ClipWriting:
             return writer.write(writer_input, lane=ai_lane, client=deps.ai_client)
@@ -1034,6 +1540,7 @@ def render_clip(item: RenderInput, *, deps: Deps | None = None, force: bool = Fa
                 choose_layout=choose_layout,
                 on_writing=lambda writing, transcript: _store_writing(row.id, writing, transcript),
                 clip_id=row.id,
+                choose_style=choose_style,
             )
         except ClipSkippedError as skipped:
             log.info("clip_skipped", reason=skipped.reason)
@@ -1042,6 +1549,10 @@ def render_clip(item: RenderInput, *, deps: Deps | None = None, force: bool = Fa
         finally:
             shutil.rmtree(scratch, ignore_errors=True)
         _finish(row.id, item, cfg, produced)
+        if planned:
+            _prepare_variants(row.id, item, planned[-1], produced, deps, cfg)
+        if produced.writing.has_story and wants_story(item, cfg):
+            render_story(row.id, item, cfg, produced, deps)
         # The console's frame of the clip, made before the gate so a rejected clip has one too. Never
         # raises: a missing thumbnail must not fail the render.
         thumbs.try_make_thumb(

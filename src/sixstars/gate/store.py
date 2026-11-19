@@ -14,6 +14,7 @@ from typing import Any
 from psycopg.types.json import Jsonb
 
 from sixstars import db, events
+from sixstars.factory.layout import LayoutKind
 from sixstars.gate import visual as visuals
 from sixstars.gate.models import (
     EXPRESS,
@@ -47,7 +48,8 @@ select c.id::text as id, c.creator_id::text as creator_id, c.spike_id::text as s
        c.gate_profile, c.source_platform, c.source_id, c.start_s, c.end_s, c.duration_s, c.score,
        c.score_parts, c.music_ratio, c.spoiler, c.safety_flags, c.hook, c.title, c.caption, c.hashtags,
        c.topic, c.commentary,
-       c.transcript, c.local_path, c.storage_path, c.gate_result, c.precheck_video_id, c.created_at
+       c.transcript, c.local_path, c.storage_path, c.gate_result, c.precheck_video_id, c.created_at,
+       c.layout_kind, c.version, c.parent_clip_id::text as parent_clip_id
 from clips c
 """
 
@@ -68,6 +70,18 @@ class ClipRow:
     gate_result: Mapping[str, Any] | None
     precheck_video_id: str | None
     raw: Mapping[str, Any]
+    layout_kind: LayoutKind | None = None  # migration 0027; None for older clips
+    version: str = "short"  # migration 0029: "story" for the longer cut of `parent_clip_id`
+    parent_clip_id: str | None = None
+
+    @property
+    def family_id(self) -> str:
+        """The short clip of this clip's family (itself, or the clip it is the story cut of)."""
+        return self.parent_clip_id or self.id
+
+
+def _layout_kind(value: object) -> LayoutKind | None:
+    return value if value in ("A", "B", "C") else None
 
 
 def _float(value: object) -> float | None:
@@ -124,6 +138,9 @@ def get_clip(clip_id: str) -> ClipRow | None:
         gate_result=result if isinstance(result, Mapping) else None,
         precheck_video_id=row["precheck_video_id"],
         raw=row,
+        layout_kind=_layout_kind(row.get("layout_kind")),
+        version=str(row.get("version") or "short"),
+        parent_clip_id=row.get("parent_clip_id"),
     )
 
 
@@ -262,6 +279,7 @@ def recent_clips(row: ClipRow, settings: GateSettings, now: datetime) -> list[Re
                coalesce(greatest(c.approved_at, c.posted_at), c.created_at) as decided_at
         from clips c
         where c.id <> %(clip)s and c.status not in ('rejected', 'rendering')
+          and coalesce(c.parent_clip_id, c.id) <> %(family)s::uuid
           and ((c.source_platform = %(platform)s and c.source_id = %(source)s)
                or coalesce(greatest(c.approved_at, c.posted_at), c.created_at) >= %(since)s)
         order by c.created_at desc
@@ -269,6 +287,7 @@ def recent_clips(row: ClipRow, settings: GateSettings, now: datetime) -> list[Re
         """,
         {
             "clip": row.id,
+            "family": row.family_id,
             "platform": row.raw["source_platform"],
             "source": row.raw["source_id"],
             "since": now - timedelta(hours=window_h),

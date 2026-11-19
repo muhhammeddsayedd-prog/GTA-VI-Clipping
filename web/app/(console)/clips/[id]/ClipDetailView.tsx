@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useState } from "react";
 import { Code, ExternalLink, X } from "lucide-react";
 
@@ -9,15 +10,17 @@ import { DataTable, EventFeed, ExtLink, JsonBlock, TraceBar, type Col } from "@/
 import { Drawer } from "@/components/kit/overlays";
 import { Safe } from "@/components/kit/Safe";
 import { Badge, Banner, Btn, Card, CardHead, Chip, ErrorState, KV, PageHead, Plat, Seg, SkeletonCards, When } from "@/components/kit/primitives";
-import { ClipPlayer, GateChecklist, firstFailing, laneTone } from "@/components/domain/clips/ClipBits";
+import { ClipPlayer, GateChecklist, StyleRenders, firstFailing, laneTone, styleName } from "@/components/domain/clips/ClipBits";
 import { POLL, useApi } from "@/lib/api/client";
 import type { ClipDetail, Post } from "@/lib/api/types";
 import { fmtNum, humanize, series } from "@/lib/format";
 import { isRecord, keywordSet, num, numericEntries, showValue, splitReason, str } from "@/lib/shape";
+import { AccountName } from "@/components/domain/AccountName";
 
 const POST_COLS: Col<Post>[] = [
-  { key: "acc", head: "Account", render: (p) => <span className="row" style={{ gap: 8 }}><Plat p={p.platform} />{p.account_id}</span> },
+  { key: "acc", head: "Account", render: (p) => <span className="row" style={{ gap: 8 }}><Plat p={p.platform} /><AccountName id={p.account_id} /></span> },
   { key: "st", head: "Status", render: (p) => <Badge status={p.status} /> },
+  { key: "sty", head: "Style", render: (p) => <span className="small">{p.style_id ? styleName(p.style_id) : <span className="muted">—</span>}</span> },
   { key: "pub", head: "Published", render: (p) => <When iso={p.published_at} seconds /> },
   { key: "link", head: "Link", render: (p) => (p.post_url && /^https?:\/\//.test(p.post_url) ? <ExtLink href={p.post_url}>open</ExtLink> : <span className="muted">{p.error ? humanize(p.error) : p.dry_run ? "dry run" : "no URL yet"}</span>) },
   { key: "v", head: "Views", align: "right", render: (p) => <span className="num">{fmtNum(p.views)}</span> },
@@ -46,7 +49,7 @@ export function ClipDetailView({ id }: { id: string }) {
     <>
       <PageHead back="/clips"
         title={<>Clip <span className="pc">{series(c.series_no)}</span></>}
-        sub={<span className="row" style={{ gap: 8, flexWrap: "wrap" }}>{c.hook ?? c.title} <Badge status={c.status} /> <Badge tone={laneTone(c.lane)}>{c.lane}</Badge> {c.gate_profile && <span>· {c.gate_profile} profile</span>}</span>}
+        sub={<span className="row" style={{ gap: 8, flexWrap: "wrap" }}>{c.hook ?? c.title} <Badge status={c.status} /> <Badge tone={laneTone(c.lane)}>{c.lane}</Badge> {c.version === "story" && <Badge tone="purple">story cut</Badge>} {c.gate_profile && <span>· {c.gate_profile} profile</span>}{(c.family ?? []).map((f) => <Link key={f.id} href={`/clips/${f.id}`} className="small">{f.version === "story" ? "Story cut" : "Short clip"} {series(f.series_no)}{f.duration_s ? ` · ${Math.round(f.duration_s)} s` : ""} →</Link>)}</span>}
         actions={<>
           <Btn icon={<Code size={15} />} onClick={() => setRaw(true)}>Raw JSON</Btn>
           {live && <Btn kind="p" href={live.post_url!} external icon={<ExternalLink size={15} />}>Open on {live.platform === "youtube" ? "YouTube" : live.platform === "tiktok" ? "TikTok" : "Instagram"}</Btn>}
@@ -114,6 +117,8 @@ export function ClipDetailView({ id }: { id: string }) {
           <Safe label="Quality gate"><GateChecklist gate={c.gate_result} status={c.status} rejectReason={c.reject_reason} /></Safe>
         </div>
       </AnimatedContent>
+
+      <div className="mt"><Safe label="Design styles"><StyleRenders clip={c} /></Safe></div>
 
       <div className="g mt collapse-md" style={{ gridTemplateColumns: "1fr 1fr" }}>
         <Card>

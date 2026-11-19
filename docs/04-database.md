@@ -26,9 +26,10 @@ Source of truth: `supabase/migrations/0001_init.sql` (schema) and `0002_seed_set
 | `videos` | Finished streams/uploads for the VOD lane | status, has_chat, live_session_id | discovery, live-manager (replay), VOD lane |
 | `chat_files` | Downloaded chat replays | messages_count, baseline_rate | VOD lane |
 | `spikes` | Every detected spike | mode, score_z, parts, tier, window_*, status, clip_id | spike engine |
-| `clips` | Every rendered clip | lane, status, score, rank_score, gate_result, storage_path | factory, gate, ranking, posting |
+| `clips` | Every rendered clip | lane, status, score, rank_score, gate_result, storage_path, style_id, layout_kind, style_plan, moment_type, style_texts, version (`short`/`story`), parent_clip_id | factory, gate, ranking, posting |
+| `clip_renders` | One render per design style of a clip (migration 0027) | clip_id + style_id (unique), is_reference, status, local_path, storage_path, checks | factory (`clip.variants`) |
 | `platform_accounts` | Posting destinations and caps | lanes, cap_24h, spike_reserve, hourly_hours_utc, paused_until | seed, cap manager |
-| `posts` | One row per clip per account | status, idempotency_key, platform_post_id, views | posting, stats, guardian |
+| `posts` | One row per clip per account | status, idempotency_key, platform_post_id, views, render_id (the file posted) | posting, stats, guardian |
 | `account_stats` | Follower/view snapshots | followers, views_total | stats collector |
 | `takedowns` | Takedown emails and claims | is_takedown, creator_id, actions | guardian |
 | `jobs` | Work queue | queue, type, payload, priority, status, run_after, dedupe_key | everyone |

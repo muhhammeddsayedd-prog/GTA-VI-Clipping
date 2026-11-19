@@ -57,13 +57,44 @@ def last_hourly_creator(account: Account, history: Iterable[PostRecord], dry: bo
     return max(hourly, key=lambda p: p.at).creator_id
 
 
+def family_block(
+    clip: Clip,
+    account: Account,
+    history: Sequence[PostRecord],
+    dry: bool,
+    now: datetime | None,
+    params: PostingParams | None,
+) -> bool:
+    """M18 Phase C: is `clip` too long for the account's platform (`posting.max_duration_s`), or was
+    another clip of its family (the short clip and its story cut) posted on the account less than
+    `posting.sibling_gap_h` ago? Without `now` and `params` nothing is blocked."""
+    if now is None or params is None:
+        return False
+    if params.too_long(account.platform, clip.duration_s):
+        return True
+    if clip.family_id is None:
+        return False
+    gap = timedelta(hours=params.sibling_gap_h)
+    return any(
+        post.family_id == clip.family_id and post.clip_id != clip.id and abs(now - post.at) < gap
+        for post in account_posts(history, account.id, dry)
+    )
+
+
 def pick_clip(
-    account: Account, candidates: Sequence[Clip], history: Sequence[PostRecord], dry: bool
+    account: Account,
+    candidates: Sequence[Clip],
+    history: Sequence[PostRecord],
+    dry: bool,
+    now: datetime | None = None,
+    params: PostingParams | None = None,
 ) -> Clip | None:
     """The first clip in `candidates` (already ranked) that `account` may take, or None."""
     previous_creator = last_hourly_creator(account, history, dry)
     for clip in candidates:
         if previous_creator is not None and clip.creator_id == previous_creator:
+            continue
+        if family_block(clip, account, history, dry, now, params):
             continue
         if clip_block(clip, account, history, dry) is None:
             return clip
@@ -127,10 +158,10 @@ def plan_hourly_slot(
         if not decision.would_post:
             decisions.append(decision)
             continue
-        clip = pick_clip(account, candidates, working, decision.dry_run)
+        clip = pick_clip(account, candidates, working, decision.dry_run, now, params)
         from_fallback = False
         if clip is None:
-            clip = pick_clip(account, spare, working, decision.dry_run)
+            clip = pick_clip(account, spare, working, decision.dry_run, now, params)
             from_fallback = clip is not None
         if clip is None:
             starved = True

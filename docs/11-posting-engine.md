@@ -53,6 +53,7 @@ On a platform "limit reached" / HTTP 429 response: set `paused_until` = now + 1 
 | R9 | Hourly lane: same creator as the last hourly post on this account | Pick the next clip |
 | R10 | Hourly queue empty | Post the best unposted compilation if any; else skip the slot (event `posting.slot_empty`, alert if 2 in a row) |
 | R11 | Emergency stop | Nothing posts |
+| R12 | Several spike clips ready within a few minutes | Holding window: spike clips wait `posting.spike_hold_s` (7 min) after the first of them was approved, then the best-ranked posts first; the rest wait for the gap or move to the hourly queue boosted (R7). The release is never later than 2 min before a clip reaches `posting.spike_max_age_s`. |
 
 Demotion means: the clip will not be posted on that account by the spike lane; it can still be posted to that account later by the hourly lane.
 
@@ -81,7 +82,7 @@ Triggered by `POST /v1/posting/hourly` (n8n `WF02` at minute 0 each hour; failov
 ## 7. Spike lane (`posting/spike.py`)
 
 Called directly by the express worker after the gate passes (`try_post(clip)`):
-1. For each enabled account with lane `spike`: apply R4–R8, R11.
+1. For each enabled account with lane `spike`: apply R4–R8, R11, R12.
 2. Publish immediately where allowed; for accounts that need to wait for the gap, enqueue `post.retry` with `run_after` = gap end (only if within `spike_max_wait_s`).
 3. If the clip could not be posted to any account → R7 demotion to hourly.
 4. Set `spikes.spike_to_post_s` on first successful publish.
@@ -114,3 +115,8 @@ Caption template (same for all platforms):
 <base_hashtags> <clip hashtags (max 5)>
 ```
 Write `posts` row before the call (`pending`), update to `published` with `platform_post_id`/`post_url`, or `failed` with the error. Retries: 3 with backoff (30 s, 2 min, 5 min) using the same idempotency key.
+
+## Families of clips and platform lengths (development-plan/M18 Phase C)
+
+- A short clip and its story cut form a family (`coalesce(clips.parent_clip_id, clips.id)`). The hourly lane does not give an account a clip of a family it posted less than `posting.sibling_gap_h` (12) hours ago.
+- A clip longer than its platform takes (`posting.max_duration_s`: TikTok 600 s via the API and Instagram Reels 900 s per docs.upload-post.com/api/video-requirements, YouTube Shorts 180 s per YouTube Help) is not given to that platform's accounts.

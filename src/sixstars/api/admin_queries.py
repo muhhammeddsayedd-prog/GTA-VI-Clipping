@@ -11,6 +11,7 @@ detail queries. Every list is keyset-paginated on `(<time column>, id)`, newest 
 
 import base64
 import binascii
+import math
 import re
 import uuid
 from collections.abc import Iterable, Iterator, Mapping, Sequence
@@ -494,7 +495,7 @@ CLIP_COLUMNS = f"""
 c.id::text as id, c.series_no, c.spike_id::text as spike_id, {creator_json()} as creator, c.source_platform,
 c.source_type, c.lane, c.duration_s, c.hook, c.title, c.topic, c.score, c.rank_score, c.music_ratio,
 c.status, c.reject_reason, c.gate_profile, c.created_at, c.approved_at, c.posted_at,
-(c.storage_path is not null) as has_file,
+(c.storage_path is not null) as has_file, c.version, c.parent_clip_id::text as parent_clip_id,
 c.thumb_path as {THUMB_PATH}, {source_thumb_sql("c")} as {SOURCE_THUMB}
 """
 CLIP_SOURCE = "clips c join creators cr on cr.id = c.creator_id"
@@ -503,6 +504,7 @@ POST_COLUMNS = f"""
 p.id::text as id, p.clip_id::text as clip_id, pc.series_no as clip_series_no, pc.hook as clip_hook,
 p.account_id, p.platform, p.lane, p.slot_at, p.status, p.dry_run, p.post_url, p.platform_post_id,
 p.published_at, p.views, p.likes, p.comments, p.shares, p.claim_status, p.error, p.attempts, p.created_at,
+(select r.style_id from clip_renders r where r.id = p.render_id) as style_id,
 pc.thumb_path as {CLIP_THUMB_PATH}, {source_thumb_sql("pc")} as {CLIP_SOURCE_THUMB}
 """
 POST_SOURCE = "posts p join clips pc on pc.id = p.clip_id"
@@ -1311,6 +1313,123 @@ def spikes_of(column: str, row_id: str) -> list[Row]:
     return db.fetch_all(
         f"select {SPIKE_COLUMNS} from {SPIKE_SOURCE} where sp.{column} = %s order by sp.detected_at",
         (row_id,),
+    )
+
+
+def clip_renders(clip_id: str) -> list[Row]:
+    """The renders of a clip, one per design style (development-plan/M18), the reference first, with the
+    accounts whose plan names that style. `has_file`: a file in Storage the console can play (the
+    reference render's is the clip's own)."""
+    return db.fetch_all(
+        """
+        select r.id::text as id, r.style_id, r.layout_kind, r.is_reference, r.status, r.error, r.render_ms,
+               r.file_size_bytes, r.duration_s, r.checks, r.created_at, r.updated_at,
+               (case when r.is_reference then c.storage_path else r.storage_path end) is not null as has_file,
+               coalesce((
+                 select array_agg(plan.key order by plan.key)
+                 from jsonb_each_text(coalesce(c.style_plan -> 'by_account', '{}'::jsonb)) as plan
+                 where plan.value = r.style_id
+               ), '{}') as accounts
+        from clip_renders r join clips c on c.id = r.clip_id
+        where r.clip_id = %s
+        order by r.is_reference desc, r.style_id
+        """,
+        (clip_id,),
+    )
+
+
+def style_performance() -> dict[str, Any]:
+    """The design styles page (development-plan/M18 Phase D): the director's settings, the catalogue and,
+    per account and style, the scored posts (`performance`), their mean score, the views they mean against
+    the account's usual and the posts of the last 7 days."""
+    from sixstars.factory import variants
+    from sixstars.factory.director import DirectorRules
+    from sixstars.factory.performance import post_scores, summarise
+    from sixstars.factory.styles import StyleCatalog
+
+    rules = DirectorRules.from_setting(settings.get("factory.style_director", None))
+    catalog = StyleCatalog.from_setting(
+        settings.get("factory.styles", None), settings.get("factory.style", None)
+    )
+    accounts = variants.load_accounts()
+    ids = [account.id for account in accounts]
+    rows = variants.scored_posts(ids, rules)
+    stats = summarise(post_scores(rows))
+    views: dict[tuple[str, str], list[int]] = {}
+    for account_id, style_id, count in rows:
+        if style_id:
+            views.setdefault((account_id, style_id), []).append(count)
+    recent = db.fetch_all(
+        """
+        select p.account_id, coalesce(r.style_id, c.style_id) as style_id, count(*) as n
+        from posts p join clips c on c.id = p.clip_id left join clip_renders r on r.id = p.render_id
+        where p.account_id = any(%s) and p.created_at >= now() - interval '7 days'
+          and p.status in ('pending', 'published', 'skipped')
+        group by 1, 2
+        """,
+        (ids,),
+    )
+    posted = {(str(row["account_id"]), row["style_id"]): int(row["n"]) for row in recent if row["style_id"]}
+    out_accounts = []
+    for account in accounts:
+        account_stats = stats.get(account.id, {})
+        styles = []
+        for entry in catalog.entries:
+            item = account_stats.get(entry.id)
+            counts = views.get((account.id, entry.id), [])
+            styles.append(
+                {
+                    "style_id": entry.id,
+                    "scored": item.n if item else 0,
+                    "mean_score": round(item.mean, 3) if item else None,
+                    "views_ratio": round(math.exp(item.mean), 2) if item else None,
+                    "avg_views": round(sum(counts) / len(counts)) if counts else None,
+                    "posts_7d": posted.get((account.id, entry.id), 0),
+                    "learned": bool(item and item.n >= rules.min_samples),
+                }
+            )
+        out_accounts.append({"account_id": account.id, "platform": account.platform, "styles": styles})
+    return {
+        "director": {
+            "mode": rules.mode,
+            "explore_floor": rules.explore_floor,
+            "min_samples": rules.min_samples,
+            "min_age_h": rules.min_age_h,
+            "window_d": rules.window_d,
+        },
+        "styles": [
+            {"id": e.id, "enabled": e.enabled, "weight": e.weight, "requires": list(e.requires)}
+            for e in catalog.entries
+        ],
+        "accounts": out_accounts,
+    }
+
+
+def clip_family(clip_id: str) -> list[Row]:
+    """The other clips of a clip's family (development-plan/M18 Phase C): its short clip and its story
+    cut, oldest first."""
+    return db.fetch_all(
+        """
+        select f.id::text as id, f.series_no, f.version, f.status, f.duration_s, f.created_at
+        from clips c
+        join clips f on coalesce(f.parent_clip_id, f.id) = coalesce(c.parent_clip_id, c.id)
+        where c.id = %s and f.id <> c.id
+        order by f.created_at
+        """,
+        (clip_id,),
+    )
+
+
+def render_storage_path(clip_id: str, render_id: str) -> Row | None:
+    """`{"storage_path"}` of one render of the clip (the clip's own for the reference render), or None
+    when the render is not one of this clip's."""
+    return db.fetch_one(
+        """
+        select case when r.is_reference then c.storage_path else r.storage_path end as storage_path
+        from clip_renders r join clips c on c.id = r.clip_id
+        where r.id = %s and r.clip_id = %s
+        """,
+        (render_id, clip_id),
     )
 
 

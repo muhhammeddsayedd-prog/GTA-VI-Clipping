@@ -139,6 +139,8 @@ export interface Clip {
   gate_profile: string | null; created_at: Iso; approved_at: Iso | null; posted_at: Iso | null; has_file: boolean;
   /** Signed URL of a frame of the rendered clip ("frame"), or the source video's thumbnail ("source"). */
   thumb_url?: string | null; thumb_kind?: "frame" | "source" | null;
+  /** M18 Phase C: "story" for the longer cut of `parent_clip_id`. */
+  version?: "short" | "story"; parent_clip_id?: string | null;
 }
 export interface GateCheck { ok?: boolean; value?: Json; limit?: Json; codes?: string[]; reasons?: string[] }
 export interface GateResult {
@@ -156,6 +158,19 @@ export interface ClipDetail extends Clip {
   spoiler: boolean | null; profanity_count: number | null; gate_result: GateResult | null; precheck_result: Json;
   render_ms: number | null; file_size_bytes: number | null; storage_path: string | null; start_s: number | null; end_s: number | null;
   original_language: string | null; posts: Post[]; events: Event[]; trace: Trace;
+  /** Design styles (development-plan/M18): the style of the first render, its layout ("A", "B" or "C": facecam on top) and the director's plan. */
+  style_id?: string | null; layout_kind?: string | null; style_plan?: Json;
+  /** One render per design style, the reference first; absent on clips rendered before migration 0027. */
+  renders?: ClipRender[];
+  /** M18 Phase C: the other clips of this clip's family (its short clip and its story cut). */
+  family?: { id: string; series_no: number | null; version: "short" | "story"; status: string; duration_s: number | null; created_at: Iso }[];
+}
+export interface ClipRender {
+  id: string; style_id: string; layout_kind: string | null; is_reference: boolean;
+  status: "pending" | "ready" | "failed" | "skipped"; error: string | null; render_ms: number | null;
+  file_size_bytes: number | null; duration_s: number | null; checks: Json; has_file: boolean;
+  /** Accounts whose plan names this style. */
+  accounts: string[]; created_at: Iso; updated_at: Iso;
 }
 export interface ClipMedia { url: string | null; expires_at: Iso | null; reason: "ok" | "no_file" | "deleted" }
 
@@ -165,6 +180,8 @@ export interface Post {
   published_at: Iso | null; views: number | null; likes: number | null; comments: number | null; shares: number | null;
   claim_status: string | null; error: string | null; attempts: number; created_at: Iso;
   clip_thumb_url?: string | null;
+  /** The design style of the file that was posted (null before migration 0027 or before the send). */
+  style_id?: string | null;
 }
 export interface PostDetail extends Post {
   upload_request_id: string | null; idempotency_key: string; stats_updated_at: Iso | null; claim_checked_at: Iso | null;
@@ -243,3 +260,14 @@ export interface Setting { key: string; value: Json; description: string | null;
 export interface SearchResult { kind: string; id: string; label: string; sub: string | null; href: string }
 
 export interface DailyReport { day: string; [k: string]: unknown }
+
+/** `GET /v1/admin/styles` (development-plan/M18 Phase D). */
+export interface StyleRow {
+  style_id: string; scored: number; mean_score: number | null; views_ratio: number | null;
+  avg_views: number | null; posts_7d: number; learned: boolean;
+}
+export interface StylePerformance {
+  director: { mode: "weighted" | "bandit"; explore_floor: number; min_samples: number; min_age_h: number; window_d: number };
+  styles: { id: string; enabled: boolean; weight: number; requires: string[] }[];
+  accounts: { account_id: string; platform: PostPlatform; styles: StyleRow[] }[];
+}

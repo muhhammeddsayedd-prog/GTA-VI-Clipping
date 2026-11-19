@@ -17,7 +17,7 @@ import re
 from collections.abc import Mapping, Sequence
 from typing import Any, Literal, Self
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, ValidationInfo, field_validator, model_validator
 
 MomentType = Literal["funny", "fail", "skill", "chaos", "shock", "reveal", "emotional", "other"]
 PermissionTier = Literal["preferred", "auto", "restricted"]
@@ -34,6 +34,10 @@ COMMENTARY_MAX_WORDS = 12
 KEYWORDS_PER_LINE = 2
 # An emoji with skin-tone or ZWJ parts is several code points; two such emoji fit.
 PAYOFF_EMOJI_MAX_CHARS = 8
+# Design styles (development-plan/M18 Phase B): the kind of moment and the text each style shows.
+MOMENT_TYPES = ("reaction", "discovery", "action", "story", "npc_funny", "fail")
+HEADLINE_MAX_CHARS = 90
+STYLE_LINE_MAX_CHARS = 48
 EVIDENCE_MAX_WORDS = 20
 TOPIC_MAX_CHARS = 80
 PLATFORMS = ("tiktok", "instagram", "youtube", "twitch")
@@ -43,6 +47,8 @@ TIME_TOLERANCE_S = 0.05
 _HASHTAG_RE = re.compile(r"^[a-z0-9_]+$")
 _SLUG_JUNK_RE = re.compile(r"[^a-z0-9]+")
 _WORD_RE = re.compile(r"\w", re.UNICODE)
+# Emoji and spaces a question may end with after its "?" ("Can you punch a bird? 🐦").
+_EMOJI_TAIL = " \U0001f000-\U0001faff\u2600-\u27bf\ufe0f\u200d"
 _TOKEN_EDGE_RE = re.compile(r"^\W+|\W+$", re.UNICODE)
 
 
@@ -197,6 +203,17 @@ class ClipWriting(Reply):
         default=None, description="When the payoff lands (seconds, window-file clock), or null."
     )
     payoff_emoji: str | None = Field(default=None, description="One emoji for the payoff, or null.")
+    moment_type: str | None = Field(
+        default=None, description="reaction, discovery, action, story, npc_funny or fail."
+    )
+    headline: str | None = Field(default=None, description="News-style sentence, max 90 characters.")
+    title_line: str | None = Field(default=None, description="On-screen title, max 48 characters.")
+    question: str | None = Field(default=None, description="Question title ending in '?', or null.")
+    pov_line: str | None = Field(default=None, description="Line starting with 'POV', or null.")
+    story_start_s: float | None = Field(
+        default=None, description="Start of the longer story cut (window-file clock), or null."
+    )
+    story_end_s: float | None = Field(default=None, description="End of the story cut, or null.")
     spoiler: bool
     safety: SafetyFlags
     score_parts: ScoreParts
@@ -261,6 +278,38 @@ class ClipWriting(Reply):
             raise ValueError(f"topic has {len(slug)} characters, the maximum is {TOPIC_MAX_CHARS}")
         return slug
 
+    @field_validator("moment_type")
+    @classmethod
+    def _moment_type(cls, value: str | None) -> str | None:
+        """A decoration like the styles' texts: an unknown kind is dropped, not an error."""
+        kind = (value or "").strip().lower().replace(" ", "_").replace("-", "_")
+        return kind if kind in MOMENT_TYPES else None
+
+    @field_validator("headline", "title_line", "question", "pov_line")
+    @classmethod
+    def _style_text(cls, value: str | None, info: ValidationInfo) -> str | None:
+        """The texts of the design styles are decorations: one that breaks its rule is dropped (the style
+        that needs it is then not used), never an error."""
+        text = " ".join((value or "").split())
+        limit = HEADLINE_MAX_CHARS if info.field_name == "headline" else STYLE_LINE_MAX_CHARS
+        if not text or len(text) > limit or "#" in text or "@" in text:
+            return None
+        if info.field_name == "question" and not re.sub(f"[{_EMOJI_TAIL}]+$", "", text).endswith("?"):
+            return None
+        if info.field_name == "pov_line" and not text.lower().startswith("pov"):
+            return None
+        return text
+
+    def style_texts(self) -> dict[str, str]:
+        """The texts the design styles can show, by name (only those the writer gave)."""
+        texts = {
+            "headline": self.headline,
+            "title_line": self.title_line,
+            "question": self.question,
+            "pov_line": self.pov_line,
+        }
+        return {name: text for name, text in texts.items() if text}
+
     @field_validator("payoff_emoji")
     @classmethod
     def _payoff_emoji(cls, value: str | None) -> str | None:
@@ -279,7 +328,14 @@ class ClipWriting(Reply):
             raise ValueError("start_s must be less than end_s")
         if self.payoff_s is not None and not self.start_s <= self.payoff_s <= self.end_s:
             self.payoff_s = None
+        story = (self.story_start_s, self.story_end_s)
+        if None in story or story[0] >= story[1]:  # type: ignore[operator]
+            self.story_start_s = self.story_end_s = None
         return self
+
+    @property
+    def has_story(self) -> bool:
+        return self.story_start_s is not None and self.story_end_s is not None
 
     @property
     def length_s(self) -> float:
@@ -300,17 +356,39 @@ def clip_writing_schema(
     min_len_s: float,
     max_len_s: float,
     lines: Mapping[int, str],
+    story_min_s: float = 0.0,
+    story_max_s: float = 0.0,
 ) -> type[ClipWriting]:
     """`ClipWriting` with the trim rules of one call: inside the window file, not starting after
     `spike_floor_s`, length between the limits.
 
     `lines` maps each subtitle line number to its text. A highlight is only a decoration, so a keyword
     for an unknown line, or one that is not in the text of its line, is dropped instead of failing the
-    reply."""
+    reply. The story cut (development-plan/M18 Phase C) is kept only when `story_max_s` is positive and it
+    lies inside the window, is `story_min_s`..`story_max_s` long and overlaps the short cut; otherwise it
+    is dropped, never an error."""
     tokens_by_line = {number: _tokens(text) for number, text in lines.items()}
 
     class Bound(ClipWriting):
         model_config = ConfigDict(title="ClipWriting")
+
+        @model_validator(mode="after")
+        def _story(self) -> Self:
+            if not self.has_story:
+                return self
+            start, end = float(self.story_start_s or 0.0), float(self.story_end_s or 0.0)
+            length = end - start
+            fits = (
+                story_max_s > 0
+                and start >= -TIME_TOLERANCE_S
+                and end <= window_s + TIME_TOLERANCE_S
+                and story_min_s - TIME_TOLERANCE_S <= length <= story_max_s + TIME_TOLERANCE_S
+                and start < self.end_s
+                and end > self.start_s
+            )
+            if not fits:
+                self.story_start_s = self.story_end_s = None
+            return self
 
         @model_validator(mode="after")
         def _trim(self) -> Self:

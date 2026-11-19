@@ -111,7 +111,7 @@ def try_post_spike(
                     "posting.spike_deferred",
                     entity_type="clip",
                     entity_id=clip.id,
-                    message=f"waiting for the minimum gap until {min(waits).isoformat()}",
+                    message=f"waiting until {min(waits).isoformat()} (holding window or minimum gap)",
                 )
             was_demoted = plan.demote_to_hourly and store.demote_clip(
                 clip.id, plan.demoted_rank_score, dry=mode is Mode.DRY

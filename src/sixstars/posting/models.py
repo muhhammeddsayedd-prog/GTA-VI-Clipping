@@ -56,6 +56,7 @@ class Reason(StrEnum):
     SPIKE_HOURLY_LIMIT = "spike_hourly_limit"
     MIN_GAP_WAIT = "min_gap_wait"
     SPIKE_WAIT_EXCEEDED = "spike_wait_exceeded"
+    SPIKE_HOLD = "spike_hold"
     SLOT_NOT_DUE = "slot_not_due"
     SLOT_EXPIRED = "slot_expired"
     OUTSIDE_HOURLY_HOURS = "outside_hourly_hours"
@@ -124,6 +125,8 @@ class PostRecord:
     dry_run: bool = False
     creator_id: str | None = None
     slot_at: datetime | None = None
+    # M18 Phase C: the short clip of the posted clip's family (itself, or the clip it is the story cut of).
+    family_id: str | None = None
 
     def __post_init__(self) -> None:
         if self.status not in POST_STATUSES:
@@ -157,6 +160,9 @@ class Clip:
     caption: str | None = None
     hook: str | None = None
     hashtags: tuple[str, ...] = ()
+    # M18 Phase C: the clip's family (the short clip's id; None before migration 0029) and its length.
+    family_id: str | None = None
+    duration_s: float | None = None
 
     def __post_init__(self) -> None:
         if self.approved_at is not None:

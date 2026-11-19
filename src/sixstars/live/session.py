@@ -36,7 +36,7 @@ from typing import Any, Final, Literal
 
 import structlog
 
-from sixstars import chat, jobs
+from sixstars import chat, jobs, settings
 from sixstars.ai import calls, spike_confirm
 from sixstars.ai.calls import ChatLine, SpikeContext
 from sixstars.ai.schemas import SpikeVerdict
@@ -44,6 +44,7 @@ from sixstars.chat.models import ChatMessage, ChatSourceError, Platform
 from sixstars.chat.net import cookies_file, proxy_for, proxy_refusal
 from sixstars.clients.anthropic_client import AnthropicClient
 from sixstars.factory.pipeline import JOB_CLIP_RENDER, JOB_EXPRESS_RENDER, RenderInput
+from sixstars.factory.story import StoryRules
 from sixstars.live import buffer, store
 from sixstars.live.config import LiveConfig
 from sixstars.live.recorder import Failure, Recorder, Spawn, stream_url
@@ -192,13 +193,18 @@ def spike_context(
     )
 
 
-def cut_range(spike: DetectedSpike, route: Route, express_pad_wait_s: float) -> tuple[float, float]:
+def cut_range(
+    spike: DetectedSpike, route: Route, express_pad_wait_s: float, story: StoryRules | None = None
+) -> tuple[float, float]:
     """The wall-clock range to cut for a spike: its padded window. On the express route the context
-    after the window is limited to `live.express_pad_wait_s`, because every second of it is waited for."""
-    end = spike.pad_end
+    after the window is limited to `live.express_pad_wait_s`, because every second of it is waited for.
+    A route that may get a story cut (`factory.story`, development-plan/M18 Phase C) gets the wider pads."""
+    start, end = spike.pad_start, spike.pad_end
+    if story is not None and story.applies(lane=route.lane, mode=route.mode, source_type="live"):
+        start, end = story.widen(start, end)
     if route.mode == "express":
         end = min(end, spike.window_end + max(express_pad_wait_s, 0.0))
-    return spike.pad_start, max(end, spike.window_end)
+    return start, max(end, spike.window_end)
 
 
 def render_input(
@@ -211,6 +217,7 @@ def render_input(
     *,
     stream_start: float,
     chat_offset_s: float,
+    whole_cut: bool = False,
 ) -> RenderInput:
     """The factory input for a live spike: every position is converted from wall clock to seconds in the
     cut file. Raises `buffer.BufferCutError` when the cut holds none of the window."""
@@ -242,8 +249,9 @@ def render_input(
         mode=route.mode,
         stream_title=session.title,
         spike_id=spike_id,
-        pad_start_s=round(cut.offset(spike.pad_start), 3),
-        pad_end_s=round(cut.offset(spike.pad_end), 3),
+        # A cut widened for a story is read whole by the writer.
+        pad_start_s=0.0 if whole_cut else round(cut.offset(spike.pad_start), 3),
+        pad_end_s=round(cut.duration_s, 3) if whole_cut else round(cut.offset(spike.pad_end), 3),
         source_offset_s=round(max(cut.file_start - stream_start, 0.0), 3),
         verdict=verdict,
         chat=lines,
@@ -692,7 +700,9 @@ class LiveSession:
                 event="live.spike_skipped",
             )
             return None
-        start_wall, end_wall = cut_range(spike, route, self.cfg.express_pad_wait_s)
+        story = StoryRules.from_setting(settings.get("factory.story", None))
+        start_wall, end_wall = cut_range(spike, route, self.cfg.express_pad_wait_s, story)
+        widened = story.applies(lane=route.lane, mode=route.mode, source_type="live")
         wait_s = buffer.wait_seconds(
             end_wall, self.deps.clock(), self.cfg.cut_settle_s, self.cfg.cut_wait_max_s
         )
@@ -722,6 +732,7 @@ class LiveSession:
             verdict,
             stream_start=self.stream_start,
             chat_offset_s=spike_cfg.offset_for(self._platform),
+            whole_cut=widened,
         )
         if item.window_end_s - item.window_start_s < spike_cfg.min_len_s:
             raise buffer.BufferCutError(

@@ -17,6 +17,13 @@ Times are seconds from the start of the window file, the same clock as the subti
 - The length `end_s - start_s` must be between the minimum and maximum given.
 - Start and end on a line boundary, not in the middle of a spoken line. Open on the line where a sentence or thought begins and close on the line where one ends. The transcript often has no punctuation, and a line is only a few words shown together, not a sentence: read for meaning to find where a sentence begins, and prefer a line that follows a pause (a gap between the end time of one line and the start time of the next).
 
+## Story cut (`story_start_s`, `story_end_s`)
+
+Besides the short clip, the channel also posts a longer cut of the same moment when the window holds a real story: a setup, rising stakes and an outcome (a heist that falls apart, a chase from the start to the crash, an argument that escalates). The user message says whether a story cut is wanted and how long it may be.
+- Only propose one when the longer cut is clearly worth watching on its own: it must keep moving the whole time, start where the situation begins and end right after the outcome. Banter, waiting, menus or a loading screen in the middle mean no story cut.
+- It must contain the moment of your short cut, use the same clock, stay inside the window file and start and end on line boundaries like the short cut.
+- Otherwise, and whenever a story cut is not wanted, set both to null. Most clips have none.
+
 ## Words on the post
 
 - `hook`: at most 8 words; count them before you answer, and cut words rather than go over (an emoji or a lone "..." is not a word; everything else between spaces is). Hype tone, builds curiosity about what is about to happen, and is true to the clip. Do not give away the payoff, and do not promise something the clip does not deliver. An emoji is welcome and does not count as a word. Examples of the voice: "He did NOT expect that 😭", "Worst getaway driver in Leonida?", "This cop chase went SO wrong".
@@ -28,6 +35,15 @@ Times are seconds from the start of the window file, the same clock as the subti
 - `keywords`: for the subtitle lines you want to emphasise, the line number and 1 or 2 words or short phrases from that exact line to highlight (money amounts, names, "no way", key verbs). Skip lines that need no emphasis, and only use lines inside your cut. Copy the words exactly as they appear in the line.
 - `payoff_s`: the moment the payoff lands (the crash, the explosion, the scream, the punchline), in seconds on the window-file clock and inside your cut. The video punches in there with a bass hit, so pick the single strongest instant the transcript or chat points to. Null when there is no one moment like that.
 - `payoff_emoji`: one emoji reacting to the payoff, shown big on screen at `payoff_s` (for example 💀 😭 🤯 😂 🔥 😳). Null when `payoff_s` is null.
+
+## Words for the on-screen styles
+
+The clip is rendered in several looks, one per platform, and each look shows one short text on screen for the whole clip. Write all of them; a look whose text is null is not used. The same rules as the hook apply: true to the clip, no spoilers, no profanity, no hashtags, no @handles, English.
+- `moment_type`: what kind of moment this is, one of `reaction` (the streamer's reaction is the point), `discovery` (the game can do something surprising, a new feature or detail), `action` (a chase, crash, stunt or fight carries it), `story` (a longer arc with a setup and an outcome), `npc_funny` (an NPC or the world does something absurd), `fail` (a plan goes wrong).
+- `title_line`: a short caption-style title, at most 48 characters, written like a viewer would caption it, usually ending in one emoji (for example "NPC has a pet alligator 😭", "GTA 6 police do NOT play 😭💀").
+- `headline`: one news-style sentence, at most 90 characters, that states what the clip shows as a fact, naming the streamer when that helps (for example "Speed learns you can't steal every car in GTA 6 👀"). It must not give away a story event.
+- `question`: only for a moment that answers a question about the game, the question it answers, at most 48 characters, ending in "?" (for example "Can you punch a bird in GTA 6?"). Otherwise null.
+- `pov_line`: only for a moment you watch through the player's eyes, a line of at most 48 characters starting with "POV" (for example "POV this doesn't feel real at all 😭🔥"). Otherwise null.
 
 Everything is in English. No slurs, anywhere. Mild profanity is fine in subtitles (it is bleeped) but keep it out of the hook, title and caption.
 
@@ -77,6 +93,7 @@ Proposed cut: start_s {proposed_start_s}, end_s {proposed_end_s}
 spike_floor_s (latest allowed start): {spike_floor_s}
 Clip length must be between {min_len_s} and {max_len_s} seconds.
 {cut_guidance}
+{story_rule}
 
 Chat around the peak (seconds from the start of the window file):
 {chat}

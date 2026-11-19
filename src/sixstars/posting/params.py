@@ -35,7 +35,12 @@ OPTIONAL_KEYS = (
     "posting.staging_allow_instagram",  # absent = false
     "posting.reserve_release_hour_utc",  # absent or null = unused spike reserve is never released
     "posting.reserve_release_keep",
+    "posting.spike_hold_s",  # absent = 0: spike clips post as soon as they are ready
+    # development-plan/M18 Phase C (migration 0029). Without story cuts neither matters.
+    "posting.sibling_gap_h",  # absent = 12
+    "posting.max_duration_s",  # absent = no limit per platform
 )
+DEFAULT_SIBLING_GAP_H = 12.0
 
 
 @dataclass(frozen=True, slots=True)
@@ -60,6 +65,13 @@ class PostingParams:
     staging_allow_instagram: bool = False
     reserve_release_hour_utc: int | None = None
     reserve_release_keep: int | None = None
+    # R12 (holding window): spike clips wait this long after the first of them is approved, so the best
+    # clip of the batch takes the spike post. 0 posts each spike clip as soon as it is ready.
+    spike_hold_s: int = 0
+    # M18 Phase C: two clips of one family (a short clip and its story cut) go to the same account at least
+    # this many hours apart; a clip longer than its platform's limit is not posted there.
+    sibling_gap_h: float = DEFAULT_SIBLING_GAP_H
+    max_duration_s: Mapping[Platform, float] = MappingProxyType({})
 
     def __post_init__(self) -> None:
         if self.app_env not in APP_ENVS:
@@ -72,11 +84,14 @@ class PostingParams:
             "skip_hourly_after_spike_s",
             "spike_max_wait_s",
             "spike_max_age_s",
+            "spike_hold_s",
         ):
             if getattr(self, name) < 0:
                 raise ValueError(f"posting.{name} must not be negative")
         if self.freshness_half_life_live_h <= 0 or self.freshness_half_life_vod_h <= 0:
             raise ValueError("posting.freshness_half_life_h values must be positive")
+        if self.sibling_gap_h < 0 or any(limit <= 0 for limit in self.max_duration_s.values()):
+            raise ValueError("posting.sibling_gap_h must not be negative and max_duration_s must be positive")
         if self.max_clip_age_h <= 0:
             raise ValueError("posting.max_clip_age_h must be positive")
         missing = [p.value for p in Platform if p not in self.platform_max_24h]
@@ -134,7 +149,25 @@ class PostingParams:
             reserve_release_keep=None
             if release_keep is None
             else _int("posting.reserve_release_keep", release_keep),
+            spike_hold_s=_int("posting.spike_hold_s", values.get("posting.spike_hold_s", 0)),
+            sibling_gap_h=_number(
+                "posting.sibling_gap_h", values.get("posting.sibling_gap_h", DEFAULT_SIBLING_GAP_H)
+            ),
+            max_duration_s=_duration_limits(values.get("posting.max_duration_s", {})),
         )
+
+    def too_long(self, platform: Platform, duration_s: float | None) -> bool:
+        """Is a clip of `duration_s` seconds over `platform`'s limit (`posting.max_duration_s`)?"""
+        limit = self.max_duration_s.get(platform)
+        return limit is not None and duration_s is not None and duration_s > limit
+
+
+def _duration_limits(value: object) -> Mapping[Platform, float]:
+    raw = _mapping("posting.max_duration_s", value)
+    known = {platform.value: platform for platform in Platform}
+    return MappingProxyType(
+        {known[name]: _number(f"posting.max_duration_s.{name}", raw[name]) for name in raw if name in known}
+    )
 
 
 def _bool(key: str, value: object) -> bool:

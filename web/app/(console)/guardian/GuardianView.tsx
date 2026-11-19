@@ -15,6 +15,7 @@ import type { Guardian, Page, Post, Takedown } from "@/lib/api/types";
 import { takedownSummary } from "@/lib/takedown";
 import { fmtAgo, fmtDay, series } from "@/lib/format";
 import { useListParams } from "@/lib/use-list";
+import { AccountName } from "@/components/domain/AccountName";
 
 const KEYS = ["status"];
 const DEFAULTS = {};
@@ -139,7 +140,7 @@ function ManualRemovals({ posts }: { posts: Post[] }) {
                 <button type="button" className={`ditem link${i === sel ? " on" : ""}`} aria-pressed={i === sel} onClick={() => setSel(i)}
                   style={{ width: "100%", border: 0, textAlign: "left", font: "inherit", color: "inherit", background: i === sel ? undefined : "transparent" }}>
                   <Plat p={x.platform} />
-                  <div style={{ minWidth: 0 }}><div className="t1 ellipsis">{x.account_id} · {series(x.clip_series_no)} · {x.clip_hook ?? "clip"}</div>
+                  <div style={{ minWidth: 0 }}><div className="t1 ellipsis"><AccountName id={x.account_id} /> · {series(x.clip_series_no)} · {x.clip_hook ?? "clip"}</div>
                     <div className="t2">{x.claim_status ?? x.status} · {x.published_at ? `posted ${fmtDay(x.published_at)}` : "—"}</div></div>
                   <span className="amt"><span className="dbadge">{x.platform}</span></span>
                 </button>
@@ -149,7 +150,7 @@ function ManualRemovals({ posts }: { posts: Post[] }) {
           {p && (
             <SpotlightCard className="pcard" spotlightColor="rgba(255,255,255,.16)" theme="dark">
               <div className="lbl">Delete by hand · {p.platform === "tiktok" ? "TikTok" : p.platform === "instagram" ? "Instagram" : "YouTube"}</div>
-              <div className="big" style={{ marginTop: 4 }}>{series(p.clip_series_no)} on {p.account_id}</div>
+              <div className="big" style={{ marginTop: 4 }}>{series(p.clip_series_no)} on <AccountName id={p.account_id} /></div>
               <ol style={{ marginTop: 14, lineHeight: 1.9, color: "#EEEBFF", padding: 0, listStyle: "none" }}>
                 {(DELETE_STEPS[p.platform] ?? DELETE_STEPS.tiktok).map((s, i) => <li key={i}><b>{i + 1}</b> · {s}</li>)}
               </ol>

@@ -40,6 +40,22 @@ Times are relative to the **window start** (context pad included; the writer's t
 | Facecam | Crop `facecam_box`, crop-to-fill 1080×770, at y = 1150 |
 | Seam | 6 px accent-colour line at y = 1147 |
 
+**C — facecam found, facecam on top** (decision D112; the layout of every design style since migration 0027):
+| Region | Placement |
+|---|---|
+| Facecam | Crop `facecam_box`, crop-to-fill 1080×672, at y = 0 |
+| Gameplay | Crop like layout A to aspect 1080:1248, at y = 672 |
+| Seam | 6 px line at y = 669; the progress bar runs along it |
+| Text | Captions centred on y = 1400; the title bar's bottom 20 px below the seam; payoff emoji at y = 1000 |
+
+The style (`factory.styles` → `rules.facecam_top`) decides between A and C; detection only decides whether there is a facecam.
+
+**H — news card** (style `headline_card`, `rules.frame`): black 1080×1920; the brand header and headline drawn from y = 300; the source cropped to 4:3 (moved sideways to keep the facecam) and scaled to 1080×810 at y = 630; credit bottom at y = 1480.
+
+**P — POV crop** (style `pov_fullframe`): the source cropped to 3:4 away from the facecam and scaled to 1080×1440 at y = 240, black bars above and below; the POV line centred on y = 900; credit bottom at y = 1480.
+
+**M — montage** (style `hype_montage`, Phase E): a 3:4 letterbox 1080×1440 at y = 240: the gameplay 1080×720 on top, the facecam 1080×720 below, a soft dark fade (220 px) over the seam at y = 960 where the captions sit; the credit at the top of the gameplay (bottom y = 292); the progress bar along the bottom of the letterbox. B-roll cuts are laid over the gameplay panel (docs/27 section 7).
+
 **B — no facecam**:
 | Region | Placement |
 |---|---|
@@ -99,3 +115,15 @@ Grab one frame at the window middle; send to the writer model with vision; it re
 ## 10. Editing style (`factory.style`)
 
 Sections 4 to 6 describe the classic look. With the setting `factory.style` (migration 0021) the factory edits like the viral references of docs/27: captions of one or two words in Anton capitals that pop in on the seam, the hook as a title bar for the whole clip, hard punch-ins to a full-frame facecam on the loudest moments (an extra `ebur128` pass over the window audio places them), a step zoom on the gameplay every 2.5 s, whoosh/impact on each punch-in and an emoji with a bass hit at the clip writer's `payoff_s`, a compressor before loudnorm, and no end card. Layout A keeps gameplay on top. Every decision is logged as `clip_edit_effects`. Without the setting the classic look is unchanged.
+
+## 11. Design styles (development-plan/M18)
+
+Since migration 0027 the look comes from a catalogue of styles (`factory.styles`, docs/27 section 5): each is a set of the section 10 rules plus `facecam_top`, `captions` and `title_whole_clip`. Before the render the style director (`factory/director.py`) gives each enabled platform account a style; the clip is rendered in the reference account's style (`clips.style_id`, `clips.layout_kind`, `clips.style_plan`) and recorded in `clip_renders`. When other accounts got other styles, the clip's span of the source is copied to `$DATA_DIR/variants/<clip_id>/` (the source itself can be deleted as soon as the render ends) and the job `clip.variants` renders those styles after the gate approved the clip, to `$DATA_DIR/ready/<clip_id>.<style>.mp4`, checks each file (frame size, length, black and frozen picture in the style's gameplay band, docs/10) and uploads it. The publisher sends each account the ready render of its style, otherwise the first render (`posts.render_id`). `sixstars clip render-file --style <id>` renders a local file in one style (`--title-line`, `--headline`, `--question`, `--pov` give it the writer's texts).
+
+Phase B: the style is picked after the clip writer and the layout detection (`produce(choose_style=...)`), because a style may need a facecam or one of the writer's texts (`moment_type`, `title_line`, `headline`, `question`, `pov_line`, stored in `clips.moment_type` and `clips.style_texts`). The texts are drawn with Pillow (`factory/cards.py`) like the title bar.
+
+## 12. Story cuts (development-plan/M18 Phase C, decision D113)
+
+Besides the short clip, the clip writer may propose a longer cut of the same moment (`story_start_s`, `story_end_s`; 60-150 s, `factory.story`) when the window holds a real story. To give it room, hourly normal-mode renders of VOD and live sources get a wider source window: the VOD section and the live cut start `pad_before_s` (90) earlier and end `pad_after_s` (30) later, and the writer reads all of it. Express renders never get one.
+
+After the short clip is rendered, the same job renders the story (`pipeline.render_story`) as its own `clips` row (`version = 'story'`, `parent_clip_id` the short clip, lane hourly), from the same source, transcript, writer reply and layout, snapped like the short cut (`writer.final_window` with the story's limits). Its style is planned for the moment type `story` (favouring `cam_top_wordcap` and `cam_top_title`). It is recorded in `clip_renders`, gets its own variants, and a `clip.gate` job. A story that cannot be made is rejected on its own; the short clip is never affected. One story per short clip (unique index).

@@ -414,3 +414,123 @@ FakeUploadPostClient()                 .uploads .deleted .upload_error .platform
 ### Open issues / next
 
 - Only clips rendered after the deploy are affected. Clips already rendered or posted keep the title for the whole clip.
+
+## M18 Phase A — Design styles, one per platform account (2026-11-19)
+
+### What was built
+
+- Plan: `development-plan/M18-design-styles.md` (owner decisions D112-D115, reference study of ten Instagram reels, phases A-E).
+- Layout C (D112): facecam 1080x672 on top, gameplay 1080x1248 below, seam and progress bar at y 669, captions at y 1400, title bar on the seam, payoff emoji at y 1000 (`factory/layout.py`, `subtitles.py`, `render.py`, `pipeline.render_file`). Layout A/B unchanged.
+- `StyleRules` gains `facecam_top`, `captions`, `title_whole_clip`. Catalogue `factory.styles` (`factory/styles.py`) with `cam_top_viral` (the docs/27 edit, facecam on top) and `cam_top_title` (persistent title with the payoff emoji, no spoken captions, calm). Without the setting: the single `factory.style`, as before.
+- Style director (`factory/director.py`, setting `factory.style_director`): one style per enabled account, no repeat of the account's last style, different styles across the accounts of a clip, weighted pick seeded with the clip id.
+- Per-account renders (`factory/variants.py`, job `clip.variants`): the clip is rendered in the reference account's style; the clip's span of the source is copied (near-lossless) with a JSON recipe; after the gate approves, each other style is rendered, checked (size, length, black/frozen picture in its own band) and uploaded as `<clip key>.<style>.mp4`. Rejected clips skip it; the copy is deleted.
+- Posting sends each account the ready render of its style, else the first render (`posts.render_id`).
+- Gate: the black/freeze band follows the clip's layout (`layout.gameplay_band`, `clips.layout_kind`); P5 knows the facecam may be on top and that some styles have no captions.
+- Migration 0027: `factory.styles`, `factory.style_director`, `clips.style_id/layout_kind/style_plan`, table `clip_renders`, `posts.render_id`.
+- Console: clip page "Design styles" card (each render, its accounts, play button), style column in the clip's posts; API `GET /v1/admin/clips/{id}` returns `renders`, `GET /v1/admin/clips/{id}/media?render=<id>` signs one render.
+- `sixstars clip render-file --style <id>`.
+- Tests: `tests/unit/factory/test_design_styles.py` (19), `tests/integration/test_design_styles.py` (4, the last renders with ffmpeg), admin route test for renders.
+
+### Deviations
+
+- The burned-in watermark stays the brand name (D111), not each account's handle: per-account handles would need a render per account even when two accounts share a style. Easy to add as a style rule later.
+- Spike posts go to every spike-lane account right after the gate, before `clip.variants` has run, so spike posts use the first render; hourly posts get their own style.
+- `clip.variants` checks only the technical rules; P5 and the score ran once on the first render (same source, same cut).
+- Catalogue order is by style id (a `jsonb` setting does not keep key order).
+
+### Open issues / next
+
+- Measure render time and disk on the staging server (variants add one render per extra style per approved clip, plus a temporary source copy).
+- Pre-existing: on a machine with ffmpeg, 57 integration tests fail on `main` as well (stale end-card and gate expectations from before migration 0021); CI skips them because it has no ffmpeg.
+- Phase B: `headline_card`, `pov_fullframe`, `cam_top_question`, P2 `moment_type` and text variants.
+
+## M18 Phase B — The calm styles: question, news card, POV (2026-11-19)
+
+### What was built
+
+- Clip writer P2: optional `moment_type` (reaction, discovery, action, story, npc_funny, fail) and the styles' texts `title_line` (≤ 48), `headline` (≤ 90), `question` (≤ 48, ends in "?"), `pov_line` (≤ 48, starts with "POV"). Each is a decoration: a value that breaks its rule is dropped. Stored in `clips.moment_type` and `clips.style_texts` (migration 0028). Prompt and docs/15 updated.
+- Styles (migration 0028, `factory.styles`): `cam_top_question` (layout C, red Anton capitals with a black outline at the top of the gameplay), `headline_card` (layout H: brand header with the star avatar, headline, the stream as a 4:3 crop that keeps the facecam; no watermark), `pov_fullframe` (layout P: 3:4 gameplay crop between black bars, centred POV line). `cam_top_title` now shows `title_line`. New rule keys `frame`, `title_source`, `title_look`, `watermark`; entry key `requires`.
+- Drawing: `factory/cards.py` (Pillow, colour emoji like the title bar); assets `brand/logo.png` as the avatar and Anton for questions.
+- Director: a style is used only when the clip has what it `requires` (`director.clip_facts`); `factory.style_director.affinity` multiplies weights per `moment_type`. The plan is now made after the writer and the layout detection (`produce(choose_style=...)`); variants carry the texts in their recipe.
+- Gate bands: H 670-1400, P 300-760; layout C's band moved to 960-1240 (below the tallest question, above the credit line). P5 knows the new elements.
+- Console: names of the new styles and layouts.
+- `clip render-file --title-line/--headline/--question/--pov`.
+- Tests: `tests/unit/factory/test_design_styles_b.py` (19), an end-to-end integration test rendering three styles of one clip (H, P, C).
+
+### Deviations
+
+- Layout H keeps the stream at 4:3 (like R09) rather than full 16:9; the crop moves to keep the streamer's facecam.
+- The question title is drawn in layout C only by default (the style asks for the facecam on top); without a facecam it sits at the top of layout B's gameplay.
+
+### Open issues / next
+
+- Watch staging: how often P2 gives each text, which styles accounts get, render time with up to three styles per clip.
+- Phase C: story cuts and one-word captions (`cam_top_wordcap`).
+
+## M18 Phase C — Story cuts and one-word captions (2026-11-19)
+
+### What was built
+
+- Platform limits checked in the docs (docs/14): TikTok API 10 min, Instagram Reels 15 min (Upload-Post), YouTube Shorts 3 min (YouTube Help). Setting `posting.max_duration_s`.
+- `factory.story` (`factory/story.py`): story cuts of 60-150 s for hourly, normal-mode renders of VOD and live sources. Their windows are widened (VOD section, live cut) by 90 s before and 30 s after, and the writer reads the whole window. Express renders are unchanged.
+- P2: optional `story_start_s` / `story_end_s` (kept only inside the window, within the limits and overlapping the short cut; otherwise dropped). Prompt section "Story cut", `{story_rule}` in the user message.
+- `pipeline.render_story`: after the short clip, the same job renders the story as its own clip (`clips.version = 'story'`, `parent_clip_id`), reusing transcript, writer reply and layout; style planned for the moment type `story`; variants; `clip.gate` job. Failures reject only the story.
+- Gate: story clips use the story length limits; duplicate checks ignore the clip's own family.
+- Posting: `posting.sibling_gap_h` (12 h between family members on one account) and `posting.max_duration_s` in the hourly pick.
+- Style `cam_top_wordcap` (R06): one or two Montserrat Black capitals on the facecam's bottom edge (y 580), spoken word in yellow, no title. New rule keys `caption_y`, `caption_active_color`, `show_title`.
+- Migration 0029: `clips.version`, `clips.parent_clip_id` (one story per short clip), `factory.story`, `posting.sibling_gap_h`, `posting.max_duration_s`, `cam_top_wordcap`, story affinity.
+- Console: "story cut" badge and links between a short clip and its story.
+- Tests: `tests/unit/factory/test_story_cuts.py`, `tests/unit/posting/test_posting_story_family.py`, integration tests for a real story render, the family-aware gate and the VOD widening. The VOD and live integration tests that pin window positions run with story cuts off.
+
+### Deviations
+
+- The story is rendered inline after its short clip (same job, source still on disk) instead of a separate job, so no second transcription or writer call is needed.
+- A story is never made for express (spike-lane) renders or viewer-made Twitch clips (their window is the viewer's cut).
+
+### Open issues / next
+
+- Wider windows cost transcription time on the normal queue (up to about 120 s more audio per hourly clip). Watch the staging queue; lower `pad_before_s` or turn `factory.story.enabled` off if it falls behind.
+- Phase D: the per-account bandit on post performance. Phase E: `hype_montage`.
+
+## M18 Phase D — Learning which style works per account (2026-11-19)
+
+### What was built
+
+- `factory/performance.py`: a post's score is `log(1 + views)` minus the median of its account's scored posts (posts 48 h to 14 days old, published, not dry-run); `StyleStats` per account and style, posterior with shrinkage, pooled spread.
+- Director `mode: bandit` (`director.bandit_pick`): exploration floor, learning until `min_samples` scored posts per style, then Thompson sampling with the moment-type affinity as a small nudge; the branch taken is in `clips.style_plan`.
+- `variants.scored_posts` / `style_stats` read the views (with the style of the render posted).
+- Migration 0030: the bandit keys in `factory.style_director` (mode bandit, floor 0.1, min_samples 20, affinity_weight 0.3, prior_n 2, min_age_h 48, window_d 14).
+- Console: Insights → Design styles; API `GET /v1/admin/styles`.
+- Tests: `tests/unit/factory/test_style_bandit.py` (incl. a seven-day simulation), integration tests for the loader and the page.
+
+### Deviations
+
+- No views snapshot at exactly 48 h exists (the collector overwrites `posts.views`), so posts are scored from 48 h to 14 days old against the same account's median. YouTube's average view percentage is not stored by the collector and is not used.
+- In the exploit step the no-repeat and diversity rules do not apply (the account takes its best style); they still apply while exploring and learning.
+
+### Open issues / next
+
+- Staging has no views (dry-run/private posts): the bandit stays in learning there. It starts judging in production once 20 posts of a style are two days old on an account.
+- Phase E: `hype_montage`.
+
+## M18 Phase E — The hype montage (2026-11-19)
+
+### What was built
+
+- Style `hype_montage` (reference R10, migration 0031): layout M (3:4 letterbox, gameplay over the facecam, soft fade over the seam), B-roll cuts every other 3 s from the busiest footage around the clip, two-tier glowing keyword captions on the seam, whoosh/impact on each cut, payoff emoji, no title. Hourly only; requires a facecam and at least 9 s of footage around the clip.
+- `factory/montage.py`: motion reading (ffmpeg `tblend` + `signalstats`), B-roll picks (outside the clip, no stills, no overlaps), the cut timeline (payoff guard, opening and closing seconds), the seam fade PNG.
+- Renderer: B-roll as extra ffmpeg inputs laid over the gameplay panel (`BrollCut`), the fade overlay, the progress bar at the bottom of the letterbox. Anything that goes wrong in planning the B-roll means a montage without cuts, never a failed render.
+- Variants: when a montage is planned for another account the source copy holds the padded window (`recipe.window_start_s`, `recipe.broll`).
+- Director: fact `broll`; affinity discovery 3, reaction 2.
+- Console names; P5 knows the montage.
+- Tests: `tests/unit/factory/test_hype_montage.py` (11; one found that a payoff right after a slot start made an empty window and would have failed the render — fixed), an integration test rendering a montage variant from the padded copy.
+
+### Deviations
+
+- The plan said B-roll from "other high-scoring moments of the same video". Those windows are deleted once their own render ends, so the B-roll comes from the footage around the moment that the source already holds (Phase C's wider windows). Picked by on-screen motion, not by chat.
+- The keyword glow uses the brand accent (`factory.accent_color`), not R10's gold/blue; no logo cards.
+
+### Open issues / next
+
+- The padded source copy for a montage variant is larger than a clip copy (up to about three minutes of near-lossless video, deleted after the variants); watch disk on staging.
+- M18 is complete. Before `develop` → `main`: run a day on staging with the five phases, check render time and disk, and decide whether production starts with every style enabled.

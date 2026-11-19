@@ -104,7 +104,13 @@ class MemoryStore:
         self.posts[post_id] = replace(post, **changes)
         return True
 
-    def mark_sending(self, post_id: str, request_id: str) -> None:
+    def file_for_post(
+        self, clip_id: str, account_id: str, fallback: str | None
+    ) -> tuple[str | None, str | None]:
+        """Per-account renders (`factory.variants`) are not modelled here: always the clip's own file."""
+        return None, fallback
+
+    def mark_sending(self, post_id: str, request_id: str, render_id: str | None = None) -> None:
         attempts = self.posts[post_id].attempts + 1
         self._update(post_id, "pending", attempts=attempts, upload_request_id=request_id)
 
