@@ -72,6 +72,9 @@ def test_config_rejects_bad_values() -> None:
         FactoryConfig.from_mapping({"spikes.min_len_s": 15, "spikes.max_len_s": 60}, "hourly")
 
 
+MIGRATIONS = REPO / "supabase" / "migrations"
+
+
 def migrated_style_settings(first: str, second: str, third: str) -> dict[str, object]:
     """`factory.styles` and `factory.style_director` after migrations 0027 (`first`), 0028 (`second`) and
     0029 (`third`): 0028 sets cam_top_title's title_source, adds three styles and the director's affinity;
@@ -84,6 +87,8 @@ def migrated_style_settings(first: str, second: str, third: str) -> dict[str, ob
     wordcap = json.loads(third.split("set value = value || '", 1)[1].split("'::jsonb", 1)[0])
     merged_director: dict[str, Any] = {**director, **affinity}
     merged_director["affinity"]["story"]["cam_top_wordcap"] = 3
+    bandit = (MIGRATIONS / "0030_style_bandit.sql").read_text(encoding="utf-8")
+    merged_director.update(json.loads(bandit.split("set value = value || '", 1)[1].split("'::jsonb", 1)[0]))
     return {"factory.styles": {**added, **styles, **wordcap}, "factory.style_director": merged_director}
 
 

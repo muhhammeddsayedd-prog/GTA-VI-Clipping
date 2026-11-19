@@ -35,9 +35,10 @@ from sixstars.factory import tools
 from sixstars.factory.assets import load_assets
 from sixstars.factory.bleep import Span
 from sixstars.factory.config import FactoryConfig
-from sixstars.factory.director import AccountSlot, StylePlan, plan_styles
+from sixstars.factory.director import AccountSlot, DirectorRules, StylePlan, plan_styles
 from sixstars.factory.layout import Box, Layout, LayoutA, LayoutB, LayoutKind, gameplay_band
 from sixstars.factory.lines import Line, Word
+from sixstars.factory.performance import PostViews, StyleStats, post_scores, summarise
 from sixstars.factory.window import ClipWindow
 from sixstars.logging import get_logger
 
@@ -115,10 +116,45 @@ def plan_for(
     """The director's plan for a clip, from the enabled accounts, their latest styles and what the clip
     offers (`director.clip_facts`)."""
     accounts = load_accounts()
-    recent = recent_styles([account.id for account in accounts], cfg.director.no_repeat_n)
+    ids = [account.id for account in accounts]
+    recent = recent_styles(ids, cfg.director.no_repeat_n)
+    stats = style_stats(ids, cfg.director) if cfg.director.mode == "bandit" else None
     return plan_styles(
-        clip_id, lane, accounts, cfg.catalog, cfg.director, recent, facts=facts, moment_type=moment_type
+        clip_id,
+        lane,
+        accounts,
+        cfg.catalog,
+        cfg.director,
+        recent,
+        facts=facts,
+        moment_type=moment_type,
+        stats=stats,
     )
+
+
+def scored_posts(account_ids: Sequence[str], rules: DirectorRules) -> list[PostViews]:
+    """(account, style, views) of the published, not dry-run posts between `min_age_h` and `window_d` old
+    (development-plan/M18 Phase D)."""
+    if not account_ids:
+        return []
+    rows = db.fetch_all(
+        """
+        select p.account_id, coalesce(r.style_id, c.style_id) as style_id, p.views
+        from posts p
+        join clips c on c.id = p.clip_id
+        left join clip_renders r on r.id = p.render_id
+        where p.account_id = any(%s) and p.status = 'published' and not p.dry_run and p.views is not null
+          and p.published_at <= now() - make_interval(secs => %s)
+          and p.published_at >= now() - make_interval(secs => %s)
+        """,
+        (list(account_ids), rules.min_age_h * 3600, rules.window_d * 86400),
+    )
+    return [(str(row["account_id"]), row["style_id"], int(row["views"])) for row in rows]
+
+
+def style_stats(account_ids: Sequence[str], rules: DirectorRules) -> dict[str, dict[str, StyleStats]]:
+    """account -> style -> `StyleStats` from the posts' views (`performance`)."""
+    return summarise(post_scores(scored_posts(account_ids, rules)))
 
 
 # ── The recipe: what a variant render needs besides the style ─

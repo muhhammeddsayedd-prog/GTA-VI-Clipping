@@ -60,3 +60,14 @@ The owner's second set of references (ten Instagram reels, development-plan/M18 
 Without a facecam both styles use layout B. The director gives each account a style the catalogue allows for the lane, not the one of the account's last clip, and different from the other accounts of the same clip where possible; the pick is seeded with the clip id. The first render is made in the style of the reference account; each other style of the plan is rendered by the job `clip.variants` once the gate has approved the clip (`factory/variants.py`), checked like the gate checks a file, and uploaded to Storage as `<clip key>.<style>.mp4`. The console's clip page lists the renders and plays each one.
 
 A Phase B style needs the writer's text it shows (`requires`), so a clip without a question never gets `cam_top_question`. The clip writer also names the kind of moment (`moment_type`), and `factory.style_director.affinity` multiplies each style's weight for it (a discovery suits the news card and the question, a reaction the viral edit, an action the POV crop). Phase C adds `cam_top_wordcap` and story cuts: a 60-150 s cut of the same moment, posted as its own clip (docs/09 section 12).
+
+## 6. Learning which style works (development-plan/M18 Phase D)
+
+With `factory.style_director.mode` = `bandit` (migration 0030) each account learns from its own posts. A post is scored once it is `min_age_h` (48) hours old, for `window_d` (14) days: `log(1 + views)` minus the median of the account's scored posts, so 0 is an ordinary post for that account and +0.7 about twice its usual views (`factory/performance.py`). The views come from the stats collector (`posts.views`, refreshed every two hours for a week).
+
+Per account and clip (`director.bandit_pick`):
+1. with probability `explore_floor` (0.1) the weighted pick of section 5;
+2. else, while an allowed style has fewer than `min_samples` (20) scored posts on the account, the weighted pick among those;
+3. else Thompson sampling: each style's mean score is drawn from its posterior (the sample mean shrunk towards 0 by `prior_n` pseudo-posts, spread the account's pooled standard deviation), plus `affinity_weight` (0.3) times the log of its moment-type affinity, and the highest wins, without the no-repeat and diversity steps.
+
+Until 20 posts of a style are scored, nothing changes. A seven-day simulation (three accounts, three styles worth +0.7, 0 and -0.5 log views) moves to the best style on day 3 and keeps it at 80-90 % from day 4, every style keeping a share (`tests/unit/factory/test_style_bandit.py`). In production that is about five days per account (the posts must age two days first). Staging posts are dry-run or private and have no views, so staging stays in the learning step. The console's Insights → Design styles page shows, per account and style, the posts of the last week, the scored posts, their average views and the views against the account's usual.

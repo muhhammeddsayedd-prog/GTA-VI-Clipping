@@ -491,3 +491,24 @@ FakeUploadPostClient()                 .uploads .deleted .upload_error .platform
 
 - Wider windows cost transcription time on the normal queue (up to about 120 s more audio per hourly clip). Watch the staging queue; lower `pad_before_s` or turn `factory.story.enabled` off if it falls behind.
 - Phase D: the per-account bandit on post performance. Phase E: `hype_montage`.
+
+## M18 Phase D — Learning which style works per account (2026-11-19)
+
+### What was built
+
+- `factory/performance.py`: a post's score is `log(1 + views)` minus the median of its account's scored posts (posts 48 h to 14 days old, published, not dry-run); `StyleStats` per account and style, posterior with shrinkage, pooled spread.
+- Director `mode: bandit` (`director.bandit_pick`): exploration floor, learning until `min_samples` scored posts per style, then Thompson sampling with the moment-type affinity as a small nudge; the branch taken is in `clips.style_plan`.
+- `variants.scored_posts` / `style_stats` read the views (with the style of the render posted).
+- Migration 0030: the bandit keys in `factory.style_director` (mode bandit, floor 0.1, min_samples 20, affinity_weight 0.3, prior_n 2, min_age_h 48, window_d 14).
+- Console: Insights → Design styles; API `GET /v1/admin/styles`.
+- Tests: `tests/unit/factory/test_style_bandit.py` (incl. a seven-day simulation), integration tests for the loader and the page.
+
+### Deviations
+
+- No views snapshot at exactly 48 h exists (the collector overwrites `posts.views`), so posts are scored from 48 h to 14 days old against the same account's median. YouTube's average view percentage is not stored by the collector and is not used.
+- In the exploit step the no-repeat and diversity rules do not apply (the account takes its best style); they still apply while exploring and learning.
+
+### Open issues / next
+
+- Staging has no views (dry-run/private posts): the bandit stays in learning there. It starts judging in production once 20 posts of a style are two days old on an account.
+- Phase E: `hype_montage`.

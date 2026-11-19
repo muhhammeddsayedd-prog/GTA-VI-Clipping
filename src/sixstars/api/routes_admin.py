@@ -319,6 +319,14 @@ def clip_media(clip_id: str, render: Annotated[str | None, Query()] = None) -> J
     return media_answer("ok", url, _now() + timedelta(seconds=SIGNED_URL_TTL_S))
 
 
+@router.get("/styles")
+def styles() -> JSONResponse:
+    """The design styles and how each performs per account (development-plan/M18 Phase D)."""
+    with read_tx():
+        body = q.style_performance()
+    return answer(body)
+
+
 # ── queue, posts ─────────────────────────────────────────────
 
 

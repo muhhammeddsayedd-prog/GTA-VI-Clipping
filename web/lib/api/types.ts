@@ -260,3 +260,14 @@ export interface Setting { key: string; value: Json; description: string | null;
 export interface SearchResult { kind: string; id: string; label: string; sub: string | null; href: string }
 
 export interface DailyReport { day: string; [k: string]: unknown }
+
+/** `GET /v1/admin/styles` (development-plan/M18 Phase D). */
+export interface StyleRow {
+  style_id: string; scored: number; mean_score: number | null; views_ratio: number | null;
+  avg_views: number | null; posts_7d: number; learned: boolean;
+}
+export interface StylePerformance {
+  director: { mode: "weighted" | "bandit"; explore_floor: number; min_samples: number; min_age_h: number; window_d: number };
+  styles: { id: string; enabled: boolean; weight: number; requires: string[] }[];
+  accounts: { account_id: string; platform: PostPlatform; styles: StyleRow[] }[];
+}
