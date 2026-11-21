@@ -225,7 +225,7 @@ def test_status_as_json_reports_what_m11_lists(production: None, video: Path, cl
         "account_id": YT,
         "enabled": True,
         "paused_until": None,
-        "cap_24h": 28,
+        "cap_24h": 16,
         "published_last_hour": 1,
         "published_last_24h": 2,
         "failed_last_24h": 0,
@@ -264,7 +264,7 @@ def test_status_for_telegram_is_one_html_safe_text(production: None, video: Path
     assert "Stop reason: claim on &lt;video&gt; &amp; more" in text
     assert "Live sessions: 2/6 (recording 1)" in text
     assert "Approved queue: spike 1 · hourly 2 ⚠️ low" in text
-    assert f"• {YT}: 1 / 2 of 28" in text
+    assert f"• {YT}: 1 / 2 of 16" in text
     assert "Spend today: $1.60 of $25 AI budget (anthropic $1.50 · groq $0.10)" in text
     assert "Jobs: express 0 queued, 1 running, 0 failed · normal 2 queued, 0 running, 1 failed" in text
     assert "• worker-normal-dead-1: 20m ago ⚠️ stale" in text

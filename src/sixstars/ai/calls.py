@@ -35,7 +35,7 @@ from typing import Protocol
 from pydantic import BaseModel
 
 from sixstars import settings
-from sixstars.ai import prompt_files
+from sixstars.ai import prompt_files, titles
 from sixstars.ai.images import prepare_jpeg
 from sixstars.ai.schemas import (
     ClipScore,
@@ -308,12 +308,16 @@ def _ask[T: BaseModel](
     client: AnthropicClient | None,
     images: Sequence[bytes] | None = None,
     ref_id: str | None = None,
+    extra_note: str | None = None,
 ) -> T:
     prompt = prompt_files.load(prompt_id)
+    user = prompt.render_user(user_values)
+    if extra_note:
+        user = f"{user}\n\n{extra_note}"
     return _client(client).complete_json(
         prompt_id,
         prompt.render_system(_system_values()),
-        prompt.render_user(user_values),
+        user,
         schema,
         model,
         MAX_TOKENS[prompt_id],
@@ -427,6 +431,33 @@ def enforce_policy(writing: ClipWriting, now: datetime, spoiler_block_until: dat
     return writing
 
 
+def _title_retry[T: ClipWriting](
+    reply: T,
+    schema: type[T],
+    values: dict[str, object],
+    lane: BudgetKind,
+    client: AnthropicClient | None,
+    clip_id: str | None,
+) -> T:
+    """A title that states the outcome (`titles.spoils_ending`) is asked for once more; when the second
+    title still does, or the retry fails, the first reply is kept (the behaviour before the rule)."""
+    problem = titles.spoils_ending(reply.title)
+    if problem is None:
+        return reply
+    note = titles.correction_note(reply.title or "", problem)
+    try:
+        _guard(P2, lane)
+        retry = _ask(P2, schema, _writer_model(), values, client, ref_id=clip_id, extra_note=note)
+    except Exception as exc:  # noqa: BLE001 - the first reply is still usable
+        _log.warning("title_retry_failed", clip_id=clip_id, error=str(exc)[:300])
+        return reply
+    if titles.spoils_ending(retry.title) is None:
+        _log.info("title_rewritten", clip_id=clip_id, before=reply.title, after=retry.title)
+        return retry
+    _log.warning("title_spoiler_kept", clip_id=clip_id, title=reply.title, retry=retry.title)
+    return reply
+
+
 def write_clip(
     ctx: ClipContext,
     *,
@@ -489,6 +520,7 @@ def write_clip(
         ctx.story_max_s,
     )
     reply = _ask(P2, schema, _writer_model(), values, client, ref_id=ctx.clip_id)
+    reply = _title_retry(reply, schema, values, lane, client, ctx.clip_id)
     writing = enforce_policy(reply, now, block_until)
     samples = settings.get_int("ai.score_samples", 1)
     if samples > 1 and not writing.reject:

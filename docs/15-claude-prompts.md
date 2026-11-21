@@ -35,7 +35,7 @@ Batch form (replay mode): input is a list of up to 10 spikes; output `{"results"
 Rules given in the prompt:
 - Trim: you may move `start_s` earlier (setup began sooner) or `end_s` later (payoff came after) within the window file; never start later than `spike_floor_s`; length between min and max.
 - Hook: max 8 words, hype tone, curiosity without clickbait lies, no spoilers, no slurs, English. Examples: "He did NOT expect that 😭", "Worst getaway driver in Leonida?".
-- Title (YouTube): max 70 characters, no spoilers, no hashtags.
+- Title (YouTube): max 70 characters, no spoilers, no hashtags. Name the streamer and set up the tension; never state the outcome (no "ends in", "crashes", "dies", "sinks", "fails at"). Patterns: "X's plan goes wrong", "X had ONE job", "chat lost it when…". "GTA 6" in at most one title in three. A title that states the outcome (`ai/titles.py`) is asked for once more; if the second one also does, the first reply is kept.
 - Caption: one punchy line, max 120 characters.
 - Hashtags: 3–5 moment-specific (lowercase words, no spaces), not including the base tags.
 - Commentary: optional single on-screen line (max 12 words) adding context; null if not needed.

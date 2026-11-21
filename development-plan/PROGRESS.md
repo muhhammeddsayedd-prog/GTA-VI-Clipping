@@ -534,3 +534,88 @@ FakeUploadPostClient()                 .uploads .deleted .upload_error .platform
 
 - The padded source copy for a montage variant is larger than a clip copy (up to about three minutes of near-lossless video, deleted after the variants); watch disk on staging.
 - M18 is complete. Before `develop` → `main`: run a day on staging with the five phases, check render time and disk, and decide whether production starts with every style enabled.
+
+## YouTube lane tuning A — cap, hours, hourly gap (2026-11-21)
+
+**Branch:** `yt-lane-a` (from `main` at `a0bebe8`, so it can be released without the L0/L1 work on `develop`).
+
+### Why
+
+Production audit 2026-11-21: `youtube_main` had been lowered to the learned-cap floor (10) by YouTube's per-channel daily upload limit (9 rejections since 2026-11-18). The channel has since passed ID verification. YouTube views 2026-11-17..21 by lane: spike 18 posts, median 946, average 1,404; hourly 15 posts, median 453, average 1,049. So the spike lane is left as it is and the hourly lane is moved to the audience's hours and spaced out.
+
+### What was built
+
+- Migration `0034_youtube_lane_tuning.sql` (idempotent; each value changes only from one the system set):
+  - new column `platform_accounts.hourly_min_gap_s` (null = no extra gap);
+  - `youtube_main`: `cap_24h` 10 → 16 (only from 10..16 or the seeded 28; never above `posting.platform_max_24h.youtube`), `spike_reserve` 4 (unchanged), `hourly_hours_utc` null → `{0,10,13,14,16,17,18,19,20,21,22,23}` (12 = 16 − 4), `hourly_min_gap_s` null → 3000;
+  - `posting.base_hashtags` `["#GTA6","#GTAVI","#GTA6Clips","#Gaming"]` → `["#GTA6","#GTAVI","#GTA6Clips"]`;
+  - `posting.first_comment` "Follow {handle} for the best GTA moments every hour 🎮⭐" → "Would you have survived this? 👇 Follow {handle} for daily GTA 6 chaos".
+- Posting: `Account.hourly_min_gap_s`; `caps.hourly_gap_ends_at` (from the last hourly post only); `decide_hourly_account` skips with `min_gap` while it runs. Spike lane, `cap_state` and the global 900 s gap unchanged.
+- Seeds carry the same values. Tests: `tests/unit/posting/test_posting_youtube_lane.py` (gap edges, spikes ignored, the 12 hours, 30 days of jittered slots with a 240 s upload never blocking the next slot, seeded hours = `cap_24h − spike_reserve`), `tests/integration/test_youtube_lane_migration.py` (applied twice; operator values kept; other accounts untouched; Upload-Post ceiling).
+
+### Deviations
+
+- The prompt named the migration `0032`: 0032 and 0033 are taken on `develop` (L0/L1). This is 0034; it reaches production before 0032/0033, which `supabase db push --include-all` (both deploy workflows) applies out of order.
+- `posting.base_hashtags` already held GTA 6 tags (fixed in the production database on 2026-11-18); only `#Gaming` was dropped.
+- `spike_reserve` stays 4 and the hours are 12, not 16 (owner, after the lane report). Instagram is not touched (owner).
+- The hourly gap reuses the `min_gap` reason code (with its own message) instead of a new code.
+- Integration tests' `T0` moved from 12:00 to 14:00 UTC (12 is no longer a YouTube hour).
+
+### Open issues / next
+
+- R3 (`posting.skip_hourly_after_spike_s`, 30 min) still skips an hourly slot right after a spike; spikes beyond the reserve still use hourly capacity. Both unchanged on purpose.
+- 57 integration tests in `test_gate_run`, `test_gate_cli`, `test_gate_visual_score`, `test_precheck_flow` and `test_factory_pipeline` fail locally on a clean `main` too (not caused by this change).
+- Next: PR-B (cross-platform gap, platform priority, titles), PR-C (hourly length per platform, follow-overlay test through the style bandit), later the cap ramp.
+
+## YouTube lane tuning B — cross-platform gap (D116) and titles (2026-11-21)
+
+**Branch:** `yt-lane-b` (on top of `yt-lane-a`).
+
+### What was built
+
+- Migration `0035_cross_platform_gap.sql` (added only where missing): `posting.cross_platform_min_gap_s = 2700`, `posting.platform_priority = ["youtube","tiktok","instagram"]`.
+- Posting (D116, hourly lane only): `precedence.cross_platform_block` (reason `cross_platform_too_soon`) in `selection.pick_clip`, so an account takes its next best clip when the top one went to another platform less than 45 min ago — planned posts of the same slot included. `selection.hourly_order` lets platforms pick in priority order, then by id.
+- A clip one platform skipped stays available to it: with D116 on, the hourly queue also holds hourly clips already `posted` (`store.load_hourly_queue(posted_since)`, `selection.hourly_candidates`), and the publisher sends an hourly post of a `posted` clip. "Already posted" and D42 keep it off the accounts and platforms that had it.
+- Titles: rules in `ai/prompts/p2_clip_writer.md` and docs/15 (name the streamer, set up the tension, never state the outcome; "GTA 6" in at most one title in three; working patterns). `ai/titles.spoils_ending` catches "ends in/with/up", "crashes/crashed", "dies/died", "sinks/sank", "fails at"; `calls.write_clip` asks once more with a correction note and keeps the first reply when the second still spoils or the retry fails (log `title_spoiler_kept`).
+- Docs: D116 in docs/00, R13 in docs/11, both keys in docs/16.
+- Tests: `tests/unit/posting/test_posting_cross_platform.py`, `tests/integration/test_cross_platform_slot.py`, `tests/unit/ai/test_ai_titles.py`. The older lane integration tests describe D18 and switch D116 off in their fixtures (`posting_support.d116_off`).
+
+### Deviations
+
+- The prompt named the decision "D-next" and the plan said D112; D112–D115 are taken (M18), so it is **D116**.
+- The "skipped clip stays approved" requirement: a clip is marked `posted` as soon as one platform published it (`settle_clip`), so instead of changing the clip lifecycle the hourly queue keeps recent `posted` clips (within `posting.max_clip_age_h`) while D116 is on.
+- The rule applies between every pair of platforms, not only YouTube/Instagram (e.g. TikTok then waits 45 min before Instagram takes the same clip).
+- "GTA 6 in at most one title in three" is prompt guidance only; it cannot be enforced per call.
+
+### Open issues / next
+
+- PR-C: hourly length per platform (YouTube 8–30 s) and the follow-overlay test.
+
+## YouTube lane tuning C — hourly length per platform and the follow-line test (2026-11-21)
+
+**Branch:** `yt-lane-c` (on top of `yt-lane-b`).
+
+### What was built
+
+- Migration `0036_youtube_length_follow.sql`:
+  - `gate.hourly_len_by_platform = {"youtube": {"min_len": 8, "max_len": 30}}` (added where missing);
+  - three follow twins in `factory.styles` (`cam_top_viral_follow`, `cam_top_wordcap_follow`, `cam_top_title_follow`; YouTube's most used styles, 22 of its 28 posts): same rules plus a follow line "Follow @6starsClips-m3x for Part 2" over the last 1.5 s, `youtube_main` and the hourly lane only, same weight; their moment-type affinity copied in `factory.style_director`. Added only where missing.
+- `sixstars/lengths.py` (pure): per-platform windows, the union, lenient parsing.
+- Gate: the hourly verdict allows the union (`gate.platform_lengths` → `profiles.with_platform_lengths`, only where a clip is judged; the Twitch-clip source keeps reading plain `gate.hourly`); express and story limits unchanged.
+- Writer: hourly limits widened to the overrides (`factory/config.FactoryConfig.from_mapping`); `cut.adaptive` still replaces them when on.
+- Posting (R14): `selection.family_block` holds a short hourly clip (`clips.gate_profile = 'hourly'`, not a story cut) off a platform whose window does not fit it, end card included. Each platform's window is its override or `gate.hourly` lowered by `cut.adaptive.min_s` exactly as the gate lowers it (`params.with_cut_minimum`), so no platform loses a clip the gate approved for it.
+- Factory: style rules `follow_overlay_s` / `follow_overlay_text`; `overlays.follow_layout` (pure, inside the safe zone) and `follow_filter` (drawtext, last N seconds, no extra time); wired through `RenderSpec.follow_text/follow_s`.
+- Docs: docs/16 (`gate.hourly_len_by_platform`), docs/27 (follow line), docs/11 R14.
+- Tests: `tests/unit/posting/test_posting_hourly_length.py`, `tests/unit/gate/test_gate_len_by_platform.py`, `tests/unit/factory/test_factory_follow_length.py`, `tests/integration/test_youtube_length_follow_migration.py`; a real ffmpeg frame check of the line (before / during the last 1.5 s).
+
+### Deviations
+
+- **Production already cuts short clips:** the scoring flag `cut.adaptive` is on in production (writer 6–25 s, target 12–18 s; the gate minimum follows `min_s` = 6), so `gate.hourly.min_len = 20` was not blocking short clips there. In production the YouTube window mainly keeps clips of 6–8 s and Twitch clips over 30 s off YouTube; on staging (flag off) it lets the writer cut 8–19 s clips for YouTube.
+- No `spikes.len_by_platform`: spikes are unchanged (owner).
+- The end card is not switched on (`factory.end_card_s` stays 0, owner): the follow line is an overlay that keeps the loop, tested 50/50 through the director/bandit. The handle is in the style's text because a render does not know its account; the twins are limited to `youtube_main`.
+- Twins for three styles, not all seven, so the bandit's samples per style on YouTube are not spread too thin (`min_samples` 20).
+
+### Open issues / next
+
+- The bandit judges a style on posts 48 h to 14 days old; read the twins against their originals after about two weeks of YouTube hourly posts.
+- Later: `posting.youtube_cap_ramp` (not built; after PR-A has run clean for 48 h).

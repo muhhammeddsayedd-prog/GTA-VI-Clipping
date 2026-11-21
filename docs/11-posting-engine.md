@@ -4,14 +4,14 @@ Two lanes, one cap manager, one publisher (Upload-Post).
 
 ## 1. Accounts (from `platform_accounts`)
 
-| id | Platform | Upload-Post profile | Lanes | cap_24h | spike_reserve | Hourly hours (UTC) |
-|---|---|---|---|---|---|---|
-| `tiktok_main` | TikTok @6starsclips | `6stars-main` | hourly | 14 | 0 | 0,1,2,11,12,14,15,17,18,19,20,21,22,23 |
-| `tiktok_live` | TikTok @6starsclips.live | `6stars-live` | spike | 14 | 14 | — |
-| `instagram_main` | Instagram @6starsclips | `6stars-main` | hourly, spike | 45 | 10 | all 24 |
-| `youtube_main` | YouTube @6StarsClips | `6stars-main` | hourly, spike | 40 | 8 | all 24 |
+| id | Platform | Upload-Post profile | Lanes | cap_24h | spike_reserve | Hourly hours (UTC) | hourly_min_gap_s |
+|---|---|---|---|---|---|---|---|
+| `tiktok_main` | TikTok @6starsclipping | `default` | hourly | 14 | 0 | 0,1,2,11,12,14,15,17,18,19,20,21,22,23 | — |
+| `tiktok_live` | TikTok (disabled) | `default` | spike | 14 | 14 | — | — |
+| `instagram_main` | Instagram @6starsclippy | `default` | hourly, spike | 45 | 10 | all 24 | — |
+| `youtube_main` | YouTube @6starsClips-m3x | `default` | hourly, spike | 16 | 4 | 0,10,13,14,16,17,18,19,20,21,22,23 | 3000 |
 
-Why: TikTok's API allows about 15 posts/day/account (shared across all apps), so hourly and spike posts need separate TikTok accounts and TikTok main only takes the 14 best hours. Instagram via Upload-Post allows 50/24 h. YouTube's real limit is unpublished; 40 is a starting cap that the cap manager lowers automatically on "limit reached" errors.
+Why: TikTok's API allows about 15 posts/day/account (shared across all apps), so TikTok main only takes the 14 best hours. Instagram via Upload-Post allows 50/24 h. YouTube's limit is set per channel by YouTube and is unpublished: the cap manager lowers `cap_24h` by 2 on every "limit reached" (floor 10). Migration 0034 (2026-11-21) raised it to 16 after the channel's ID verification, with 12 hourly hours (= 16 − 4 reserved for spikes) chosen for the audience (North America, Northern and Western Europe, Australia/NZ) and a 50-minute hourly gap. An account with hourly hours lists exactly `cap_24h − spike_reserve` of them (tested on the seeds).
 
 ## 2. Gate checks before any post (both lanes)
 
@@ -33,6 +33,9 @@ free          = cap_24h − used_24h
 hourly_allowed = free > spike_reserve_remaining         (hourly may not eat the spike reserve)
 spike_allowed  = free > 0 and spikes_1h < posting.spike_max_per_hour
 gap_ok         = last_post_at is null or now − last_post_at ≥ min_gap_s
+hourly_gap_ok  = last_hourly_post_at is null or now − last_hourly_post_at ≥ account.hourly_min_gap_s
+                 (hourly lane only; spike posts do not count, so a spike never pushes an hourly slot back
+                 through it. null = no extra gap. 3000 s, not 3600, because slots fire 0..jitter_max_s late.)
 ```
 `spike_reserve_remaining` = `spike_reserve − spike posts in the last 24 h` (floor 0). At 18:00 UTC each day, unused spike reserve beyond 4 is released to the hourly lane for the remaining hours.
 
@@ -54,6 +57,8 @@ On a platform "limit reached" / HTTP 429 response: set `paused_until` = now + 1 
 | R10 | Hourly queue empty | Post the best unposted compilation if any; else skip the slot (event `posting.slot_empty`, alert if 2 in a row) |
 | R11 | Emergency stop | Nothing posts |
 | R12 | Several spike clips ready within a few minutes | Holding window: spike clips wait `posting.spike_hold_s` (7 min) after the first of them was approved, then the best-ranked posts first; the rest wait for the gap or move to the hourly queue boosted (R7). The release is never later than 2 min before a clip reaches `posting.spike_max_age_s`. |
+| R13 | Hourly slot, the top clip went to another platform less than `posting.cross_platform_min_gap_s` (45 min) ago — including earlier in the same slot | The account takes its next best clip (reason `cross_platform_too_soon` when nothing is left). Platforms pick in `posting.platform_priority` order: YouTube, TikTok, Instagram (D116). Spike lane not affected. |
+| R14 | Hourly slot, a short clip cut for the hourly lane does not fit the platform's hourly length window (`gate.hourly_len_by_platform`, YouTube 8–30 s; others `gate.hourly`) | The account takes its next best clip. Spike clips and story cuts are not judged by it. |
 
 Demotion means: the clip will not be posted on that account by the spike lane; it can still be posted to that account later by the hourly lane.
 
@@ -73,7 +78,7 @@ Recomputed every 10 minutes by the scheduler for approved clips; clips older tha
 Triggered by `POST /v1/posting/hourly` (n8n `WF02` at minute 0 each hour; failover by scheduler).
 1. Record heartbeat `trigger:hourly`. Return 202 immediately.
 2. Sleep a random 0..`jitter_max_s` (300 s).
-3. For each enabled account with lane `hourly` (and, for `tiktok_main`, current UTC hour in `hourly_hours_utc`):
+3. For each enabled account with lane `hourly` (and, where `hourly_hours_utc` is set — `tiktok_main`, `youtube_main` — current UTC hour in it; and `hourly_gap_ok`):
    a. Apply R3, R8, R11.
    b. Pick the highest `rank_score` approved clip with `lane = hourly` that has **not** been posted to this account, passes R9, and is not currently being posted elsewhere in this slot by a different clip choice. Preference: the same clip for all accounts in a slot (so each clip goes everywhere at once); take the top clip once and post it to every eligible account.
    c. Publish (§8).
