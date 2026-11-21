@@ -13,10 +13,10 @@ update settings set value = '5'::jsonb where key = 'ai.daily_budget_usd';
 update settings set value = '"Follow for more (staging test)"'::jsonb where key = 'posting.first_comment';
 
 -- There is no second TikTok account, so 'tiktok_live' exists but is disabled.
-insert into platform_accounts (id, platform, upload_post_user, handle, lanes, cap_24h, spike_reserve, min_gap_s, privacy, hourly_hours_utc, enabled) values
-  ('tiktok_main',    'tiktok',    'default', '@6starsclipping',  '{hourly,spike}', 14, 4,  900, 'SELF_ONLY', null, true),
-  ('tiktok_live',    'tiktok',    'default', '@6starsclipping',  '{spike}',        14, 14, 900, 'SELF_ONLY', null, false),
-  ('instagram_main', 'instagram', 'default', '@6starsclippy',    '{hourly,spike}', 45, 10, 900, null,        null, true),
-  ('youtube_main',   'youtube',   'default', '@6starsClips-m3x', '{hourly,spike}', 28, 4,  900, 'private',   null, true)
+insert into platform_accounts (id, platform, upload_post_user, handle, lanes, cap_24h, spike_reserve, min_gap_s, privacy, hourly_hours_utc, enabled, hourly_min_gap_s) values
+  ('tiktok_main',    'tiktok',    'default', '@6starsclipping',  '{hourly,spike}', 14, 4,  900, 'SELF_ONLY', null, true, null),
+  ('tiktok_live',    'tiktok',    'default', '@6starsclipping',  '{spike}',        14, 14, 900, 'SELF_ONLY', null, false, null),
+  ('instagram_main', 'instagram', 'default', '@6starsclippy',    '{hourly,spike}', 45, 10, 900, null,        null, true, null),
+  ('youtube_main',   'youtube',   'default', '@6starsClips-m3x', '{hourly,spike}', 16, 4,  900, 'private', '{0,10,13,14,16,17,18,19,20,21,22,23}', true, 3000)
 on conflict (id) do nothing;
 -- Note: staging dry_run starts true. Set it to false only for the end-to-end private posting test (M15).

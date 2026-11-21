@@ -41,7 +41,7 @@ left join spikes s on s.id = c.spike_id
 """
 _ACCOUNT_SQL = """
 select id, platform, upload_post_user, handle, lanes, cap_24h, spike_reserve, min_gap_s, privacy,
-       hourly_hours_utc, enabled, paused_until
+       hourly_hours_utc, enabled, paused_until, hourly_min_gap_s
 from platform_accounts
 """
 _POST_COLUMNS = """
@@ -145,6 +145,7 @@ def account_from_row(row: Mapping[str, Any]) -> Account:
         hourly_hours_utc=None if hours is None else frozenset(int(hour) for hour in hours),
         enabled=bool(row["enabled"]),
         paused_until=None if row["paused_until"] is None else ensure_utc(row["paused_until"]),
+        hourly_min_gap_s=None if row.get("hourly_min_gap_s") is None else int(row["hourly_min_gap_s"]),
     )
 
 

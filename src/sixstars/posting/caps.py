@@ -132,6 +132,20 @@ def cap_state(
     )
 
 
+def hourly_gap_ends_at(account: Account, history: Iterable[PostRecord], dry: bool) -> datetime | None:
+    """When the account's own hourly gap (`platform_accounts.hourly_min_gap_s`) ends, or None without one.
+
+    Measured from the account's last *hourly* post only, so a spike post never pushes an hourly slot back
+    through this gap (the global `posting.min_gap_s` still applies to every post, see `cap_state`).
+    """
+    if not account.hourly_min_gap_s:
+        return None
+    hourly = [p.at for p in account_posts(history, account.id, dry) if p.lane is Lane.HOURLY]
+    if not hourly:
+        return None
+    return max(hourly) + timedelta(seconds=account.hourly_min_gap_s)
+
+
 @dataclass(frozen=True, slots=True)
 class RateLimitOutcome:
     """What to write to `platform_accounts` after a platform said "limit reached" (or HTTP 429)."""

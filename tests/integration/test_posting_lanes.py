@@ -108,8 +108,8 @@ def test_tiktok_only_posts_in_its_hours_and_the_clip_is_done_after_the_slot(
     production: None, video: Path
 ) -> None:
     go_live()
-    clip = add_clip(add_creator(), video, approved_at=T0 + timedelta(minutes=30))
-    slot = T0 + timedelta(hours=1)  # 13:00 UTC is not one of TikTok's hours
+    slot = T0 - timedelta(hours=1)  # 13:00 UTC is not one of TikTok's hours (it is one of YouTube's)
+    clip = add_clip(add_creator(), video, approved_at=slot - timedelta(minutes=30))
 
     run = run_hourly_slot(slot, FakeUploadPostClient(), clock=fixed(slot + timedelta(minutes=2)))
 

@@ -45,13 +45,13 @@ def test_migration_0005_adds_the_two_settings() -> None:
 
 
 @pytest.mark.parametrize("name", ["production", "staging"])
-def test_both_seeds_give_youtube_a_cap_of_28_with_4_reserved(
+def test_both_seeds_give_youtube_a_cap_of_16_with_4_reserved(
     name: str, request: pytest.FixtureRequest
 ) -> None:
     request.getfixturevalue(name)
 
     row = account_row(YT)
-    assert (row["cap_24h"], row["spike_reserve"]) == (28, 4)
+    assert (row["cap_24h"], row["spike_reserve"], row["hourly_min_gap_s"]) == (16, 4, 3000)  # migration 0034
 
 
 def test_migration_0005_lowers_an_old_seeded_youtube_cap_and_keeps_a_learned_one(production: None) -> None:
@@ -185,7 +185,7 @@ def test_a_rate_limit_pause_and_the_learned_cap_are_stored_and_respected(
     assert by_account[IG]["status"] == "published"
     assert {r.outcome for r in run.results} == {Outcome.PUBLISHED, Outcome.FAILED}
     youtube = account_row(YT)
-    assert youtube["cap_24h"] == 26 and youtube["paused_until"] == NOW + timedelta(hours=24)
+    assert youtube["cap_24h"] == 14 and youtube["paused_until"] == NOW + timedelta(hours=24)
     assert "rate limit" in youtube["pause_reason"]
     warn = db.fetch_one("select * from notify_outbox where title = %s", (f"Rate limit on {YT}",))
     assert warn is not None and warn["severity"] == "warn"

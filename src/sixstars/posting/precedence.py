@@ -9,7 +9,7 @@ from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
 
-from sixstars.posting.caps import account_posts, cap_state, counts
+from sixstars.posting.caps import account_posts, cap_state, counts, hourly_gap_ends_at
 from sixstars.posting.gate import check_gate, duplicate_channels
 from sixstars.posting.models import (
     CLIP_APPROVED,
@@ -257,6 +257,13 @@ def decide_hourly_account(
             Reason.MIN_GAP,
             f"last post on {account.id} was less than {state.gap_s} s ago "
             f"(gap ends {state.gap_ends_at.isoformat()})",
+        )
+    hourly_gap_end = hourly_gap_ends_at(account, history, dry)
+    if hourly_gap_end is not None and now < hourly_gap_end:
+        return skip(
+            Reason.MIN_GAP,
+            f"last hourly post on {account.id} was less than hourly_min_gap_s "
+            f"{account.hourly_min_gap_s} s ago (gap ends {hourly_gap_end.isoformat()})",
         )
     return gate
 

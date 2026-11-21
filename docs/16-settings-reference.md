@@ -312,7 +312,7 @@ Residential proxy (DataImpulse) for the VOD lane only, added 2026-11-18 (migrati
 | Key | Default | Meaning |
 |---|---|---|
 | `posting.jitter_max_s` | `300` | Hourly slot random offset 0..N seconds. |
-| `posting.min_gap_s` | `900` | Minimum seconds between posts on one account. |
+| `posting.min_gap_s` | `900` | Minimum seconds between posts on one account. The hourly lane can add its own longer gap per account: column `platform_accounts.hourly_min_gap_s` (counted from the last hourly post only; `youtube_main` 3000 since migration 0034). |
 | `posting.spike_max_per_hour` | `2` | Max spike posts per account per rolling hour. |
 | `posting.skip_hourly_after_spike_s` | `1800` | Skip an hourly slot if a spike posted within this many seconds before it. |
 | `posting.spike_max_wait_s` | `900` | A spike may wait this long for the min gap; after that it is demoted. |
@@ -323,8 +323,8 @@ Residential proxy (DataImpulse) for the VOD lane only, added 2026-11-18 (migrati
 | `posting.sibling_gap_h` | `12` | Hours between two clips of one family (a short clip and its story cut) on the same account (M18 Phase C, migration 0029). Absent: 12. |
 | `posting.max_duration_s` | `{"tiktok": 600, "instagram": 900, "youtube": 180}` | The longest clip in seconds each platform is given (M18 Phase C, migration 0029). Absent: no limit. |
 | `posting.queue_low_watermark` | `12` | Below this many approved hourly clips, guardian widens discovery. |
-| `posting.first_comment` | `"Follow {handle} for the best GTA 6 moments every hour 🎮⭐"` | First comment text. `{handle}` becomes the posting account's handle (D111). |
-| `posting.base_hashtags` | `["#GTA6", "#GTAVI", "#GTA6Clips", "#Gaming"]` | Hashtags added to every caption. |
+| `posting.first_comment` | `"Would you have survived this? 👇 Follow {handle} for daily GTA 6 chaos"` | First comment text. `{handle}` becomes the posting account's handle (D111). A question invites replies (migration 0034; was "Follow {handle} for the best GTA 6 moments every hour 🎮⭐"). |
+| `posting.base_hashtags` | `["#GTA6", "#GTAVI", "#GTA6Clips"]` | Hashtags added to every caption, on every platform. Migration 0034 dropped `#Gaming`. |
 | `posting.youtube_extra_hashtags` | `["#Shorts"]` | Extra hashtags for YouTube. |
 | `posting.platform_max_24h` | `{"tiktok": 15, "instagram": 50, "youtube": 30}` | Hard ceiling of posts per account per rolling 24 h set by Upload-Post. An account cap above it is ignored. |
 | `posting.staging_allow_instagram` | `false` | Staging only: allow a real Instagram post (Instagram cannot post privately). Set true only for the single M15 test post. |

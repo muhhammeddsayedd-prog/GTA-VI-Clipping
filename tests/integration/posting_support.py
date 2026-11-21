@@ -15,7 +15,9 @@ SEEDS = REPO / "supabase" / "seed"
 MIGRATION_0005 = REPO / "supabase" / "migrations" / "0005_posting_limits.sql"
 
 # A Friday noon after the launch (2026-11-18 11:00 UTC): the hour 12 is one of TikTok's hourly hours.
-T0 = datetime(2026, 11, 20, 12, 0, tzinfo=UTC)
+# 14:00 UTC: an hour in which every seeded hourly account posts (TikTok and, since 0034, YouTube list their
+# hours).
+T0 = datetime(2026, 11, 20, 14, 0, tzinfo=UTC)
 NOW = T0 + timedelta(minutes=3)
 IG, YT, TT, TT_LIVE = "instagram_main", "youtube_main", "tiktok_main", "tiktok_live"
 

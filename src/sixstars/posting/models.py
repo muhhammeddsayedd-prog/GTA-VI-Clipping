@@ -96,10 +96,15 @@ class Account:
     hourly_hours_utc: frozenset[int] | None = None  # None = all 24 hours; empty = no hour at all
     enabled: bool = True
     paused_until: datetime | None = None
+    # Seconds between two hourly posts of this account, counted from its last hourly post only (spike posts
+    # do not count). None = no extra hourly gap. Migration 0034.
+    hourly_min_gap_s: int | None = None
 
     def __post_init__(self) -> None:
         if self.cap_24h < 0 or self.spike_reserve < 0 or self.min_gap_s < 0:
             raise ValueError(f"account {self.id}: cap_24h, spike_reserve and min_gap_s must not be negative")
+        if self.hourly_min_gap_s is not None and self.hourly_min_gap_s < 0:
+            raise ValueError(f"account {self.id}: hourly_min_gap_s must not be negative")
         if self.hourly_hours_utc is not None and any(not 0 <= h <= 23 for h in self.hourly_hours_utc):
             raise ValueError(f"account {self.id}: hourly_hours_utc must be within 0..23")
         if self.paused_until is not None:

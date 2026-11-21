@@ -534,3 +534,35 @@ FakeUploadPostClient()                 .uploads .deleted .upload_error .platform
 
 - The padded source copy for a montage variant is larger than a clip copy (up to about three minutes of near-lossless video, deleted after the variants); watch disk on staging.
 - M18 is complete. Before `develop` → `main`: run a day on staging with the five phases, check render time and disk, and decide whether production starts with every style enabled.
+
+## YouTube lane tuning A — cap, hours, hourly gap (2026-11-21)
+
+**Branch:** `yt-lane-a` (from `main` at `a0bebe8`, so it can be released without the L0/L1 work on `develop`).
+
+### Why
+
+Production audit 2026-11-21: `youtube_main` had been lowered to the learned-cap floor (10) by YouTube's per-channel daily upload limit (9 rejections since 2026-11-18). The channel has since passed ID verification. YouTube views 2026-11-17..21 by lane: spike 18 posts, median 946, average 1,404; hourly 15 posts, median 453, average 1,049. So the spike lane is left as it is and the hourly lane is moved to the audience's hours and spaced out.
+
+### What was built
+
+- Migration `0034_youtube_lane_tuning.sql` (idempotent; each value changes only from one the system set):
+  - new column `platform_accounts.hourly_min_gap_s` (null = no extra gap);
+  - `youtube_main`: `cap_24h` 10 → 16 (only from 10..16 or the seeded 28; never above `posting.platform_max_24h.youtube`), `spike_reserve` 4 (unchanged), `hourly_hours_utc` null → `{0,10,13,14,16,17,18,19,20,21,22,23}` (12 = 16 − 4), `hourly_min_gap_s` null → 3000;
+  - `posting.base_hashtags` `["#GTA6","#GTAVI","#GTA6Clips","#Gaming"]` → `["#GTA6","#GTAVI","#GTA6Clips"]`;
+  - `posting.first_comment` "Follow {handle} for the best GTA moments every hour 🎮⭐" → "Would you have survived this? 👇 Follow {handle} for daily GTA 6 chaos".
+- Posting: `Account.hourly_min_gap_s`; `caps.hourly_gap_ends_at` (from the last hourly post only); `decide_hourly_account` skips with `min_gap` while it runs. Spike lane, `cap_state` and the global 900 s gap unchanged.
+- Seeds carry the same values. Tests: `tests/unit/posting/test_posting_youtube_lane.py` (gap edges, spikes ignored, the 12 hours, 30 days of jittered slots with a 240 s upload never blocking the next slot, seeded hours = `cap_24h − spike_reserve`), `tests/integration/test_youtube_lane_migration.py` (applied twice; operator values kept; other accounts untouched; Upload-Post ceiling).
+
+### Deviations
+
+- The prompt named the migration `0032`: 0032 and 0033 are taken on `develop` (L0/L1). This is 0034; it reaches production before 0032/0033, which `supabase db push --include-all` (both deploy workflows) applies out of order.
+- `posting.base_hashtags` already held GTA 6 tags (fixed in the production database on 2026-11-18); only `#Gaming` was dropped.
+- `spike_reserve` stays 4 and the hours are 12, not 16 (owner, after the lane report). Instagram is not touched (owner).
+- The hourly gap reuses the `min_gap` reason code (with its own message) instead of a new code.
+- Integration tests' `T0` moved from 12:00 to 14:00 UTC (12 is no longer a YouTube hour).
+
+### Open issues / next
+
+- R3 (`posting.skip_hourly_after_spike_s`, 30 min) still skips an hourly slot right after a spike; spikes beyond the reserve still use hourly capacity. Both unchanged on purpose.
+- 57 integration tests in `test_gate_run`, `test_gate_cli`, `test_gate_visual_score`, `test_precheck_flow` and `test_factory_pipeline` fail locally on a clean `main` too (not caused by this change).
+- Next: PR-B (cross-platform gap, platform priority, titles), PR-C (hourly length per platform, follow-overlay test through the style bandit), later the cap ramp.
