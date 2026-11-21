@@ -17,7 +17,8 @@ from sixstars import db, events, jobs, notify
 from sixstars.config import env
 from sixstars.posting.caps import DAY
 from sixstars.posting.models import Account, Clip, Lane, Platform, PostRecord, ensure_utc
-from sixstars.posting.params import OPTIONAL_KEYS, REQUIRED_KEYS, PostingParams
+from sixstars.posting.params import OPTIONAL_KEYS, REQUIRED_KEYS, PostingParams, with_cut_minimum
+from sixstars.scoring import config as scoring_config
 
 SERVICE = "posting"
 PLANNING_LOCK_NAME = "sixstars.posting.plan"
@@ -34,14 +35,14 @@ _CLIP_SQL = """
 select c.id::text as id, c.creator_id::text as creator_id, c.lane, c.rank_score, c.status, c.approved_at,
        s.spike_wall, cr.handle as creator_handle, c.source_platform, c.title, c.caption, c.hook,
        c.hashtags, c.local_path, c.spike_id::text as spike_id,
-       coalesce(c.parent_clip_id, c.id)::text as family_id, c.duration_s
+       coalesce(c.parent_clip_id, c.id)::text as family_id, c.duration_s, c.gate_profile
 from clips c
 join creators cr on cr.id = c.creator_id
 left join spikes s on s.id = c.spike_id
 """
 _ACCOUNT_SQL = """
 select id, platform, upload_post_user, handle, lanes, cap_24h, spike_reserve, min_gap_s, privacy,
-       hourly_hours_utc, enabled, paused_until, hourly_paused_until
+       hourly_hours_utc, enabled, paused_until, hourly_paused_until, hourly_min_gap_s
 from platform_accounts
 """
 _POST_COLUMNS = """
@@ -148,6 +149,7 @@ def account_from_row(row: Mapping[str, Any]) -> Account:
         hourly_paused_until=(
             None if row.get("hourly_paused_until") is None else ensure_utc(row["hourly_paused_until"])
         ),
+        hourly_min_gap_s=None if row.get("hourly_min_gap_s") is None else int(row["hourly_min_gap_s"]),
     )
 
 
@@ -190,6 +192,7 @@ def clip_from_row(row: Mapping[str, Any]) -> LoadedClip:
         hashtags=tuple(row["hashtags"] or ()),
         family_id=row.get("family_id"),
         duration_s=float(row["duration_s"]) if row.get("duration_s") is not None else None,
+        gate_profile=row.get("gate_profile"),
     )
     return LoadedClip(clip=clip, local_path=row["local_path"], spike_id=row["spike_id"])
 
@@ -252,7 +255,10 @@ class DbStore:
         rows = db.fetch_all(
             "select key, value from settings where key = any(%s)", ([*REQUIRED_KEYS, *OPTIONAL_KEYS],)
         )
-        return PostingParams.from_settings({row["key"]: row["value"] for row in rows}, app_env())
+        values = {row["key"]: row["value"] for row in rows}
+        cut = scoring_config.flag("cut.adaptive")
+        cut_min = None if cut is None else scoring_config.number(cut, "min_s", 0.0) or None
+        return PostingParams.from_settings(with_cut_minimum(values, cut_min), app_env())
 
     def load_accounts(self) -> list[Account]:
         return [account_from_row(row) for row in db.fetch_all(_ACCOUNT_SQL + " order by id")]
@@ -286,16 +292,20 @@ class DbStore:
         )
         return [record_from_row(row) for row in rows]
 
-    def load_hourly_queue(self) -> list[LoadedClip]:
-        """Approved hourly clips, best rank first."""
+    def load_hourly_queue(self, posted_since: datetime | None = None) -> list[LoadedClip]:
+        """Approved hourly clips, best rank first. With `posted_since` (D116) also the hourly clips marked
+        `posted` since then, which a platform that skipped them may still take."""
         rows = db.fetch_all(
             _CLIP_SQL
             + """
-            where c.status = 'approved' and c.lane = 'hourly'
+            where c.lane = 'hourly'
+              and (c.status = 'approved'
+                   or (c.status = 'posted' and %(since)s::timestamptz is not null
+                       and c.posted_at >= %(since)s))
             order by c.rank_score desc nulls last, c.approved_at, c.id
-            limit %s
+            limit %(limit)s
             """,
-            (QUEUE_LIMIT,),
+            {"since": posted_since, "limit": QUEUE_LIMIT},
         )
         return [clip_from_row(row) for row in rows]
 

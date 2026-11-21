@@ -37,7 +37,7 @@ from sixstars.logging import get_logger
 from sixstars.posting.caps import on_rate_limit
 from sixstars.posting.captions import UploadRequest, build_upload_request
 from sixstars.posting.gate import check_gate
-from sixstars.posting.models import CLIP_APPROVED, Account, Lane, Platform
+from sixstars.posting.models import CLIP_APPROVED, CLIP_POSTED, Account, Lane, Platform
 from sixstars.posting.params import PostingParams
 from sixstars.posting.slots import slot_is_open
 from sixstars.posting.store import LoadedClip, PostRow, PublisherStore, utcnow
@@ -176,7 +176,12 @@ class Publisher:
         gate = check_gate(work.account, post.lane, work.now, work.params)
         if not gate.may_send:
             return f"{gate.code.value}: {gate.reason}"
-        if clip.status != CLIP_APPROVED:
+        sendable = (
+            {CLIP_APPROVED, CLIP_POSTED}
+            if post.lane is Lane.HOURLY and work.params.requeues_posted
+            else {CLIP_APPROVED}
+        )
+        if clip.status not in sendable:
             return f"clip_not_approved: clip {clip.id} is {clip.status!r}"
         if work.now - post.created_at > PENDING_DEADLINE:
             return "too_late: the post was planned too long ago"

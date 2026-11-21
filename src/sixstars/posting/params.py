@@ -8,6 +8,8 @@ from datetime import datetime
 from types import MappingProxyType
 from typing import Self
 
+from sixstars import lengths
+from sixstars.lengths import LengthWindow
 from sixstars.posting.models import Platform, ensure_utc
 
 APP_ENVS = frozenset({"staging", "production"})
@@ -39,6 +41,14 @@ OPTIONAL_KEYS = (
     # development-plan/M18 Phase C (migration 0029). Without story cuts neither matters.
     "posting.sibling_gap_h",  # absent = 12
     "posting.max_duration_s",  # absent = no limit per platform
+    # D116 (migration 0035): the hourly lane keeps one clip apart across platforms, platforms pick in order.
+    "posting.cross_platform_min_gap_s",  # absent = 0: no cross-platform gap
+    "posting.platform_priority",  # absent or malformed = accounts pick in id order
+    # YouTube lane tuning C (migration 0036): hourly clip length per platform. Absent = no length check here
+    # (the gate already held every hourly clip to gate.hourly).
+    "gate.hourly",
+    "gate.hourly_len_by_platform",
+    "factory.end_card_s",  # absent = 0
 )
 DEFAULT_SIBLING_GAP_H = 12.0
 
@@ -72,6 +82,14 @@ class PostingParams:
     # this many hours apart; a clip longer than its platform's limit is not posted there.
     sibling_gap_h: float = DEFAULT_SIBLING_GAP_H
     max_duration_s: Mapping[Platform, float] = MappingProxyType({})
+    # D116: an hourly post may not take a clip posted on another platform less than this many seconds ago.
+    cross_platform_min_gap_s: int = 0
+    # D116: the order in which platforms pick their clip in an hourly slot (unlisted platforms last).
+    platform_priority: tuple[Platform, ...] = ()
+    # gate.hourly_len_by_platform: the hourly length window of each platform (its override or gate.hourly),
+    # for short clips cut for the hourly lane; empty = no check. The end card counts (factory.end_card_s).
+    hourly_len: Mapping[Platform, LengthWindow] = MappingProxyType({})
+    end_card_s: float = 0.0
 
     def __post_init__(self) -> None:
         if self.app_env not in APP_ENVS:
@@ -85,6 +103,7 @@ class PostingParams:
             "spike_max_wait_s",
             "spike_max_age_s",
             "spike_hold_s",
+            "cross_platform_min_gap_s",
         ):
             if getattr(self, name) < 0:
                 raise ValueError(f"posting.{name} must not be negative")
@@ -154,7 +173,34 @@ class PostingParams:
                 "posting.sibling_gap_h", values.get("posting.sibling_gap_h", DEFAULT_SIBLING_GAP_H)
             ),
             max_duration_s=_duration_limits(values.get("posting.max_duration_s", {})),
+            cross_platform_min_gap_s=_int(
+                "posting.cross_platform_min_gap_s", values.get("posting.cross_platform_min_gap_s", 0)
+            ),
+            platform_priority=_platform_order(values.get("posting.platform_priority")),
+            hourly_len=_hourly_len(values.get("gate.hourly"), values.get("gate.hourly_len_by_platform")),
+            end_card_s=max(0.0, _number("factory.end_card_s", values.get("factory.end_card_s", 0))),
         )
+
+    def hourly_len_blocks(self, platform: Platform, duration_s: float | None) -> bool:
+        """Is a short hourly clip of `duration_s` seconds (plus the end card) outside `platform`'s hourly
+        length window? False without windows or without a known length."""
+        window = self.hourly_len.get(platform)
+        if window is None or duration_s is None:
+            return False
+        return not window.fits(duration_s + self.end_card_s)
+
+    @property
+    def requeues_posted(self) -> bool:
+        """D116: with a cross-platform gap a clip one platform skipped must stay available to it, so the
+        hourly queue also holds hourly clips that are already `posted` (on another platform)."""
+        return self.cross_platform_min_gap_s > 0
+
+    def platform_rank(self, platform: Platform) -> int:
+        """Where `platform` picks in an hourly slot (`posting.platform_priority`); unlisted platforms last."""
+        try:
+            return self.platform_priority.index(platform)
+        except ValueError:
+            return len(self.platform_priority)
 
     def too_long(self, platform: Platform, duration_s: float | None) -> bool:
         """Is a clip of `duration_s` seconds over `platform`'s limit (`posting.max_duration_s`)?"""
@@ -168,6 +214,49 @@ def _duration_limits(value: object) -> Mapping[Platform, float]:
     return MappingProxyType(
         {known[name]: _number(f"posting.max_duration_s.{name}", raw[name]) for name in raw if name in known}
     )
+
+
+def with_cut_minimum(values: Mapping[str, object], cut_min_s: float | None) -> dict[str, object]:
+    """The settings with `gate.hourly.min_len` lowered to `cut_min_s` (the `cut.adaptive` scoring flag),
+    exactly as the gate lowers it (`gate.overhaul.lowered_lengths`), so posting judges a platform's window
+    like the gate judged the clip. Unchanged without the flag. Pure."""
+    out = dict(values)
+    hourly = values.get("gate.hourly")
+    if cut_min_s is None or not isinstance(hourly, Mapping):
+        return out
+    low = hourly.get("min_len")
+    if isinstance(low, bool) or not isinstance(low, int | float):
+        return out
+    out["gate.hourly"] = {**hourly, "min_len": min(float(low), cut_min_s)}
+    return out
+
+
+def _hourly_len(default: object, raw: object) -> Mapping[Platform, LengthWindow]:
+    """Each platform's hourly length window, or none at all while `gate.hourly_len_by_platform` is unset or
+    `gate.hourly` has no valid length (posting then leaves the length to the gate, as before)."""
+    if not lengths.overrides(raw) or not isinstance(default, Mapping):
+        return MappingProxyType({})
+    low, high = default.get("min_len"), default.get("max_len")
+    if isinstance(low, bool) or isinstance(high, bool):
+        return MappingProxyType({})
+    if not isinstance(low, int | float) or not isinstance(high, int | float) or high < low:
+        return MappingProxyType({})
+    base = LengthWindow(float(low), float(high))
+    return MappingProxyType({p: lengths.window_for(p.value, base, raw) for p in Platform})
+
+
+def _platform_order(value: object) -> tuple[Platform, ...]:
+    """`posting.platform_priority`: known platform names in order, each once. Anything malformed gives the
+    empty order (accounts then pick in id order, as before D116)."""
+    if not isinstance(value, list | tuple):
+        return ()
+    known = {platform.value: platform for platform in Platform}
+    order: list[Platform] = []
+    for name in value:
+        platform = known.get(name) if isinstance(name, str) else None
+        if platform is not None and platform not in order:
+            order.append(platform)
+    return tuple(order)
 
 
 def _bool(key: str, value: object) -> bool:

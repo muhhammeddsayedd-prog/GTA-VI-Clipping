@@ -23,7 +23,7 @@ from pathlib import Path
 
 import structlog
 
-from sixstars import events, jobs, notify
+from sixstars import events, jobs, lengths, notify
 from sixstars import settings as app_settings
 from sixstars import storage as clip_storage
 from sixstars.ai.calls import BudgetExceededError
@@ -295,6 +295,12 @@ def _hand_off(clip_id: str, deps: GateDeps) -> tuple[SpikeRun | None, str | None
         return None, error
 
 
+def platform_lengths(settings: GateSettings) -> GateSettings:
+    """The hourly profile widened to every platform's hourly length window (`gate.hourly_len_by_platform`,
+    migration 0036). A story cut is judged by `story_limits` afterwards, which replaces the length."""
+    return profiles.with_platform_lengths(settings, app_settings.get(lengths.SETTING, None))
+
+
 def story_limits(row: store.ClipRow, settings: GateSettings) -> GateSettings:
     """A story cut (development-plan/M18 Phase C) is judged by the hourly profile with the story's length
     limits (`factory.story`); any other clip by the settings as they are."""
@@ -323,7 +329,7 @@ def run_gate(clip_id: str, *, deps: GateDeps | None = None) -> GateOutcome:
             get_logger("gate").info("gate_skipped", status=row.status)
             return GateOutcome(clip_id, row.status, skipped=f"status is {row.status}")
         notes = overhaul.Adjustments()
-        settings = story_limits(row, overhaul.adjust_settings(row, profiles.load(), notes))
+        settings = story_limits(row, platform_lengths(overhaul.adjust_settings(row, profiles.load(), notes)))
         file = _measure(row, settings, deps)
         # Would the clip be rejected even if the pictures were fine? Then P5 is not asked.
         now = deps.clock()
@@ -370,7 +376,7 @@ def resolve_precheck(clip_id: str, state: PrecheckState, *, deps: GateDeps | Non
         if state is PrecheckState.AVAILABLE:
             raise ValueError("resolve_precheck needs the outcome of the pre-check, not 'available'")
         notes = overhaul.Adjustments()
-        settings = story_limits(row, overhaul.adjust_settings(row, profiles.load(), notes))
+        settings = story_limits(row, platform_lengths(overhaul.adjust_settings(row, profiles.load(), notes)))
         row = overhaul.boost_row(row, notes)
         inputs = (row.gate_result or {}).get("inputs")
         stored = inputs if isinstance(inputs, dict) else {}

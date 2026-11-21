@@ -6,10 +6,11 @@ cache, so a change to a limit applies to the next clip.
 """
 
 from collections.abc import Mapping
+from dataclasses import replace
 from datetime import UTC, datetime
 from typing import Any
 
-from sixstars import db
+from sixstars import db, lengths
 from sixstars.gate.models import EXPRESS, HOURLY, GateSettings, ProfileLimits
 
 EXPRESS_TIER_TOKENS = ("preferred", "auto", "auto_no_music")
@@ -103,6 +104,16 @@ def _profile(values: Mapping[str, Any], name: str) -> ProfileLimits:
         tiers=tiers,
         precheck_risky=precheck_risky,
     )
+
+
+def with_platform_lengths(settings: GateSettings, raw: object) -> GateSettings:
+    """`gate.hourly_len_by_platform` (migration 0036): the hourly profile allows the union of every
+    platform's window, so a clip that fits any platform is approved (posting sends it only there). Only the
+    gate's verdict uses it; sources that read `gate.hourly` for their own limits (Twitch clips) do not.
+    Pure; unchanged without the setting."""
+    hourly = settings.hourly
+    widest = lengths.union(lengths.LengthWindow(hourly.min_len_s, hourly.max_len_s), raw)
+    return replace(settings, hourly=replace(hourly, min_len_s=widest.min_s, max_len_s=widest.max_s))
 
 
 def settings_from_values(values: Mapping[str, Any]) -> GateSettings:

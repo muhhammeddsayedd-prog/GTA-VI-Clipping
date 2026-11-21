@@ -51,6 +51,7 @@ class Reason(StrEnum):
     CLIP_WRONG_LANE = "clip_wrong_lane"
     ALREADY_POSTED = "already_posted"
     POSTED_ON_SAME_PLATFORM = "posted_on_same_platform"
+    CROSS_PLATFORM_TOO_SOON = "cross_platform_too_soon"
     SPIKE_TIME_MISSING = "spike_time_missing"
     SPIKE_TOO_OLD = "spike_too_old"
     AT_CAP = "at_cap"
@@ -72,6 +73,7 @@ class Reason(StrEnum):
 
 POST_STATUSES = frozenset({"pending", "published", "failed", "skipped", "removed", "remove_failed"})
 CLIP_APPROVED = "approved"
+CLIP_POSTED = "posted"
 
 
 def ensure_utc(value: datetime, name: str = "time") -> datetime:
@@ -98,10 +100,15 @@ class Account:
     enabled: bool = True
     paused_until: datetime | None = None
     hourly_paused_until: datetime | None = None  # the delivery guard pauses only the hourly lane
+    # Seconds between two hourly posts of this account, counted from its last hourly post only (spike posts
+    # do not count). None = no extra hourly gap. Migration 0034.
+    hourly_min_gap_s: int | None = None
 
     def __post_init__(self) -> None:
         if self.cap_24h < 0 or self.spike_reserve < 0 or self.min_gap_s < 0:
             raise ValueError(f"account {self.id}: cap_24h, spike_reserve and min_gap_s must not be negative")
+        if self.hourly_min_gap_s is not None and self.hourly_min_gap_s < 0:
+            raise ValueError(f"account {self.id}: hourly_min_gap_s must not be negative")
         if self.hourly_hours_utc is not None and any(not 0 <= h <= 23 for h in self.hourly_hours_utc):
             raise ValueError(f"account {self.id}: hourly_hours_utc must be within 0..23")
         if self.paused_until is not None:
@@ -167,6 +174,14 @@ class Clip:
     # M18 Phase C: the clip's family (the short clip's id; None before migration 0029) and its length.
     family_id: str | None = None
     duration_s: float | None = None
+    # The gate profile that approved the clip (`clips.gate_profile`): "hourly" for a clip cut for the hourly
+    # lane, "express" for a spike clip (also after it was demoted to the hourly lane).
+    gate_profile: str | None = None
+
+    @property
+    def is_story(self) -> bool:
+        """M18 Phase C: a story cut belongs to the family of another (short) clip."""
+        return self.family_id is not None and self.family_id != self.id
 
     def __post_init__(self) -> None:
         if self.approved_at is not None:

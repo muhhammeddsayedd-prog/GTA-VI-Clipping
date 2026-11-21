@@ -88,7 +88,8 @@ def plan_slot(
 ) -> tuple[SlotPlan, dict[str, Clip], dict[str, Account]]:
     """Reads the accounts, the queue and the history and decides the slot. Writes nothing."""
     accounts = store.load_accounts()
-    queue = clips_only(store.load_hourly_queue())
+    posted_since = now - timedelta(hours=params.max_clip_age_h) if params.requeues_posted else None
+    queue = clips_only(store.load_hourly_queue(posted_since))
     spikes = clips_only(store.load_spike_clips())
     history = store.load_history(now, [clip.id for clip in (*queue, *spikes)])
     plan = plan_hourly_slot(accounts, history, queue, slot_at, now, params, spike_clips=spikes)

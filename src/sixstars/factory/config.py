@@ -7,7 +7,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass, replace
 from typing import Literal
 
-from sixstars import settings
+from sixstars import lengths, settings
 from sixstars.factory.anchor import CutRules
 from sixstars.factory.director import DEFAULT_DIRECTOR, DirectorRules
 from sixstars.factory.params import FactoryParams
@@ -113,6 +113,12 @@ class FactoryConfig:
         high = min(max_len, _number(gate.get("max_len"), max_len))
         if high < low:
             low, high = min_len, max_len
+        if profile == "hourly":
+            # gate.hourly_len_by_platform (migration 0036): a platform may take shorter or longer hourly clips
+            # than gate.hourly; the writer may then cut them (spikes.max_len_s still caps the length).
+            for window in lengths.overrides(values.get(lengths.SETTING)).values():
+                low = min(low, window.min_s)
+                high = max(high, min(max_len, window.max_s))
         whisper = values["vod.whisper_model"]
         if not isinstance(whisper, str) or not whisper.strip():
             raise TypeError("setting vod.whisper_model must be a string")
@@ -144,6 +150,7 @@ class FactoryConfig:
         values: dict[str, object] = {key: settings.get(key) for key in keys}
         profile = gate_profile_for(lane)
         values[f"gate.{profile}"] = settings.get(f"gate.{profile}", {})
+        values[lengths.SETTING] = settings.get(lengths.SETTING, None)  # absent before migration 0036
         # Absent before migration 0011: the snap rule is then switched off.
         values["factory.cut_snap"] = settings.get("factory.cut_snap", None)
         # Absent before migration 0021: the classic look.
