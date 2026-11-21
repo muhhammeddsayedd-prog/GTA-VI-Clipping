@@ -686,6 +686,8 @@ def render_file(job: RenderJob, *, ffmpeg: str = "ffmpeg", ffprobe: str = "ffpro
         title_png=bar.path if bar is not None else None,
         title_top=title_top,
         title_whole_clip=style.title_whole_clip,
+        follow_text=style.follow_overlay_text,
+        follow_s=min(style.follow_overlay_s, duration),
         broll=broll,
         **_seam_fade(job),
     )

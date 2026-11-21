@@ -293,6 +293,7 @@ Residential proxy (DataImpulse) for the VOD lane only, added 2026-11-18 (migrati
 | Key | Default | Meaning |
 |---|---|---|
 | `gate.hourly` | `{"min_len": 20, "max_len": 60, "max_music_ratio": 0.1, "min_score": 7, "topic_dedupe_h": 48, "precheck_risky": true}` | Quality gate profile for hourly clips. |
+| `gate.hourly_len_by_platform` | `{"youtube": {"min_len": 8, "max_len": 30}}` | Hourly clip length per platform (end card included), replacing `gate.hourly` `min_len`/`max_len` for that platform. The gate and the clip writer allow the union (the shortest minimum, the longest maximum); the posting engine sends a short hourly clip (gate profile `hourly`) only to the platforms whose window fits it, the others using `gate.hourly` lowered like the gate lowers it (`cut.adaptive` `min_s`). Spike clips and story cuts are not affected. Migration 0036. Absent: `gate.hourly` everywhere. |
 | `gate.express` | `{"min_len": 15, "max_len": 45, "max_music_ratio": 0.0, "min_score": 8, "topic_dedupe_h": 6, "tiers": ["preferred", "auto_no_music"]}` | Quality gate profile for express clips. |
 | `gate.spoiler_block_until` | `"2026-12-03T00:00:00Z"` | Story-spoiler clips rejected until this time. Titles/hooks never contain spoilers. |
 | `gate.reject_topics` | `["real-world politics", "gambling", "sponsored segment", "real-world violence", "sexual content", "personal information"]` | Always rejected. |

@@ -70,7 +70,7 @@ def test_the_plan_covers_the_enabled_accounts_and_skips_their_last_style(staging
     accounts = variants.load_accounts()
     assert [account.id for account in accounts] == ["instagram_main", "tiktok_main", "youtube_main"]
     cfg = FactoryConfig.load("hourly")
-    assert cfg.catalog.ids == (
+    assert tuple(i for i in cfg.catalog.ids if not i.endswith("_follow")) == (
         "cam_top_question",
         "cam_top_title",
         "cam_top_viral",
@@ -299,7 +299,8 @@ def test_a_clip_with_every_text_gets_three_styles_rendered(
     }
     for row in db.fetch_all("select * from clip_renders where clip_id = %s and not is_reference", (clip_id,)):
         assert row["status"] == "ready", (row["style_id"], row["error"])
-        assert row["layout_kind"] == expected_kind[row["style_id"]]
+        # a 0036 follow twin has the layout of the style it copies
+        assert row["layout_kind"] == expected_kind[row["style_id"].removesuffix("_follow")]
         assert row["checks"]["problems"] == []
 
 

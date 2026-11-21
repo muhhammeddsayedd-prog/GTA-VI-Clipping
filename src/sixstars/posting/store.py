@@ -17,7 +17,8 @@ from sixstars import db, events, jobs, notify
 from sixstars.config import env
 from sixstars.posting.caps import DAY
 from sixstars.posting.models import Account, Clip, Lane, Platform, PostRecord, ensure_utc
-from sixstars.posting.params import OPTIONAL_KEYS, REQUIRED_KEYS, PostingParams
+from sixstars.posting.params import OPTIONAL_KEYS, REQUIRED_KEYS, PostingParams, with_cut_minimum
+from sixstars.scoring import config as scoring_config
 
 SERVICE = "posting"
 PLANNING_LOCK_NAME = "sixstars.posting.plan"
@@ -34,7 +35,7 @@ _CLIP_SQL = """
 select c.id::text as id, c.creator_id::text as creator_id, c.lane, c.rank_score, c.status, c.approved_at,
        s.spike_wall, cr.handle as creator_handle, c.source_platform, c.title, c.caption, c.hook,
        c.hashtags, c.local_path, c.spike_id::text as spike_id,
-       coalesce(c.parent_clip_id, c.id)::text as family_id, c.duration_s
+       coalesce(c.parent_clip_id, c.id)::text as family_id, c.duration_s, c.gate_profile
 from clips c
 join creators cr on cr.id = c.creator_id
 left join spikes s on s.id = c.spike_id
@@ -188,6 +189,7 @@ def clip_from_row(row: Mapping[str, Any]) -> LoadedClip:
         hashtags=tuple(row["hashtags"] or ()),
         family_id=row.get("family_id"),
         duration_s=float(row["duration_s"]) if row.get("duration_s") is not None else None,
+        gate_profile=row.get("gate_profile"),
     )
     return LoadedClip(clip=clip, local_path=row["local_path"], spike_id=row["spike_id"])
 
@@ -250,7 +252,10 @@ class DbStore:
         rows = db.fetch_all(
             "select key, value from settings where key = any(%s)", ([*REQUIRED_KEYS, *OPTIONAL_KEYS],)
         )
-        return PostingParams.from_settings({row["key"]: row["value"] for row in rows}, app_env())
+        values = {row["key"]: row["value"] for row in rows}
+        cut = scoring_config.flag("cut.adaptive")
+        cut_min = None if cut is None else scoring_config.number(cut, "min_s", 0.0) or None
+        return PostingParams.from_settings(with_cut_minimum(values, cut_min), app_env())
 
     def load_accounts(self) -> list[Account]:
         return [account_from_row(row) for row in db.fetch_all(_ACCOUNT_SQL + " order by id")]

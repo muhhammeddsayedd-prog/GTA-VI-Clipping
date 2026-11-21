@@ -170,6 +170,14 @@ class Clip:
     # M18 Phase C: the clip's family (the short clip's id; None before migration 0029) and its length.
     family_id: str | None = None
     duration_s: float | None = None
+    # The gate profile that approved the clip (`clips.gate_profile`): "hourly" for a clip cut for the hourly
+    # lane, "express" for a spike clip (also after it was demoted to the hourly lane).
+    gate_profile: str | None = None
+
+    @property
+    def is_story(self) -> bool:
+        """M18 Phase C: a story cut belongs to the family of another (short) clip."""
+        return self.family_id is not None and self.family_id != self.id
 
     def __post_init__(self) -> None:
         if self.approved_at is not None:

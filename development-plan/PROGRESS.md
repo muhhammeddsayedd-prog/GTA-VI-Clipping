@@ -590,3 +590,32 @@ Production audit 2026-11-21: `youtube_main` had been lowered to the learned-cap 
 ### Open issues / next
 
 - PR-C: hourly length per platform (YouTube 8–30 s) and the follow-overlay test.
+
+## YouTube lane tuning C — hourly length per platform and the follow-line test (2026-11-21)
+
+**Branch:** `yt-lane-c` (on top of `yt-lane-b`).
+
+### What was built
+
+- Migration `0036_youtube_length_follow.sql`:
+  - `gate.hourly_len_by_platform = {"youtube": {"min_len": 8, "max_len": 30}}` (added where missing);
+  - three follow twins in `factory.styles` (`cam_top_viral_follow`, `cam_top_wordcap_follow`, `cam_top_title_follow`; YouTube's most used styles, 22 of its 28 posts): same rules plus a follow line "Follow @6starsClips-m3x for Part 2" over the last 1.5 s, `youtube_main` and the hourly lane only, same weight; their moment-type affinity copied in `factory.style_director`. Added only where missing.
+- `sixstars/lengths.py` (pure): per-platform windows, the union, lenient parsing.
+- Gate: the hourly verdict allows the union (`gate.platform_lengths` → `profiles.with_platform_lengths`, only where a clip is judged; the Twitch-clip source keeps reading plain `gate.hourly`); express and story limits unchanged.
+- Writer: hourly limits widened to the overrides (`factory/config.FactoryConfig.from_mapping`); `cut.adaptive` still replaces them when on.
+- Posting (R14): `selection.family_block` holds a short hourly clip (`clips.gate_profile = 'hourly'`, not a story cut) off a platform whose window does not fit it, end card included. Each platform's window is its override or `gate.hourly` lowered by `cut.adaptive.min_s` exactly as the gate lowers it (`params.with_cut_minimum`), so no platform loses a clip the gate approved for it.
+- Factory: style rules `follow_overlay_s` / `follow_overlay_text`; `overlays.follow_layout` (pure, inside the safe zone) and `follow_filter` (drawtext, last N seconds, no extra time); wired through `RenderSpec.follow_text/follow_s`.
+- Docs: docs/16 (`gate.hourly_len_by_platform`), docs/27 (follow line), docs/11 R14.
+- Tests: `tests/unit/posting/test_posting_hourly_length.py`, `tests/unit/gate/test_gate_len_by_platform.py`, `tests/unit/factory/test_factory_follow_length.py`, `tests/integration/test_youtube_length_follow_migration.py`; a real ffmpeg frame check of the line (before / during the last 1.5 s).
+
+### Deviations
+
+- **Production already cuts short clips:** the scoring flag `cut.adaptive` is on in production (writer 6–25 s, target 12–18 s; the gate minimum follows `min_s` = 6), so `gate.hourly.min_len = 20` was not blocking short clips there. In production the YouTube window mainly keeps clips of 6–8 s and Twitch clips over 30 s off YouTube; on staging (flag off) it lets the writer cut 8–19 s clips for YouTube.
+- No `spikes.len_by_platform`: spikes are unchanged (owner).
+- The end card is not switched on (`factory.end_card_s` stays 0, owner): the follow line is an overlay that keeps the loop, tested 50/50 through the director/bandit. The handle is in the style's text because a render does not know its account; the twins are limited to `youtube_main`.
+- Twins for three styles, not all seven, so the bandit's samples per style on YouTube are not spread too thin (`min_samples` 20).
+
+### Open issues / next
+
+- The bandit judges a style on posts 48 h to 14 days old; read the twins against their originals after about two weeks of YouTube hourly posts.
+- Later: `posting.youtube_cap_ramp` (not built; after PR-A has run clean for 48 h).

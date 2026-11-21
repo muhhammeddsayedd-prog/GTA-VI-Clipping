@@ -26,6 +26,7 @@ from sixstars.factory.overlays import (
     SEAM_TRACK_COLOR,
     ass_filter,
     end_card_filters,
+    follow_filter,
     progress_filters,
     seam_filter,
     watermark_filter,
@@ -90,6 +91,9 @@ class RenderSpec:
     # (reference pixels), shown for the first `factory.hook_seconds`, or for the whole clip with
     # `title_whole_clip` (the persistent title of the docs/27 section 5 styles).
     title_png: PurePath | None = None
+    # YouTube lane tuning C: the style's follow line over the last `follow_s` seconds (0: none).
+    follow_text: str = ""
+    follow_s: float = 0.0
     title_top: int = 0
     title_whole_clip: bool = False
     # Burn in `factory.watermark` (off for the news card, whose header is the brand).
@@ -211,6 +215,19 @@ def build_video_filters(spec: RenderSpec) -> list[str]:
     )
     if watermark is not None:
         text_chain.append(watermark)
+    follow = follow_filter(
+        spec.follow_text,
+        geometry=geometry,
+        font_name=params.font,
+        fonts=spec.fonts,
+        accent_color=params.accent_color,
+        clip_s=duration,
+        show_s=spec.follow_s,
+        safe_top_px=params.safe_top_px,
+        safe_bottom_px=params.safe_bottom_px,
+    )
+    if follow is not None:
+        text_chain.append(follow)
     finish = f"trim=duration={_seconds(duration)},setpts=PTS-STARTPTS,setsar=1,format=yuv420p"
     text_chain.append(finish)
     if spec.end_card_s <= 0:

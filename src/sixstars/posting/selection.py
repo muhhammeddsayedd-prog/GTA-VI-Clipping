@@ -82,6 +82,12 @@ def family_block(
         return False
     if params.too_long(account.platform, clip.duration_s):
         return True
+    if (
+        clip.gate_profile == "hourly"
+        and not clip.is_story
+        and params.hourly_len_blocks(account.platform, clip.duration_s)
+    ):
+        return True  # gate.hourly_len_by_platform: this platform's hourly window does not fit the clip
     if clip.family_id is None:
         return False
     gap = timedelta(hours=params.sibling_gap_h)
