@@ -293,6 +293,7 @@ Residential proxy (DataImpulse) for the VOD lane only, added 2026-11-18 (migrati
 | Key | Default | Meaning |
 |---|---|---|
 | `gate.hourly` | `{"min_len": 20, "max_len": 60, "max_music_ratio": 0.1, "min_score": 7, "topic_dedupe_h": 48, "precheck_risky": true}` | Quality gate profile for hourly clips. |
+| `gate.hourly_len_by_platform` | `{"youtube": {"min_len": 8, "max_len": 30}}` | Hourly clip length per platform (end card included), replacing `gate.hourly` `min_len`/`max_len` for that platform. The gate and the clip writer allow the union (the shortest minimum, the longest maximum); the posting engine sends a short hourly clip (gate profile `hourly`) only to the platforms whose window fits it, the others using `gate.hourly` lowered like the gate lowers it (`cut.adaptive` `min_s`). Spike clips and story cuts are not affected. Migration 0036. Absent: `gate.hourly` everywhere. |
 | `gate.express` | `{"min_len": 15, "max_len": 45, "max_music_ratio": 0.0, "min_score": 8, "topic_dedupe_h": 6, "tiers": ["preferred", "auto_no_music"]}` | Quality gate profile for express clips. |
 | `gate.spoiler_block_until` | `"2026-12-03T00:00:00Z"` | Story-spoiler clips rejected until this time. Titles/hooks never contain spoilers. |
 | `gate.reject_topics` | `["real-world politics", "gambling", "sponsored segment", "real-world violence", "sexual content", "personal information"]` | Always rejected. |
@@ -312,7 +313,7 @@ Residential proxy (DataImpulse) for the VOD lane only, added 2026-11-18 (migrati
 | Key | Default | Meaning |
 |---|---|---|
 | `posting.jitter_max_s` | `300` | Hourly slot random offset 0..N seconds. |
-| `posting.min_gap_s` | `900` | Minimum seconds between posts on one account. |
+| `posting.min_gap_s` | `900` | Minimum seconds between posts on one account. The hourly lane can add its own longer gap per account: column `platform_accounts.hourly_min_gap_s` (counted from the last hourly post only; `youtube_main` 3000 since migration 0034). |
 | `posting.spike_max_per_hour` | `2` | Max spike posts per account per rolling hour. |
 | `posting.skip_hourly_after_spike_s` | `1800` | Skip an hourly slot if a spike posted within this many seconds before it. |
 | `posting.spike_max_wait_s` | `900` | A spike may wait this long for the min gap; after that it is demoted. |
@@ -321,10 +322,12 @@ Residential proxy (DataImpulse) for the VOD lane only, added 2026-11-18 (migrati
 | `posting.freshness_half_life_h` | `{"live": 6, "vod": 24}` | Freshness decay half-life by source. |
 | `posting.max_clip_age_h` | `72` | Approved clips older than this expire. |
 | `posting.sibling_gap_h` | `12` | Hours between two clips of one family (a short clip and its story cut) on the same account (M18 Phase C, migration 0029). Absent: 12. |
+| `posting.cross_platform_min_gap_s` | `2700` | D116, hourly lane only: an hourly post does not take a clip another platform posted less than this many seconds ago (planned posts of the same slot count); the account takes its next best clip. `0`: off, every platform gets the top clip (D18). Migration 0035. Absent: 0. |
+| `posting.platform_priority` | `["youtube", "tiktok", "instagram"]` | D116: the order in which platforms pick their clip in an hourly slot; unlisted platforms last, then by account id. Missing or malformed: account id order. Migration 0035. |
 | `posting.max_duration_s` | `{"tiktok": 600, "instagram": 900, "youtube": 180}` | The longest clip in seconds each platform is given (M18 Phase C, migration 0029). Absent: no limit. |
 | `posting.queue_low_watermark` | `12` | Below this many approved hourly clips, guardian widens discovery. |
-| `posting.first_comment` | `"Follow {handle} for the best GTA 6 moments every hour 🎮⭐"` | First comment text. `{handle}` becomes the posting account's handle (D111). |
-| `posting.base_hashtags` | `["#GTA6", "#GTAVI", "#GTA6Clips", "#Gaming"]` | Hashtags added to every caption. |
+| `posting.first_comment` | `"Would you have survived this? 👇 Follow {handle} for daily GTA 6 chaos"` | First comment text. `{handle}` becomes the posting account's handle (D111). A question invites replies (migration 0034; was "Follow {handle} for the best GTA 6 moments every hour 🎮⭐"). |
+| `posting.base_hashtags` | `["#GTA6", "#GTAVI", "#GTA6Clips"]` | Hashtags added to every caption, on every platform. Migration 0034 dropped `#Gaming`. |
 | `posting.youtube_extra_hashtags` | `["#Shorts"]` | Extra hashtags for YouTube. |
 | `posting.platform_max_24h` | `{"tiktok": 15, "instagram": 50, "youtube": 30}` | Hard ceiling of posts per account per rolling 24 h set by Upload-Post. An account cap above it is ignored. |
 | `posting.staging_allow_instagram` | `false` | Staging only: allow a real Instagram post (Instagram cannot post privately). Set true only for the single M15 test post. |

@@ -26,6 +26,9 @@ _TITLE_SOURCES: tuple[TitleSource, ...] = ("hook", "title_line", "headline", "qu
 _TITLE_LOOKS: tuple[TitleLook, ...] = ("bar", "question")
 
 
+MAX_FOLLOW_OVERLAY_S = 5.0  # the follow line covers at most the last 5 seconds
+
+
 @dataclass(frozen=True, slots=True)
 class StyleRules:
     """The setting `factory.style`.
@@ -94,6 +97,11 @@ class StyleRules:
     show_title: bool = True
     montage_every_s: float = 0.0
     caption_tiers: bool = False
+    # YouTube lane tuning C: a follow line over the last `follow_overlay_s` seconds of the clip (0: off). It
+    # adds no time, so the clip still loops. The text names the handle, so a style that uses it is limited
+    # to one account (`factory.styles` `accounts`).
+    follow_overlay_s: float = 0.0
+    follow_overlay_text: str = ""
 
     def __post_init__(self) -> None:
         if self.caption_words < 0 or self.caption_chars < 1:
@@ -112,6 +120,8 @@ class StyleRules:
             raise ValueError("caption_y must be 0 or within 200..1720")
         if self.montage_every_s < 0:
             raise ValueError("montage_every_s must not be negative")
+        if not 0 <= self.follow_overlay_s <= MAX_FOLLOW_OVERLAY_S:
+            raise ValueError(f"follow_overlay_s must be within 0..{MAX_FOLLOW_OVERLAY_S:g}")
         if self.caption_active_color:
             parse_hex_color(self.caption_active_color)
         if self.punchin_max < 0 or self.punchin_len_s <= 0 or self.punchin_min_gap_s < 0:
@@ -200,6 +210,8 @@ class StyleRules:
                 show_title=flag("show_title", base.show_title),
                 montage_every_s=number("montage_every_s", base.montage_every_s),
                 caption_tiers=flag("caption_tiers", base.caption_tiers),
+                follow_overlay_s=number("follow_overlay_s", base.follow_overlay_s),
+                follow_overlay_text=text("follow_overlay_text", base.follow_overlay_text),
             )
         except ValueError:
             return base

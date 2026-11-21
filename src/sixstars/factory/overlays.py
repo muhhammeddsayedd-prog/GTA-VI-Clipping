@@ -373,6 +373,80 @@ def series_line(series_label: str, series_no: int) -> str:
     return f"{label} #{series_no}" if label else f"#{series_no}"
 
 
+# Follow line (YouTube lane tuning C): reference-canvas size, width and where its centre sits inside the safe
+# zone (0 = top of the safe zone, 1 = bottom). Low in the frame, above the bottom safe area.
+FOLLOW_SIZE = 64
+FOLLOW_MAX_TEXT_WIDTH = 900
+FOLLOW_ZONE_POSITION = 0.82
+FOLLOW_BOX_PAD = 22
+
+
+@dataclass(frozen=True, slots=True)
+class FollowLayout:
+    """The follow line on the 1080x1920 reference canvas: font size and the top of the text."""
+
+    size: int
+    top: int
+
+    def inside(self, safe_top_px: int, safe_bottom_px: int) -> bool:
+        """The text and its box stay between the top and bottom safe areas."""
+        return (
+            self.top - FOLLOW_BOX_PAD >= safe_top_px
+            and self.top + self.size + FOLLOW_BOX_PAD <= REF_HEIGHT - safe_bottom_px
+        )
+
+
+def follow_layout(text: str, safe_top_px: int, safe_bottom_px: int) -> FollowLayout:
+    """Where the follow line goes: shrunk to fit `FOLLOW_MAX_TEXT_WIDTH`, centred on
+    `FOLLOW_ZONE_POSITION` of the safe zone, and moved up if its box would reach the bottom safe area."""
+    size = _fitted_size(text, FOLLOW_SIZE, FOLLOW_MAX_TEXT_WIDTH)
+    zone_top, zone_bottom = safe_top_px, REF_HEIGHT - safe_bottom_px
+    centre = zone_top + (zone_bottom - zone_top) * FOLLOW_ZONE_POSITION
+    top = round(centre - size / 2)
+    top = min(top, zone_bottom - FOLLOW_BOX_PAD - size)
+    top = max(top, zone_top + FOLLOW_BOX_PAD)
+    return FollowLayout(size=size, top=top)
+
+
+def follow_filter(
+    text: str,
+    *,
+    geometry: Geometry,
+    font_name: str,
+    fonts: FontFiles,
+    accent_color: str,
+    clip_s: float,
+    show_s: float,
+    safe_top_px: int,
+    safe_bottom_px: int,
+) -> str | None:
+    """The follow line over the last `show_s` seconds of a `clip_s` clip, centred on a dark box with an
+    accent border. None when off or empty."""
+    line = single_line(text)
+    if not line or show_s <= 0 or clip_s <= 0:
+        return None
+    layout = follow_layout(line, safe_top_px, safe_bottom_px)
+    scale = geometry.height / REF_HEIGHT
+    start = max(0.0, clip_s - show_s)
+    return drawtext_filter(
+        line,
+        font_name=font_name,
+        fonts=fonts,
+        size=max(8, round(layout.size * scale)),
+        color="white",
+        x="(w-text_w)/2",
+        y=str(round(layout.top * scale)),
+        extra=[
+            ("box", "1"),
+            ("boxcolor", "black@0.72"),
+            ("boxborderw", str(max(2, round(FOLLOW_BOX_PAD * scale)))),
+            ("bordercolor", accent_color),
+            ("borderw", "2"),
+            ("enable", f"gte(t,{_seconds(start)})"),
+        ],
+    )
+
+
 def _fitted_size(text: str, size: int, max_width: float) -> int:
     width = estimate_em_text_width(single_line(text), size)
     return size if width <= max_width else max(8, int(size * max_width / width))

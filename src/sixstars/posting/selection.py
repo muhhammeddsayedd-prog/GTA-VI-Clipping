@@ -14,6 +14,7 @@ from sixstars.posting.caps import account_posts
 from sixstars.posting.gate import duplicate_channels
 from sixstars.posting.models import (
     CLIP_APPROVED,
+    CLIP_POSTED,
     Account,
     Action,
     Clip,
@@ -24,7 +25,13 @@ from sixstars.posting.models import (
     ensure_utc,
 )
 from sixstars.posting.params import PostingParams
-from sixstars.posting.precedence import clip_block, decide_hourly_account, has_pending_spike, planned_post
+from sixstars.posting.precedence import (
+    clip_block,
+    cross_platform_block,
+    decide_hourly_account,
+    has_pending_spike,
+    planned_post,
+)
 from sixstars.posting.slots import check_slot
 
 EMPTY_SLOTS_BEFORE_ALERT = 2  # R10: alert when this many slots in a row were empty (docs/11, no setting)
@@ -32,16 +39,19 @@ EMPTY_SLOTS_BEFORE_ALERT = 2  # R10: alert when this many slots in a row were em
 
 def hourly_candidates(clips: Iterable[Clip], now: datetime, params: PostingParams) -> list[Clip]:
     """The hourly queue in posting order: approved hourly clips that are not older than
-    `posting.max_clip_age_h`, best rank first (ties: approved earlier, then lower id).
+    `posting.max_clip_age_h`, best rank first (ties: approved earlier, then lower id). With D116 on, clips
+    already `posted` on some platform stay in it for the accounts that have not taken them yet ("already
+    posted" and D42 keep them off the others).
 
     A clip without an approval time is left out: its age cannot be checked.
     """
+    statuses = {CLIP_APPROVED, CLIP_POSTED} if params.requeues_posted else {CLIP_APPROVED}
     now = ensure_utc(now, "now")
     max_age = timedelta(hours=params.max_clip_age_h)
     usable = [
         c
         for c in clips
-        if c.status == CLIP_APPROVED
+        if c.status in statuses
         and c.lane is Lane.HOURLY
         and c.approved_at is not None
         and now - c.approved_at <= max_age
@@ -72,6 +82,12 @@ def family_block(
         return False
     if params.too_long(account.platform, clip.duration_s):
         return True
+    if (
+        clip.gate_profile == "hourly"
+        and not clip.is_story
+        and params.hourly_len_blocks(account.platform, clip.duration_s)
+    ):
+        return True  # gate.hourly_len_by_platform: this platform's hourly window does not fit the clip
     if clip.family_id is None:
         return False
     gap = timedelta(hours=params.sibling_gap_h)
@@ -96,9 +112,20 @@ def pick_clip(
             continue
         if family_block(clip, account, history, dry, now, params):
             continue
+        if (
+            now is not None
+            and params is not None
+            and cross_platform_block(clip, account, history, now, params, dry)
+        ):
+            continue
         if clip_block(clip, account, history, dry) is None:
             return clip
     return None
+
+
+def hourly_order(accounts: Iterable[Account], params: PostingParams) -> list[Account]:
+    """D116: the order in which accounts pick their clip in a slot: `posting.platform_priority`, then id."""
+    return sorted(accounts, key=lambda a: (params.platform_rank(a.platform), a.id))
 
 
 @dataclass(frozen=True, slots=True)
@@ -143,7 +170,7 @@ def plan_hourly_slot(
     decisions: list[Decision] = []
     starved = False
     fallback_used = False
-    for account in sorted(accounts, key=lambda a: a.id):
+    for account in hourly_order(accounts, params):
         pending = has_pending_spike(account, spikes, working, now, params)
         decision = decide_hourly_account(account, working, slot, now, params, spike_pending=pending)
         if account.id in duplicates and decision.code is not Reason.EMERGENCY_STOP:
@@ -173,6 +200,16 @@ def plan_hourly_slot(
                 if candidates or spare
                 else "the hourly queue is empty"
             )
+            no_gap = replace(params, cross_platform_min_gap_s=0)
+            if params.cross_platform_min_gap_s > 0 and (
+                pick_clip(account, candidates, working, decision.dry_run, now, no_gap)
+                or pick_clip(account, spare, working, decision.dry_run, now, no_gap)
+            ):
+                code = Reason.CROSS_PLATFORM_TOO_SOON
+                reason = (
+                    f"every clip {account.id} could take went to another platform less than "
+                    f"posting.cross_platform_min_gap_s {params.cross_platform_min_gap_s} s ago"
+                )
             decisions.append(replace(decision, action=Action.SKIP, code=code, reason=reason))
             continue
         fallback_used = fallback_used or from_fallback
