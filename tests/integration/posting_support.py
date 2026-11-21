@@ -180,6 +180,26 @@ def video(tmp_path: Path) -> Path:
     return path
 
 
+# D116 (migration 0035) keeps one clip apart across platforms and lets YouTube pick first. The lane tests
+# describe the engine with every account on the same clip in id order (D18); D116 has its own tests
+# (test_posting_cross_platform.py), which switch it on.
+D116_KEYS = ("posting.cross_platform_min_gap_s", "posting.platform_priority")
+
+
+def d116_off() -> dict[str, object]:
+    """Switch D116 off; returns the values to put back."""
+    saved = {key: settings.get(key, None) for key in D116_KEYS}
+    db.execute("delete from settings where key = any(%s)", (list(D116_KEYS),))
+    settings.invalidate()
+    return saved
+
+
+def restore(saved: dict[str, object]) -> None:
+    for key, value in saved.items():
+        if value is not None:
+            settings.set(key, value)
+
+
 @pytest.fixture
 def production(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
     """Clean posting tables, the production seed and `APP_ENV=production`. Still in dry run (the default).
@@ -191,10 +211,12 @@ def production(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
     # (`posting.spike_hold_s`, migration 0023) has its own test, which switches it on.
     hold = settings.get("posting.spike_hold_s", None)
     settings.set("posting.spike_hold_s", 0)
+    d116 = d116_off()
     yield
     clean_posting_tables()
     if hold is not None:
         settings.set("posting.spike_hold_s", hold)
+    restore(d116)
 
 
 @pytest.fixture
@@ -203,5 +225,7 @@ def staging(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
     use_env(monkeypatch, "staging")
     clean_posting_tables()
     seed("staging")
+    d116 = d116_off()
     yield
     clean_posting_tables()
+    restore(d116)

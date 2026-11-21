@@ -321,6 +321,8 @@ Residential proxy (DataImpulse) for the VOD lane only, added 2026-11-18 (migrati
 | `posting.freshness_half_life_h` | `{"live": 6, "vod": 24}` | Freshness decay half-life by source. |
 | `posting.max_clip_age_h` | `72` | Approved clips older than this expire. |
 | `posting.sibling_gap_h` | `12` | Hours between two clips of one family (a short clip and its story cut) on the same account (M18 Phase C, migration 0029). Absent: 12. |
+| `posting.cross_platform_min_gap_s` | `2700` | D116, hourly lane only: an hourly post does not take a clip another platform posted less than this many seconds ago (planned posts of the same slot count); the account takes its next best clip. `0`: off, every platform gets the top clip (D18). Migration 0035. Absent: 0. |
+| `posting.platform_priority` | `["youtube", "tiktok", "instagram"]` | D116: the order in which platforms pick their clip in an hourly slot; unlisted platforms last, then by account id. Missing or malformed: account id order. Migration 0035. |
 | `posting.max_duration_s` | `{"tiktok": 600, "instagram": 900, "youtube": 180}` | The longest clip in seconds each platform is given (M18 Phase C, migration 0029). Absent: no limit. |
 | `posting.queue_low_watermark` | `12` | Below this many approved hourly clips, guardian widens discovery. |
 | `posting.first_comment` | `"Would you have survived this? 👇 Follow {handle} for daily GTA 6 chaos"` | First comment text. `{handle}` becomes the posting account's handle (D111). A question invites replies (migration 0034; was "Follow {handle} for the best GTA 6 moments every hour 🎮⭐"). |

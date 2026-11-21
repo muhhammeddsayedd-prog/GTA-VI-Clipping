@@ -284,16 +284,20 @@ class DbStore:
         )
         return [record_from_row(row) for row in rows]
 
-    def load_hourly_queue(self) -> list[LoadedClip]:
-        """Approved hourly clips, best rank first."""
+    def load_hourly_queue(self, posted_since: datetime | None = None) -> list[LoadedClip]:
+        """Approved hourly clips, best rank first. With `posted_since` (D116) also the hourly clips marked
+        `posted` since then, which a platform that skipped them may still take."""
         rows = db.fetch_all(
             _CLIP_SQL
             + """
-            where c.status = 'approved' and c.lane = 'hourly'
+            where c.lane = 'hourly'
+              and (c.status = 'approved'
+                   or (c.status = 'posted' and %(since)s::timestamptz is not null
+                       and c.posted_at >= %(since)s))
             order by c.rank_score desc nulls last, c.approved_at, c.id
-            limit %s
+            limit %(limit)s
             """,
-            (QUEUE_LIMIT,),
+            {"since": posted_since, "limit": QUEUE_LIMIT},
         )
         return [clip_from_row(row) for row in rows]
 

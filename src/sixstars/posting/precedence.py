@@ -56,6 +56,34 @@ def clip_block(
     return None
 
 
+def cross_platform_block(
+    clip: Clip,
+    account: Account,
+    history: Iterable[PostRecord],
+    now: datetime,
+    params: PostingParams,
+    dry: bool,
+) -> tuple[Reason, str] | None:
+    """D116 (hourly lane only): was `clip` posted on another platform less than
+    `posting.cross_platform_min_gap_s` ago? Posts planned earlier in the same slot count (they are in
+    `history` at `now`), so two platforms never publish one clip within minutes of each other. Posts of
+    the same platform are D42's business (`clip_block`)."""
+    gap_s = params.cross_platform_min_gap_s
+    if gap_s <= 0:
+        return None
+    start = ensure_utc(now, "now") - timedelta(seconds=gap_s)
+    for record in history:
+        if record.clip_id != clip.id or record.platform is account.platform or not counts(record, dry):
+            continue
+        if record.at > start:
+            return (
+                Reason.CROSS_PLATFORM_TOO_SOON,
+                f"clip {clip.id} went to {record.account_id} at {record.at.isoformat()}, less than "
+                f"posting.cross_platform_min_gap_s {gap_s} s ago",
+            )
+    return None
+
+
 # R12: the batch is released this long before its freshest clip would turn too old, at the latest, so a
 # held clip always keeps time to post.
 HOLD_AGE_MARGIN_S = 120

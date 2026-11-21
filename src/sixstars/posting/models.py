@@ -50,6 +50,7 @@ class Reason(StrEnum):
     CLIP_WRONG_LANE = "clip_wrong_lane"
     ALREADY_POSTED = "already_posted"
     POSTED_ON_SAME_PLATFORM = "posted_on_same_platform"
+    CROSS_PLATFORM_TOO_SOON = "cross_platform_too_soon"
     SPIKE_TIME_MISSING = "spike_time_missing"
     SPIKE_TOO_OLD = "spike_too_old"
     AT_CAP = "at_cap"
@@ -71,6 +72,7 @@ class Reason(StrEnum):
 
 POST_STATUSES = frozenset({"pending", "published", "failed", "skipped", "removed", "remove_failed"})
 CLIP_APPROVED = "approved"
+CLIP_POSTED = "posted"
 
 
 def ensure_utc(value: datetime, name: str = "time") -> datetime:

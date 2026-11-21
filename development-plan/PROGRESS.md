@@ -566,3 +566,27 @@ Production audit 2026-11-21: `youtube_main` had been lowered to the learned-cap 
 - R3 (`posting.skip_hourly_after_spike_s`, 30 min) still skips an hourly slot right after a spike; spikes beyond the reserve still use hourly capacity. Both unchanged on purpose.
 - 57 integration tests in `test_gate_run`, `test_gate_cli`, `test_gate_visual_score`, `test_precheck_flow` and `test_factory_pipeline` fail locally on a clean `main` too (not caused by this change).
 - Next: PR-B (cross-platform gap, platform priority, titles), PR-C (hourly length per platform, follow-overlay test through the style bandit), later the cap ramp.
+
+## YouTube lane tuning B — cross-platform gap (D116) and titles (2026-11-21)
+
+**Branch:** `yt-lane-b` (on top of `yt-lane-a`).
+
+### What was built
+
+- Migration `0035_cross_platform_gap.sql` (added only where missing): `posting.cross_platform_min_gap_s = 2700`, `posting.platform_priority = ["youtube","tiktok","instagram"]`.
+- Posting (D116, hourly lane only): `precedence.cross_platform_block` (reason `cross_platform_too_soon`) in `selection.pick_clip`, so an account takes its next best clip when the top one went to another platform less than 45 min ago — planned posts of the same slot included. `selection.hourly_order` lets platforms pick in priority order, then by id.
+- A clip one platform skipped stays available to it: with D116 on, the hourly queue also holds hourly clips already `posted` (`store.load_hourly_queue(posted_since)`, `selection.hourly_candidates`), and the publisher sends an hourly post of a `posted` clip. "Already posted" and D42 keep it off the accounts and platforms that had it.
+- Titles: rules in `ai/prompts/p2_clip_writer.md` and docs/15 (name the streamer, set up the tension, never state the outcome; "GTA 6" in at most one title in three; working patterns). `ai/titles.spoils_ending` catches "ends in/with/up", "crashes/crashed", "dies/died", "sinks/sank", "fails at"; `calls.write_clip` asks once more with a correction note and keeps the first reply when the second still spoils or the retry fails (log `title_spoiler_kept`).
+- Docs: D116 in docs/00, R13 in docs/11, both keys in docs/16.
+- Tests: `tests/unit/posting/test_posting_cross_platform.py`, `tests/integration/test_cross_platform_slot.py`, `tests/unit/ai/test_ai_titles.py`. The older lane integration tests describe D18 and switch D116 off in their fixtures (`posting_support.d116_off`).
+
+### Deviations
+
+- The prompt named the decision "D-next" and the plan said D112; D112–D115 are taken (M18), so it is **D116**.
+- The "skipped clip stays approved" requirement: a clip is marked `posted` as soon as one platform published it (`settle_clip`), so instead of changing the clip lifecycle the hourly queue keeps recent `posted` clips (within `posting.max_clip_age_h`) while D116 is on.
+- The rule applies between every pair of platforms, not only YouTube/Instagram (e.g. TikTok then waits 45 min before Instagram takes the same clip).
+- "GTA 6 in at most one title in three" is prompt guidance only; it cannot be enforced per call.
+
+### Open issues / next
+
+- PR-C: hourly length per platform (YouTube 8–30 s) and the follow-overlay test.

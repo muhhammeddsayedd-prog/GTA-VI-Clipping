@@ -57,6 +57,7 @@ On a platform "limit reached" / HTTP 429 response: set `paused_until` = now + 1 
 | R10 | Hourly queue empty | Post the best unposted compilation if any; else skip the slot (event `posting.slot_empty`, alert if 2 in a row) |
 | R11 | Emergency stop | Nothing posts |
 | R12 | Several spike clips ready within a few minutes | Holding window: spike clips wait `posting.spike_hold_s` (7 min) after the first of them was approved, then the best-ranked posts first; the rest wait for the gap or move to the hourly queue boosted (R7). The release is never later than 2 min before a clip reaches `posting.spike_max_age_s`. |
+| R13 | Hourly slot, the top clip went to another platform less than `posting.cross_platform_min_gap_s` (45 min) ago — including earlier in the same slot | The account takes its next best clip (reason `cross_platform_too_soon` when nothing is left). Platforms pick in `posting.platform_priority` order: YouTube, TikTok, Instagram (D116). Spike lane not affected. |
 
 Demotion means: the clip will not be posted on that account by the spike lane; it can still be posted to that account later by the hourly lane.
 
