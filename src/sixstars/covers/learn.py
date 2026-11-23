@@ -77,3 +77,37 @@ def choose(
     layout = next(item for item in allowed_layouts(platform, proposed) if item == layout_name)
     line = next(c for c in candidates if c.style == style)
     return layout, line
+
+
+# ── Rewards (C8) ──────────────────────────────────────────────
+
+# The learning loop snapshots posts at fixed ages (1/3/6/24/72/168 h, migration 0033); 72 h is the first
+# at or after the prompt's 48 h. Only covers made before the current week count: the bandit updates weekly.
+REWARD_AGE_H = 72
+MEDIAN_WINDOW_D = 60
+
+_STATS_SQL = """
+with snap as (
+  select p.account_id, s.post_id, s.views
+  from post_metrics_snapshots s join posts p on p.id = s.post_id
+  where s.target_age_h = %(age)s and s.views is not null
+    and s.captured_at >= now() - make_interval(days => %(window)s)
+), med as (
+  select account_id, percentile_cont(0.5) within group (order by views) as median
+  from snap group by account_id
+)
+select c.arm, count(*) as plays, count(*) filter (where snap.views > med.median) as wins
+from covers c
+join snap on snap.post_id = c.post_id
+join med on med.account_id = snap.account_id
+where c.platform = %(platform)s and c.status = 'applied' and c.created_at < date_trunc('week', now())
+group by c.arm
+"""
+
+
+def load_stats(platform: str) -> dict[str, ArmStats]:
+    """Wins and plays per arm on one platform (views above the account's median at 72 h)."""
+    from sixstars import db
+
+    rows = db.fetch_all(_STATS_SQL, {"age": REWARD_AGE_H, "window": MEDIAN_WINDOW_D, "platform": platform})
+    return {str(r["arm"]): ArmStats(int(r["wins"]), int(r["plays"])) for r in rows}

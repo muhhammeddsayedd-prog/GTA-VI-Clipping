@@ -1,4 +1,4 @@
-import { Activity, Bell, Bolt, Compass, DollarSign, FileText, Film, GitBranch, Layers, LayoutGrid, List, Palette, Radio, Send, Server, Shield, SlidersHorizontal, TrendingUp, Users, UserSquare2, Video } from "lucide-react";
+import { Activity, Bell, Bolt, Compass, DollarSign, FileText, Film, GitBranch, Image, Layers, LayoutGrid, List, Palette, Radio, Send, Server, Shield, SlidersHorizontal, TrendingUp, Users, UserSquare2, Video } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
 export interface NavItem { href: string; label: string; icon: LucideIcon; hint?: string }
@@ -38,6 +38,7 @@ export const NAV: NavGroup[] = [
       { href: "/spend", label: "Spend", icon: DollarSign, hint: "API spend and quotas" },
       { href: "/reports", label: "Reports", icon: FileText, hint: "Daily report" },
       { href: "/styles", label: "Design styles", icon: Palette, hint: "Which look works on each account" },
+      { href: "/covers", label: "Covers", icon: Image, hint: "Thumbnails as each grid shows them" },
     ],
   },
   { key: "settings", label: "Settings", icon: SlidersHorizontal, href: "/settings" },

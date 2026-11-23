@@ -262,8 +262,18 @@ def build(clip_id: str, *, rng: random.Random | None = None) -> dict[str, str]:
             attempt = 0
             candidates = list(line_result.valid) if line_result is not None else []
             if mode == "full" and candidates:
+                try:
+                    stats = learn.load_stats(platform)
+                except Exception:  # noqa: BLE001 - no stats means the scorer's proposal
+                    stats = {}
                 layout, line = learn.choose(
-                    platform, proposed, candidates, recent, exploration=config.exploration, rng=rng
+                    platform,
+                    proposed,
+                    candidates,
+                    recent,
+                    exploration=config.exploration,
+                    rng=rng,
+                    stats=stats,
                 )
                 for frame in frames[:MAX_ATTEMPTS]:
                     attempt += 1

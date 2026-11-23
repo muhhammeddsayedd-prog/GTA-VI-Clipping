@@ -997,3 +997,11 @@ Four layout C clips were run through the miner, with the rendered file standing 
   - **No waiting at post time.** A cover not ready when the post goes out is logged `skipped_deadline` and the post goes out as before. Hourly posts go out long after the render, so they have their cover. Spike posts usually leave before mining ends (20–40 s), so spike covers mostly skip; `cover.deadline_s` is read but not used yet. Holding the express post up to 60 s for the cover is a design choice for the owner.
   - **Alerts** fire once per kind per UTC day (events `cover.alert`). Further failures only go to the log and the events table.
 - Open: the TikTok custom-image test (10 `SELF_ONLY` posts plus screen recordings) needs the staging deploy and someone to watch playback in the app.
+
+## Cover engine C8 — learning, console, weekly report (2026-11-23)
+
+- **Bandit:** `learn.load_stats` and `learn.choose`, with Thompson sampling once rewards exist.
+- **Reward:** above the account median at **72 h**, the first learning-loop snapshot after 48 h. It counts covers made before the current week, so it updates weekly. The YouTube non-feed-traffic half of the reward waits for a YouTube OAuth refresh token.
+- **Console:** Covers page (`web/app/(console)/covers`) and `GET /v1/admin/covers`, with nav under Insights. The web app was checked by CI only: there are no node modules on this machine.
+- **Weekly report:** `sixstars covers report`.
+- **Arm storage:** the cover arm is a column of `covers`. `clip_features` (docs/28 L2) does not exist yet; the arm joins in when it lands.

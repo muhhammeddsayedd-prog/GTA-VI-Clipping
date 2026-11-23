@@ -327,6 +327,19 @@ def styles() -> JSONResponse:
     return answer(body)
 
 
+@router.get("/covers")
+def covers(
+    account: Annotated[str, Query(max_length=64)] = "youtube_main",
+    filter_: Annotated[Literal["all", "fallbacks", "failed"], Query(alias="filter")] = "all",
+) -> JSONResponse:
+    """The cover engine's grid (docs/29a C8): an account's last 30 covers as the platform grid shows them."""
+    from sixstars.covers import report
+
+    with read_tx():
+        body = report.grid(account, filter_)
+    return answer(body)
+
+
 # ── queue, posts ─────────────────────────────────────────────
 
 
