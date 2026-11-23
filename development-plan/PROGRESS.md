@@ -745,3 +745,26 @@ Production audit 2026-11-21: `youtube_main` had been lowered to the learned-cap 
 
 - The Docker image (new deps) is built only by the staging deploy; the build self-check is the first real test of MediaPipe/RapidOCR on Linux.
 - After deploy: turn `cover.video_ready` on in staging, then run `sixstars covers check-video --since <flip>` on 20 layout C clips and write `docs/reports/covers-c1.md`.
+
+## Cover engine C2 — migration, config, buckets (2026-11-23)
+
+**Branch:** `covers-c2` (on `covers-c1`). Owner, 23 Nov: merge everything at the end, once the other sessions are done. Staging verification of C1+ is batched after that merge.
+
+### What was built
+
+- `supabase/migrations/0039_cover_engine.sql`:
+  - the `covers` table from docs/29a §8, plus `render_id` (M18 renders several styles per clip), `account_id` (diversity and grid are per account) and `mode` (full / frame_only), with check constraints and RLS;
+  - the eleven `cover.*` keys, with `cover.enabled` off everywhere;
+  - buckets `covers-work` (private) and `covers-public` (public).
+- `covers/config.py` `CoverConfig`:
+  - `from_values` is pure; `load` reads `scoring_config` and records the version;
+  - helpers `mode_for`, `brand_mark_for`, `runs_for`, `deadline_for`, and `lane_key(lane, campaign_slug)`.
+- `covers/store.py`: insert, `set_status`, `recent_for_account`, `recent_lines`.
+- `storage.py`: `public_url`, `cover_work_key`, `cover_public_key`.
+- Tests: `tests/unit/covers/test_covers_config.py` and `tests/integration/test_cover_engine_migration.py`.
+
+### Deviations
+
+- Migration 0039 instead of 0028.
+- `cover.enabled` is seeded `false` (the prompt's staging default is `true`). One migration serves both environments, and production must start off, so staging is switched on by hand.
+- `cover.lane_modes` and `cover.brand_mark` include `spike` next to `normal`: our live lane is ours, like the normal lane. Campaign lanes (`campaign:<slug>`, from the unmerged `clipcamp-1`) fall to `*`, which is `frame_only` with no mark.

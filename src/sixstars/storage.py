@@ -58,6 +58,21 @@ def thumb_key(clip_id: str, when: datetime | None = None, app_env: str | None = 
     return f"{BUCKET}/thumbs/{app_env or env().APP_ENV}/{moment:%Y/%m/%d}/{clip_id}.jpg"
 
 
+# Cover engine (docs/29a, migration 0039): work files are private; only Instagram's cover_url is public.
+COVERS_WORK_BUCKET = "covers-work"
+COVERS_PUBLIC_BUCKET = "covers-public"
+
+
+def cover_work_key(clip_id: str, name: str) -> str:
+    """A cover engine work file: `covers-work/<clip_id>/<name>` (top frames, variants, previews)."""
+    return f"{COVERS_WORK_BUCKET}/{clip_id}/{name}"
+
+
+def cover_public_key(cover_id: str, app_env: str | None = None) -> str:
+    """A composed cover served to Instagram: `covers-public/<env>/<cover_id>.jpg`."""
+    return f"{COVERS_PUBLIC_BUCKET}/{app_env or env().APP_ENV}/{cover_id}.jpg"
+
+
 def group_by_bucket(keys: Iterable[str]) -> dict[str, list[tuple[str, str]]]:
     """Keys grouped by bucket as `(key, object path)` pairs, duplicates and non-keys dropped."""
     out: dict[str, list[tuple[str, str]]] = {}
@@ -170,6 +185,12 @@ class ClipStorage:
         except (ValueError, KeyError, TypeError) as exc:
             raise StorageError("Storage sign answered without signedURL") from exc
         return f"{self._base()}{signed}" if str(signed).startswith("/") else str(signed)
+
+    def public_url(self, key: str) -> str:
+        """The permanent URL of an object in a public bucket (`covers-public`). No request is made; the
+        bucket must be public for the URL to work."""
+        bucket, path = split_key(key)
+        return f"{self._base()}/object/public/{bucket}/{quote(path)}"
 
     def signed_urls(self, keys: Sequence[str], expires_in_s: int = SIGNED_URL_TTL_S) -> dict[str, str | None]:
         """Signed download URLs for many objects, one request per bucket (and per 1,000 paths). Returns
