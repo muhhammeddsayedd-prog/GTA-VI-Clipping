@@ -469,9 +469,10 @@ def _render_one(
             broll_from=ClipWindow(0.0, media.duration_s) if recipe.get("broll") else None,
             scaler=cfg.scaler,
             layout_v2=cfg.layout_v2,
+            face_rules=cfg.face_detect,
         )
         outcome = render_file(job)
-        kind = framed_layout(job.layout, entry.rules, cfg.layout_v2).kind
+        kind = (outcome.layout or framed_layout(job.layout, entry.rules, cfg.layout_v2)).kind
         settings = profiles.load()
         facts = visuals.measure_file(
             output, outcome.clip_duration_s, settings, layout_kind=kind, layout_v2=cfg.layout_v2
@@ -486,6 +487,7 @@ def _render_one(
             max_freeze_s=settings.max_freeze_s,
         )
         checks = {
+            "cam": outcome.cam_check,
             "band": list(gameplay_band(kind, cfg.layout_v2)),
             "longest_black_s": None if facts is None else facts.longest_black_s,
             "longest_freeze_s": None if facts is None else facts.longest_freeze_s,
@@ -507,6 +509,15 @@ def _render_one(
             checks=Jsonb(checks),
             error="; ".join(problems) or None,
         )
+        if isinstance(outcome.cam_check, dict) and outcome.cam_check.get("fallback") == "G0":
+            events.emit(
+                "clip.cam_no_face",
+                level="warn",
+                entity_type="clip",
+                entity_id=clip_id,
+                message=f"no face in the facecam: style {style_id} drawn as layout G0",
+                data={**outcome.cam_check, "style_id": style_id},
+            )
         log.info("variant_rendered", style_id=style_id, problems=problems, render_ms=outcome.render_ms)
     except Exception as exc:  # noqa: BLE001 - one failed style must not stop the others
         log.error("variant_failed", style_id=style_id, error=f"{type(exc).__name__}: {exc}"[:300])

@@ -174,7 +174,7 @@ def test_g_stacks_the_cam_panel_over_the_gameplay_with_lanczos() -> None:
         geometry=GEOMETRY,
         fps=30,
         scaler="lanczos",
-        max_slide=0.25,
+        v2=LayoutV2Rules(max_slide=0.25),
     )
     assert chains[0] == "[0:v]fps=fps=30,split=2[v_face_in][v_game_in]"
     assert chains[1].startswith("[v_face_in]crop=") and "scale=w=1080:h=720:flags=lanczos" in chains[1]
