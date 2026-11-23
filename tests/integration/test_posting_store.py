@@ -45,13 +45,13 @@ def test_migration_0005_adds_the_two_settings() -> None:
 
 
 @pytest.mark.parametrize("name", ["production", "staging"])
-def test_both_seeds_give_youtube_a_cap_of_16_with_4_reserved(
+def test_both_seeds_give_youtube_a_cap_of_16_with_10_reserved(
     name: str, request: pytest.FixtureRequest
 ) -> None:
     request.getfixturevalue(name)
 
     row = account_row(YT)
-    assert (row["cap_24h"], row["spike_reserve"], row["hourly_min_gap_s"]) == (16, 4, 3000)  # migration 0034
+    assert (row["cap_24h"], row["spike_reserve"], row["hourly_min_gap_s"]) == (16, 10, 3000)  # 0034, 0056
 
 
 def test_migration_0005_lowers_an_old_seeded_youtube_cap_and_keeps_a_learned_one(production: None) -> None:

@@ -1,33 +1,33 @@
-"""YouTube lane tuning (migration 0034): the hourly lane's own gap, the 12 YouTube hours and the seeds."""
+"""YouTube lane tuning (migrations 0034, 0056): the hourly gap, the 6 YouTube hours and the seeds."""
 
 import re
 from datetime import timedelta
 from pathlib import Path
 
 import pytest
-from posting_helpers import T0, acct, make_params, post
+from posting_helpers import T0, acct, make_params, post, spread
 
-from sixstars.posting.caps import hourly_gap_ends_at
+from sixstars.posting.caps import cap_state, hourly_gap_ends_at
 from sixstars.posting.models import Account, Action, Lane, Reason
 from sixstars.posting.precedence import decide_hourly_account
 from sixstars.posting.slots import fire_at, jitter_offset_s
 
 ROOT = Path(__file__).resolve().parents[3]
 YT = "youtube_main"
-YT_HOURS = frozenset({0, 10, 13, 14, 16, 17, 18, 19, 20, 21, 22, 23})
+YT_HOURS = frozenset({0, 14, 17, 19, 21, 23})
 HOURLY_GAP_S = 3000
 # The longest an upload may take before `published_at` is stamped and the next slot must still be free.
 MAX_UPLOAD_S = 240
 MINUTE = timedelta(minutes=1)
-SLOT = T0.replace(hour=13)  # 13:00 UTC, one of the YouTube hours
+SLOT = T0.replace(hour=14)  # 14:00 UTC, one of the YouTube hours
 NOW = SLOT + 2 * MINUTE
 
 
 def youtube(**changes: object) -> Account:
-    """youtube_main as migration 0034 leaves it."""
+    """youtube_main as migrations 0034 and 0056 leave it."""
     base: dict[str, object] = {
         "cap_24h": 16,
-        "spike_reserve": 4,
+        "spike_reserve": 10,
         "hourly_hours_utc": YT_HOURS,
         "hourly_min_gap_s": HOURLY_GAP_S,
     }
@@ -126,6 +126,32 @@ def test_every_youtube_hour_fits_in_the_cap() -> None:
     assert len(account.hourly_hours_utc) == account.cap_24h - account.spike_reserve
 
 
+# ── spikes dominate (migration 0056): 10 of the 16 slots are kept for spikes ──────────────────────────────
+@pytest.mark.parametrize(
+    ("hourly", "spikes", "hourly_ok", "spike_ok"),
+    [
+        (5, 0, True, True),  # the 6th hourly post still fits
+        (6, 0, False, True),  # 6 hourly posts: the other 10 slots wait for spikes
+        (6, 9, False, True),  # the last free slot is a spike slot
+        (6, 10, False, False),  # 16 of 16
+        (
+            2,
+            12,
+            True,
+            True,
+        ),  # spikes may take more than 10; what is left after the reserve is the hourly lane's
+    ],
+)
+def test_the_hourly_lane_takes_at_most_6_of_16(
+    hourly: int, spikes: int, hourly_ok: bool, spike_ok: bool
+) -> None:
+    history = spread(YT, hourly, T0 - 3 * timedelta(hours=1)) + spread(
+        YT, spikes, T0 - 6 * timedelta(hours=1), Lane.SPIKE
+    )
+    state = cap_state(youtube(), history, T0, make_params())
+    assert (state.hourly_allowed, state.spike_allowed) == (hourly_ok, spike_ok)
+
+
 # ── the seeds: listed hours equal the hourly capacity ─────────────────────────────────────────────────────
 _ROW = re.compile(
     r"\(\s*'(?P<id>[^']+)',\s*'[^']+',\s*'[^']+',\s*'[^']+',\s*'\{(?P<lanes>[^}]*)\}',\s*(?P<cap>\d+),\s*"
@@ -164,4 +190,4 @@ def test_seeded_hours_equal_the_hourly_capacity(seed: str) -> None:
 @pytest.mark.parametrize("seed", ["production.sql", "staging.sql"])
 def test_the_seeds_carry_the_youtube_tuning(seed: str) -> None:
     row = seed_accounts(seed)[YT]
-    assert (row["cap"], row["reserve"], row["hours"], row["gap"]) == (16, 4, set(YT_HOURS), HOURLY_GAP_S)
+    assert (row["cap"], row["reserve"], row["hours"], row["gap"]) == (16, 10, set(YT_HOURS), HOURLY_GAP_S)
