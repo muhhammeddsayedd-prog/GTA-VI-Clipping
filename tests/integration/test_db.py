@@ -17,8 +17,10 @@ def test_schema_objects_exist() -> None:
     # 18 from 0001 plus viewer_clips (0019), youtube_channel_cache (0024), scoring_config,
     # scoring_config_history, scoring_log (0026), clip_renders (0027), post_metrics_snapshots (0033),
     # clip_titles (0040), ai_shadow (0041) and the six clipping-campaign tables of 0050 (clip_campaigns,
-    # clip_campaign_creators, clip_campaign_posts, render_profiles, lane_quotas, creator_live_status)
-    assert len(tables) == 33
+    # clip_campaign_creators, clip_campaign_posts, render_profiles, lane_quotas, creator_live_status) and
+    # covers
+    # (0044, the cover engine)
+    assert len(tables) == 34
     assert db.fetch_one("select * from v_queue_depth") is None
     assert db.fetch_all("select * from v_posts_last_24h") == []
 

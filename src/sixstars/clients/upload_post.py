@@ -377,6 +377,34 @@ class UploadPostClient:
         body = response.json()
         return body if isinstance(body, dict) else {}
 
+    # ── thumbnails (cover engine, docs/29b) ─────────────────
+
+    def set_youtube_thumbnail(self, user: str, video_id: str, thumbnail_url: str) -> bool:
+        """Set or replace a YouTube video's thumbnail (`POST /api/uploadposts/youtube/thumbnail`, JSON).
+        Returns True when it is set (200) and False while the video is still processing (202, retry
+        later). A 403 (channel not allowed) raises `AccountAuthError`, a 429 (YouTube quota) `RateLimited`.
+        Respects `control.emergency_stop` and `launch.dry_run` like an upload."""
+        if self._posting_guard is not None:
+            self._posting_guard()
+        endpoint = "POST /api/uploadposts/youtube/thumbnail"
+        payload = {"user": user, "video_id": video_id, "thumbnail_url": thumbnail_url}
+        call = partial(
+            self._http.post,
+            API_BASE + "/api/uploadposts/youtube/thumbnail",
+            json=payload,
+            headers=self._headers(),
+        )
+        response = _http.send(SERVICE, endpoint, call, retry_statuses=(500, 502, 503, 504))
+        self._raise(endpoint, response, account=f"{user}/youtube")
+        usage.record(SERVICE, "set_youtube_thumbnail", units=1, ref_id=video_id)
+        if response.status_code == 202:
+            return False
+        try:
+            body = response.json()
+        except ValueError:
+            return True
+        return not (isinstance(body, dict) and body.get("pending") is True)
+
     # ── delete ───────────────────────────────────────────────
 
     def delete_post(self, user: str, platform: str, post_id: str) -> bool:

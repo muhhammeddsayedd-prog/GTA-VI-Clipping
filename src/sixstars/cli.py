@@ -1040,3 +1040,42 @@ def campaign_profiles() -> None:
     with _database():
         code = commands.profile_list()
     raise typer.Exit(code=code)
+
+
+covers_app = typer.Typer(help="Cover engine (docs/29a): checks and tools.", no_args_is_help=True)
+app.add_typer(covers_app, name="covers")
+
+
+@covers_app.command("eval-lines")
+def covers_eval_lines(
+    limit: int = typer.Option(50, "--limit", help="How many of the newest clips with a transcript."),
+    out: str | None = typer.Option(None, "--out", help="Write every candidate as JSON to this file."),
+) -> None:
+    """C4 eval: write cover lines (P12) for recent clips and check them. Spends AI budget (fast model)."""
+    from pathlib import Path
+
+    from sixstars.covers import hookline
+
+    with _database():
+        report = hookline.evaluate(limit)
+    if out:
+        Path(out).write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
+    typer.echo(json.dumps({k: v for k, v in report.items() if k != "rows"}, ensure_ascii=False))
+
+
+@covers_app.command("report")
+def covers_report(
+    days: int = typer.Option(7, "--days", help="How many days back."),
+    out: str | None = typer.Option(None, "--out", help="Append the section to this markdown file."),
+) -> None:
+    """The weekly report's covers section (docs/29a C8): QA pass rate, fallbacks, arms, best and worst."""
+    from pathlib import Path
+
+    from sixstars.covers import report
+
+    with _database():
+        section = report.weekly_section(days)
+    if out:
+        with Path(out).open("a", encoding="utf-8") as handle:
+            handle.write("\n" + section)
+    typer.echo(section)

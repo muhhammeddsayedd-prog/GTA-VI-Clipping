@@ -676,3 +676,44 @@ class TitleSet(Reply):
 
     candidates: list[TitleCandidate] = Field(min_length=1, max_length=8)
     caption_short: str = Field(default="", description="Under 80 characters, no hashtags.")
+
+
+# ── P12 cover_hookline (cover engine, docs/29a stage 3) ──────
+
+
+class CoverLineCandidate(Reply):
+    """One cover line. The rules are checked by code (`covers.hookline.validate`), so a weak candidate is
+    dropped instead of costing a repair call."""
+
+    text: str = Field(min_length=1, description="1 to 5 words in capitals.")
+    style: Literal["quote", "label"]
+    key_word: str = Field(default="", description="The one word drawn in yellow.")
+    source: str = Field(default="", description="The exact transcript words the line is based on.")
+
+
+class CoverLines(Reply):
+    """P12: candidate cover lines (two quotes and one label)."""
+
+    candidates: list[CoverLineCandidate] = Field(min_length=1, max_length=6)
+
+
+# ── P13 cover_qa (cover engine, docs/29a stage 5) ────────────
+
+
+class CoverQaScores(Reply):
+    """The five 0-2 scores of the cover review."""
+
+    readable: int = Field(ge=0, le=2)
+    faithful: int = Field(ge=0, le=2)
+    natural: int = Field(ge=0, le=2)
+    clear: int = Field(ge=0, le=2)
+    safe: int = Field(ge=0, le=2)
+
+
+class CoverQa(Reply):
+    """P13: the vision check of a composed cover."""
+
+    scores: CoverQaScores
+    total: int = Field(ge=0, le=10)
+    hard_fail: bool
+    reason: str = ""
