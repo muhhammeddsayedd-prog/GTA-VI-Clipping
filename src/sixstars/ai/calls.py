@@ -42,6 +42,7 @@ from sixstars.ai.images import prepare_jpeg
 from sixstars.ai.schemas import (
     ClipScore,
     ClipWriting,
+    CoverLines,
     Layout,
     Moment,
     PermissionVerdict,
@@ -82,6 +83,7 @@ P9 = "p9_clip_score"
 P9V = "p9_visual_score"
 P10 = "p10_sentence_ends"
 P11 = "p11_title_writer"
+P12 = "p12_cover_hookline"
 
 # Shapes fixed by docs/15 (prompt contract, not runtime settings).
 SPIKE_BATCH_SIZE = 10
@@ -115,6 +117,7 @@ MAX_TOKENS: dict[str, int] = {
     P9V: 3000,
     P10: 3000,
     P11: 2500,
+    P12: 1500,
 }
 # Reasoning depth per prompt. The clip writer and the layout box are judgement calls worth more thought;
 # the classifiers are not.
@@ -131,6 +134,7 @@ EFFORT: dict[str, Effort] = {
     P9V: "low",
     P10: "low",
     P11: "low",
+    P12: "low",
 }
 
 _log = get_logger("ai")
@@ -624,6 +628,19 @@ def write_titles(
         extra_note=extra_note,
         tag="title_retry" if extra_note else None,
     )
+
+
+def write_cover_lines(
+    values: dict[str, object],
+    *,
+    lane: BudgetKind = "vod",
+    client: AnthropicClient | None = None,
+    clip_id: str | None = None,
+) -> CoverLines:
+    """P12 (cover engine stage 3): candidate cover lines from the title, the streamer, the event tags, the
+    account's recent lines and the transcript around the peak. Checked by `covers.hookline.validate`."""
+    _guard(P12, lane)
+    return _ask(P12, CoverLines, model_for(P12), values, client, ref_id=clip_id)
 
 
 # ── P9 clip_score ────────────────────────────────────────────

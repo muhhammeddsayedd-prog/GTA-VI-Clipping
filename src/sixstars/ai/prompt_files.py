@@ -24,6 +24,7 @@ PROMPT_IDS = (
     "p9_visual_score",
     "p10_sentence_ends",
     "p11_title_writer",
+    "p12_cover_hookline",
 )
 SYSTEM_HEADING = "## System"
 USER_HEADING = "## User template"

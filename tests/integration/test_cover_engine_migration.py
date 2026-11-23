@@ -33,6 +33,11 @@ def test_keys_buckets_and_config() -> None:
 
 
 def test_store_round_trip() -> None:
+    db.execute(
+        "insert into platform_accounts (id, platform, upload_post_user, handle, lanes, cap_24h) "
+        "values ('instagram_main', 'instagram', 'default', '@test', '{hourly}', 10) "
+        "on conflict (id) do nothing"
+    )
     clip_id = add_clip(add_creator(handle="CoverStreamer"), None)
     cover_id = store.insert(
         store.NewCover(
