@@ -663,6 +663,12 @@ Production audit 2026-11-21: `youtube_main` had been lowered to the learned-cap 
 - The console Campaigns page moved to PR 6, as the Operating flows tab says. Until then, campaigns are added through the CLI.
 - **TikTok (owner, 23 Nov):** TikTok campaign posts are wanted. Production `tiktok_main.lanes` is `{}`; re-enabling it is asked for at the PR 4 release. `tiktok_live` has no real second account.
 
+### Staging (2026-11-23)
+
+- Merged to `develop` via #76 (staging branch `clipcamp-staging`); migration 0050 applied by the staging deploy of #80.
+- Definition of done met: staging campaign `staging-test-jerma` (Twitch `jerma985`, YouTube 1-2 and Instagram 1-4 a day, ends 2026-12-06) was added and activated. The streamer moved `auto -> campaign` (`tier_before_campaign = auto`), `lane_quotas` holds its two rows, and `campaign.changed` v2 was written. It stays active for the PR 2-4 staging checks.
+- Fix: the campaign CLI printed `→`/`—`, which a Windows console cannot encode. Its output is now ASCII, and stdout is set to `errors=replace`.
+
 ### Open issues / next
 
 - PR 2 (sourcing):

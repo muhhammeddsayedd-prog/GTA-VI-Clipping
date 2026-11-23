@@ -753,6 +753,13 @@ def live_cut(
 campaign_app = typer.Typer(help="Clipping campaigns (D118): registry, quotas, status.", no_args_is_help=True)
 app.add_typer(campaign_app, name="campaign")
 
+
+@campaign_app.callback()
+def _campaign_console() -> None:
+    from sixstars.campaigns import commands
+
+    commands.safe_stdout()
+
 _STREAMER_HELP = "Streamer: twitch:<login>, youtube:@<handle> or youtube:<channel id> (repeatable)."
 _QUOTA_HELP = "Daily quota per platform: youtube=2-3 (repeatable)."
 
