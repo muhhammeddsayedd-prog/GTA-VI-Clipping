@@ -651,8 +651,24 @@ class FakeUploadPostClient(_Recorder, UploadPostClient):
             "youtube": {"followers": 300, "views": 15000},
         }
         self._by_key: dict[str, str] = {}
+        # Cover engine: thumbnails set per video id; `thumbnail_pending` answers 202 that many times first;
+        # `thumbnail_error` is raised once.
+        self.thumbnails: dict[str, str] = {}
+        self.thumbnail_pending: int = 0
+        self.thumbnail_error: Exception | None = None
 
     def is_configured(self) -> bool:
+        return True
+
+    def set_youtube_thumbnail(self, user: str, video_id: str, thumbnail_url: str) -> bool:
+        self._record("set_youtube_thumbnail", user=user, video_id=video_id, thumbnail_url=thumbnail_url)
+        if self.thumbnail_error is not None:
+            error, self.thumbnail_error = self.thumbnail_error, None
+            raise error
+        if self.thumbnail_pending > 0:
+            self.thumbnail_pending -= 1
+            return False
+        self.thumbnails[video_id] = thumbnail_url
         return True
 
     def upload_video(

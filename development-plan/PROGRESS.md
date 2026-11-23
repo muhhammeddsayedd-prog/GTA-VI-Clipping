@@ -978,3 +978,22 @@ Four layout C clips were run through the miner, with the rendered file standing 
   - The moment-led cut-out uses MediaPipe's selfie segmenter (already a dependency, 250 KB) instead of rembg/BiRefNet, which would bring numba, scikit-image and a 170 MB model for the same mask.
   - The four template files share `cover.css`/`cover.js`.
   - The Real-ESRGAN upscale (`cover.upscale_enabled`, off) is not built: face-led falls back to split for a facecam crop under 400 px. Building the upscaler is left for when the flag is wanted.
+
+## Cover engine C6 and C7 — QA gate, build and delivery (2026-11-23)
+
+### C6
+
+- QA gate (`covers/qa.py`, P13 `p13_cover_qa`); details in docs/CHANGELOG-scoring.md.
+- Deviations:
+  - **Face check:** done on the composed face picture before the type, else where the compositor placed the mined face. The detector misses a turned face on an upscaled panel that the miner found on the original frame.
+  - **Exposure:** measured on the pictures, not the type, because white type counts as clipped.
+  - **Added rules:** no non-Latin text on the cover (English-only audience; the localised "МЕРТВА" screen), and text inside the safe band (the compositor now clamps the line into it).
+
+### C7
+
+- `covers/engine.py`, `covers/deliver.py`, `covers/learn.py` (C7 form) and the publisher hooks.
+- Deviations:
+  - **YouTube** gets its thumbnail only through the follow-up job after publishing. C0 showed `thumbnail_url` at upload stays pending, while the endpoint answered 200.
+  - **No waiting at post time.** A cover not ready when the post goes out is logged `skipped_deadline` and the post goes out as before. Hourly posts go out long after the render, so they have their cover. Spike posts usually leave before mining ends (20–40 s), so spike covers mostly skip; `cover.deadline_s` is read but not used yet. Holding the express post up to 60 s for the cover is a design choice for the owner.
+  - **Alerts** fire once per kind per UTC day (events `cover.alert`). Further failures only go to the log and the events table.
+- Open: the TikTok custom-image test (10 `SELF_ONLY` posts plus screen recordings) needs the staging deploy and someone to watch playback in the app.

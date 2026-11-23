@@ -30,7 +30,7 @@ from sixstars.posting.hourly import (
 )
 from sixstars.posting.models import CLIP_APPROVED, Decision, Lane, ensure_utc
 from sixstars.posting.precedence import clip_block
-from sixstars.posting.publisher import Outcome, Publisher, PublishResult
+from sixstars.posting.publisher import DeliverHooks, Outcome, Publisher, PublishResult
 from sixstars.posting.selection import SlotPlan
 from sixstars.posting.slots import fire_at, slot_start
 from sixstars.posting.store import DbStore, utcnow
@@ -163,6 +163,6 @@ def clip(clip_id: str, account_id: str) -> int:
     if not real:
         typer.echo(f"dry run recorded as post {post_id}: nothing was sent ({text})")
         return EXIT_OK
-    result = Publisher(client_factory(), store).publish(post_id)
+    result = Publisher(client_factory(), store, covers=DeliverHooks()).publish(post_id)
     _print_results((result,))
     return EXIT_OK if result.outcome in (Outcome.PUBLISHED, Outcome.PENDING) else EXIT_ERROR

@@ -21,7 +21,7 @@ from sixstars.posting.captions import build_upload_request, idempotency_key
 from sixstars.posting.gate import Mode, posting_mode
 from sixstars.posting.models import Account, Action, Clip, Decision, Reason
 from sixstars.posting.params import PostingParams
-from sixstars.posting.publisher import RECOVERY_DELAY_S, Publisher, PublishResult
+from sixstars.posting.publisher import RECOVERY_DELAY_S, DeliverHooks, Publisher, PublishResult
 from sixstars.posting.selection import SlotPlan, empty_slots_alert, plan_hourly_slot
 from sixstars.posting.slots import SLOT_LENGTH, check_slot, fire_at, slot_start
 from sixstars.posting.store import DbStore, clips_only, dry_run_key, utcnow
@@ -220,5 +220,5 @@ def run_hourly_slot(
             "Hourly queue empty",
             f"No clip could be posted in the last two hourly slots (latest {slot.isoformat()}).",
         )
-    results = Publisher(client, store, clock).publish_all(post_ids)
+    results = Publisher(client, store, clock, covers=DeliverHooks()).publish_all(post_ids)
     return SlotRun(slot, mode, plan, tuple(post_ids), tuple(dry_ids), results)

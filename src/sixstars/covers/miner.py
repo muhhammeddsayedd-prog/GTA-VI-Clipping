@@ -47,6 +47,11 @@ LANDMARKER_ENV = "SIXSTARS_FACE_LANDMARKER"
 LANDMARKER_DEFAULT = "/models/mediapipe/face_landmarker.task"
 
 
+def landmarker_model() -> str:
+    """Path of the MediaPipe face landmarker model (baked into the image)."""
+    return os.environ.get(LANDMARKER_ENV, LANDMARKER_DEFAULT)
+
+
 def cover_dir(clip_id: str) -> Path:
     """Local work folder of a clip's cover: `$DATA_DIR/covers/<clip_id>`."""
     return env().DATA_DIR / "covers" / clip_id
@@ -317,7 +322,7 @@ def mine(
     folder = cover_dir(clip_id)
     manifest = Manifest.from_json(json.loads((folder / MANIFEST_NAME).read_text(encoding="utf-8")))
     config = CoverConfig.load()
-    model = os.environ.get(LANDMARKER_ENV, LANDMARKER_DEFAULT)
+    model = landmarker_model()
     with tempfile.TemporaryDirectory(dir=folder) as tmp:
         work = Path(tmp)
         _extract(manifest, folder / SOURCE_NAME, work, ffmpeg)
@@ -384,10 +389,20 @@ def mine(
 def handle_mine(job: jobs.Job) -> None:
     """`cover.mine` job: mine one clip (no-op when the engine was switched off meanwhile)."""
     clip_id = str(job.payload["clip_id"])
+    log = get_logger("covers")
     if not CoverConfig.load().enabled:
-        get_logger("covers").info("cover_mine_skipped", clip_id=clip_id, reason="disabled")
+        log.info("cover_mine_skipped", clip_id=clip_id, reason="disabled")
         return
     mine(clip_id)
+    from sixstars.covers import deliver, engine
+
+    try:
+        engine.build(clip_id)
+    except Exception as exc:  # noqa: BLE001 - the post goes out with the platform's default cover
+        log.warning("cover_build_failed", clip_id=clip_id, error=f"{type(exc).__name__}: {exc}"[:300])
+        deliver.alert_once(
+            "build", "Cover engine: build failed", f"clip {clip_id}: {type(exc).__name__}: {exc}"[:300]
+        )
 
 
 def register_handlers() -> None:
