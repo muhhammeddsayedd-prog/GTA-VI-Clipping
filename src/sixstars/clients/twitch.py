@@ -441,6 +441,20 @@ class TwitchClient:
             usage.record(SERVICE, "get_users", units=requests)
         return users
 
+    def get_users_by_login(self, logins: Sequence[str]) -> list[TwitchUser]:
+        """Users by login name (case-insensitive), 100 per request; unknown logins are left out."""
+        users: list[TwitchUser] = []
+        unique = list(dict.fromkeys(login.strip().lower().removeprefix("@") for login in logins))
+        requests = 0
+        for start in range(0, len(unique), IDS_PER_REQUEST_MAX):
+            chunk = unique[start : start + IDS_PER_REQUEST_MAX]
+            body = self._get("/users", [("login", login) for login in chunk])
+            requests += 1
+            users.extend(_user(item) for item in body.get("data") or [])
+        if requests:
+            usage.record(SERVICE, "get_users_by_login", units=requests)
+        return users
+
     def get_followers_total(self, broadcaster_id: str) -> int | None:
         """Total followers of a channel, or None when the app token is not allowed to read it.
 

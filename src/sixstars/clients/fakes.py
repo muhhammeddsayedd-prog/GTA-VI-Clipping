@@ -203,6 +203,24 @@ class FakeTwitchClient(_Recorder, TwitchClient):
             for user_id in dict.fromkeys(ids)
         ]
 
+    def get_users_by_login(self, logins: Sequence[str]) -> list[TwitchUser]:
+        """Every login exists except ones starting with "missing"; the user id is "id_<login>"."""
+        self._record("get_users_by_login", logins=list(logins))
+        found = [login.lower().removeprefix("@") for login in dict.fromkeys(logins)]
+        return [
+            TwitchUser(
+                id=f"id_{login}",
+                login=login,
+                display_name=login.capitalize(),
+                description=f"Bio of {login}",
+                profile_image_url=f"https://example.test/avatar/{login}.png",
+                broadcaster_type="partner",
+                created_at=FIXED_TIME,
+            )
+            for login in found
+            if not login.startswith("missing")
+        ]
+
     def get_followers_total(self, broadcaster_id: str) -> int | None:
         self._record("get_followers_total", broadcaster_id=broadcaster_id)
         return self.followers.get(broadcaster_id, 100_000)
@@ -242,6 +260,18 @@ class FakeYouTubeClient(_Recorder, YouTubeClient):
         return [
             self.channels.get(channel_id, _fake_channel_item(channel_id)) for channel_id in dict.fromkeys(ids)
         ]
+
+    def channel_for_handle(
+        self, handle: str, parts: Sequence[str] = ("snippet", "statistics")
+    ) -> dict[str, Any] | None:
+        """Handles starting with "missing" do not exist; others map to channel "UC_<handle>"."""
+        self._record("channel_for_handle", handle=handle)
+        name = handle.removeprefix("@")
+        if name.startswith("missing"):
+            return None
+        item = dict(_fake_channel_item(f"UC_{name}"))
+        item.setdefault("snippet", {})["customUrl"] = f"@{name}"
+        return item
 
     def search_list(
         self,

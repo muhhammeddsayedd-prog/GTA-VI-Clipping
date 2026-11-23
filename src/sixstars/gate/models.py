@@ -13,11 +13,14 @@ PROFILES = (HOURLY, EXPRESS)
 LANE_SPIKE = "spike"
 LANE_HOURLY = "hourly"
 
+TIER_CAMPAIGN = "campaign"  # D117: a creator with an active clipping campaign; treated like preferred
 TIER_PREFERRED = "preferred"
 TIER_AUTO = "auto"
+# Tiers that count as "the creator invites clipping" (express lane, ranking boost, no daily cap).
+PREFERRED_LIKE = (TIER_CAMPAIGN, TIER_PREFERRED)
 # Decision D10: creators who forbid clipping. A clip of theirs is never approved.
 FORBIDDEN_TIERS = ("restricted", "blocked")
-KNOWN_TIERS = (TIER_PREFERRED, TIER_AUTO, *FORBIDDEN_TIERS)
+KNOWN_TIERS = (TIER_CAMPAIGN, TIER_PREFERRED, TIER_AUTO, *FORBIDDEN_TIERS)
 
 
 class Verdict(StrEnum):

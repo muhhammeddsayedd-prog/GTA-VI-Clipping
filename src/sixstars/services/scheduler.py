@@ -128,7 +128,7 @@ def _new_rank(row: dict[str, Any], now: datetime, params: PostingParams) -> floa
         float(row["score"]),
         row["source_type"],
         row["spike_tier"],
-        row["creator_tier"] == "preferred",
+        row["creator_tier"] in ("campaign", "preferred"),
         reference,
         now,
         params,
