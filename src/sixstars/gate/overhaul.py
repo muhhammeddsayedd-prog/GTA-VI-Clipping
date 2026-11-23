@@ -68,13 +68,21 @@ def lowered_hourly_score(settings: GateSettings, min_score: float) -> GateSettin
     )
 
 
+def adjust_lengths(settings: GateSettings, notes: Adjustments | None = None) -> GateSettings:
+    """The length limits under `cut.adaptive` (both minimums lowered to its `min_s`). Also used by the
+    checks before the clip writer (`factory.precheck`), so both read the same limits."""
+    cut = scoring_config.flag("cut.adaptive")
+    if cut is None:
+        return settings
+    min_s = scoring_config.number(cut, "min_s", settings.hourly.min_len_s)
+    if notes is not None:
+        notes.min_len_s = min_s
+    return lowered_lengths(settings, min_s)
+
+
 def adjust_settings(row: store.ClipRow, settings: GateSettings, notes: Adjustments) -> GateSettings:
     """The gate settings for this clip under the enabled flags."""
-    cut = scoring_config.flag("cut.adaptive")
-    if cut is not None:
-        min_s = scoring_config.number(cut, "min_s", settings.hourly.min_len_s)
-        settings = lowered_lengths(settings, min_s)
-        notes.min_len_s = min_s
+    settings = adjust_lengths(settings, notes)
     strong = scoring_config.flag("pass.strong_spike")
     if strong is not None:
         notes.strength = strength_of_spike(row.spike_id)
