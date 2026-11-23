@@ -115,3 +115,15 @@ sixstars titles queue [--limit 200] [--apply]   re-title approved clips without 
   hold the names. `gta6-priority-creators.csv` was not in the project; the seed list is the most-clipped
   staging creators plus the handles the research names.
 - **Ranking boost** for big names (research item 7) is not part of this change.
+- **"this happens"** is banned too (the model wrote "X Is 8 Hours Into GTA 6 When This Happens", the same
+  emptiness as "this moment").
+- **Hours into the stream** are given as whole hours, and the prompt calls them a weak stake: in the first
+  staging run the model copied "8.9 Hours" and used them in 13 of 27 titles.
+
+## Staging comparison (2026-11-23)
+
+30 most recent staging clips (posted, approved and rejected; staging has one posted clip), dry run. First run:
+22 v2, 5 fallbacks, 3 refused by the budget; the fallbacks came from two check bugs (digits inside names such
+as "Quin69" read as numbers; an all-caps two-word name counted as caps words), fixed with regression tests.
+Second run: 30 of 30 v2 titles, 0 fallbacks. Cost: $0.034 for 70 P11 calls over both runs (about $0.0005
+per clip on the fast model).

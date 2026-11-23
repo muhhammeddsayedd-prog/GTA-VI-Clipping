@@ -48,9 +48,9 @@ RULES
    e. discovery: the streamer finds or realizes something surprising.
    f. fail: a plan collapses; say exactly how.
    A plain action ("drives", "tries flying", "goes to a club") is not enough on its own; add the stake or the twist from the facts.
-3. Use a number whenever numbers has one: "After 5 Hours", "11 Hours of Progress", "$10K", "27%". Round a number with a decimal to a whole one.
+3. Use a number whenever numbers has one: "After 5 Hours", "11 Hours of Progress", "$10K", "27%". Round a number with a decimal to a whole one. hours_played, percent_complete and money are real stakes; hours_into_stream is a weak one: use it only when the event itself has no stake, and never as the whole point of the title ("X Is 8 Hours Into GTA 6 When This Happens" says nothing).
 4. Always include the gta_label. Lucia, Jason and Leonida only alongside it.
-5. Never make chat the subject. Banned words and phrases: chat, loses it, losing it, lost it, goes sideways, off the rails, takes a turn, this moment, you won't believe, wait for it, insane, craziest.
+5. Never make chat the subject. Banned words and phrases: chat, loses it, losing it, lost it, goes sideways, off the rails, takes a turn, this moment, this happens, you won't believe, wait for it, insane, craziest.
 6. Emoji only at the end, at most 2. Default 😭. Fails 💀. Discoveries 😳 or 👀. Sad moments 💔. Wins 🔥.
 7. At most one word in ALL CAPS, on the key word. No hashtags, no question marks, no title that is only a quote.
 8. The words "first", "only", "record", "beat" and "finish" only when the facts say so.

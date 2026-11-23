@@ -74,7 +74,8 @@ def test_spoken_numbers() -> None:
 
 def test_hours_into_stream_only_from_one_hour() -> None:
     assert facts.hours_into_stream(1800) is None
-    assert facts.hours_into_stream(5 * 3600 + 1200) == 5.3
+    assert facts.hours_into_stream(5 * 3600 + 1200) == 5.0
+    assert facts.hours_into_stream(5 * 3600 + 2400) == 6.0
     assert facts.hours_into_stream(None) is None
 
 
