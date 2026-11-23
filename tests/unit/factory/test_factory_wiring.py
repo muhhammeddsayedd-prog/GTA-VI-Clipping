@@ -74,6 +74,7 @@ def test_config_rejects_bad_values() -> None:
 
 
 MIGRATIONS = REPO / "supabase" / "migrations"
+RETIRED_FRAMES = ("hype_montage", "headline_card", "pov_fullframe")
 
 
 def without_zoom(rules: dict[str, Any]) -> dict[str, Any]:
@@ -106,6 +107,13 @@ def migrated_style_settings(first: str, second: str, third: str) -> dict[str, ob
         entry["rules"] = without_zoom(entry["rules"])
         if style_id in ("cam_top_viral", "cam_top_viral_follow"):
             entry["enabled"] = False  # migration 0043
+    # Migration 0054 (Render v2 R1): the retired frames are off and leave the affinity.
+    v2 = (MIGRATIONS / "0054_render_v2_settings.sql").read_text(encoding="utf-8")
+    for style_id in RETIRED_FRAMES:
+        assert f"'{style_id}'" in v2
+        styles[style_id]["enabled"] = False
+        for weights in merged_director["affinity"].values():
+            weights.pop(style_id, None)
     return {"factory.styles": styles, "factory.style_director": merged_director}
 
 

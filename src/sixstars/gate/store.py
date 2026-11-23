@@ -83,7 +83,7 @@ class ClipRow:
 
 
 def _layout_kind(value: object) -> LayoutKind | None:
-    return value if value in ("A", "B", "C") else None
+    return value if value in ("A", "B", "C", "G", "G0") else None
 
 
 def _float(value: object) -> float | None:

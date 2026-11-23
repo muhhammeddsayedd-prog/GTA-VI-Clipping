@@ -36,6 +36,9 @@ def test_fields_match_the_documented_factory_settings_one_to_one() -> None:
     documented.remove("factory.pre_p2_checks")
     documented.remove("factory.pre_p2_throttle")
     documented.remove("factory.pre_p2_queue_min")
+    # Render v2 (D119): `FactoryConfig.layout_v2` (`LayoutV2Rules`) and the text system of R4.
+    documented.remove("factory.layout_v2")
+    documented.remove("factory.text_v2")
     assert list(FactoryParams.setting_keys()) == documented
 
 

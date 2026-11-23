@@ -72,8 +72,11 @@ from sixstars.factory.layout import (
     LayoutA,
     LayoutB,
     LayoutCard,
+    LayoutG,
+    LayoutG0,
     LayoutMontage,
     LayoutPov,
+    LayoutV2Rules,
 )
 from sixstars.factory.lines import Line, clip_lines, group_lines
 from sixstars.factory.params import FactoryParams
@@ -312,15 +315,28 @@ class RenderJob:
     broll_from: ClipWindow | None = None
     # The ffmpeg scaler of every crop (`factory.layout_v2.scaler`, D119).
     scaler: str = DEFAULT_SCALER
+    # Render v2 (`factory.layout_v2`, D119): with `enabled`, every clip is drawn as layout G or G0.
+    layout_v2: LayoutV2Rules = field(default_factory=LayoutV2Rules)
 
 
-def framed_layout(layout: Layout, style: StyleRules) -> Layout:
+def framed_layout(layout: Layout, style: StyleRules, v2: LayoutV2Rules | None = None) -> Layout:
     """The layout a style draws: the news card (H) or the POV crop (P) when its `frame` says so; else with
     a facecam on top (layout C) when the style says so, or below (layout A); without a facecam, layout B.
-    Pure."""
+
+    Render v2 (`v2.enabled`, D119): layout G when a facecam was found, else G0; the style's `frame` and
+    `facecam_top` are ignored (the styles only vary the text). With the switch off, a G or G0 layout (from
+    a recipe written while it was on) is drawn as layout A or B. Pure."""
     facecam = (
-        layout.facecam_box if isinstance(layout, LayoutA | LayoutCard | LayoutPov | LayoutMontage) else None
+        layout.facecam_box
+        if isinstance(layout, LayoutA | LayoutCard | LayoutPov | LayoutMontage | LayoutG)
+        else None
     )
+    if v2 is not None and v2.enabled:
+        if isinstance(layout, LayoutG | LayoutG0):
+            return layout
+        return LayoutG(facecam_box=facecam) if facecam is not None else LayoutG0()
+    if isinstance(layout, LayoutG | LayoutG0):
+        layout = LayoutA(facecam_box=facecam) if facecam is not None else LayoutB()
     if style.frame == "montage":
         return LayoutMontage(facecam_box=facecam) if facecam is not None else LayoutB()
     if isinstance(layout, LayoutMontage):
@@ -538,15 +554,18 @@ def _seam_fade(job: RenderJob) -> dict[str, Any]:
     return {"fade_png": fade.path, "fade_top": M_SEAM_Y - M_FADE_H // 2}
 
 
-def _own_title_top(kind: str, height: int, seam_y: int) -> int:
+def _own_title_top(kind: str, height: int, seam_y: int, g0_game_y: int = B_GAMEPLAY_Y) -> int:
     """Top of a Phase B text on the reference canvas: the news card's header, the POV line centred on the
-    gameplay, or the question title at the top of the gameplay. Pure."""
+    gameplay, or the question title at the top of the gameplay (`seam_y` is the seam of layout C or G,
+    `g0_game_y` the gameplay top of layout G0). Pure."""
     if kind == "H":
         return H_HEADER_TOP
     if kind == "P":
         return max(0, P_TEXT_CENTER_Y - height // 2)
-    if kind == "C":
+    if kind in ("C", "G"):
         return seam_y + C_QUESTION_GAP
+    if kind == "G0":
+        return g0_game_y + C_QUESTION_GAP
     if kind == "B":
         return B_GAMEPLAY_Y + C_QUESTION_GAP
     return QUESTION_TOP_A
@@ -591,10 +610,10 @@ def render_file(job: RenderJob, *, ffmpeg: str = "ffmpeg", ffprobe: str = "ffpro
     style = job.style
     job = replace(
         job,
-        layout=framed_layout(job.layout, style),
+        layout=framed_layout(job.layout, style, job.layout_v2),
         hook=chosen_title(job.hook, job.texts, job.payoff_emoji, style) if style.show_title else None,
     )
-    cam_top = job.layout.kind == "C"
+    cam_top = job.layout.kind in ("C", "G")
     words = [word for line in job.lines for word in line.words]
     matcher = job.assets.profanity()
     profane = matcher.find([word.text for word in words])
@@ -613,6 +632,7 @@ def render_file(job: RenderJob, *, ffmpeg: str = "ffmpeg", ffprobe: str = "ffpro
         logo_path=job.assets.logo,
         hook_shown=bool(job.hook),
         scaler=job.scaler,
+        layout_v2=job.layout_v2,
     )
     duration = spec.clip_duration_s
     live_badge = job.lane == "spike"
@@ -648,13 +668,16 @@ def render_file(job: RenderJob, *, ffmpeg: str = "ffmpeg", ffprobe: str = "ffpro
     title_top = title_bar_top(params, live_badge=live_badge)
     # Layout C: the title sits on the seam (its bottom just below it), over the streamer's chest, never
     # on the face; the watermark keeps its corner and shows from the start.
-    seam_ref = Geometry.for_canvas(REF_WIDTH, REF_HEIGHT).c_seam_y
+    reference = Geometry.for_canvas(REF_WIDTH, REF_HEIGHT, job.layout_v2)
+    seam_ref = reference.g_cam_h if job.layout.kind == "G" else reference.c_seam_y
     hook_top: float | None = None
     kind = job.layout.kind
     own_place = kind in ("H", "P") or style.title_look == "question"
     if own_place:
         # Phase B styles: the text has its own place and the watermark keeps its corner.
-        top = _own_title_top(kind, bar.height if bar is not None else HOOK_BOTTOM - HOOK_TOP, seam_ref)
+        top = _own_title_top(
+            kind, bar.height if bar is not None else HOOK_BOTTOM - HOOK_TOP, seam_ref, reference.g0_game_y
+        )
         hook_top = float(top)
         title_top = top
     elif cam_top:
@@ -1045,6 +1068,7 @@ def produce(
         texts=writing.style_texts(),
         broll_from=padded,
         scaler=cfg.scaler,
+        layout_v2=cfg.layout_v2,
     )
     outcome = render_file(job, ffmpeg=deps.ffmpeg, ffprobe=deps.ffprobe)
     timed("render", started)
@@ -1053,7 +1077,7 @@ def produce(
         writing=writing,
         window=window,
         lines=tuple(clip_text),
-        layout=framed_layout(layout, style),
+        layout=framed_layout(layout, style, cfg.layout_v2),
         music=analysis,
         outcome=outcome,
         timings_ms=timings,
@@ -1425,7 +1449,7 @@ def render_story(
                 )
             except music.MusicDetectorUnavailableError as exc:
                 log.warning("music_detector_unavailable", error=str(exc)[:200])
-        facts = clip_facts(dict(job.texts), has_facecam=isinstance(job.layout, LayoutA))
+        facts = clip_facts(dict(job.texts), has_facecam=isinstance(job.layout, LayoutA | LayoutG))
         plan = variants.plan_for(row.id, "hourly", cfg, facts=facts, moment_type="story")
         payoff = produced.writing.payoff_s
         scratch = scratch_dir_for(row.id)
@@ -1442,7 +1466,7 @@ def render_story(
             style=campaign_look.rules_for(
                 row.id,
                 cfg.catalog.rules_for(plan.reference_style),
-                has_facecam=isinstance(job.layout, LayoutA),
+                has_facecam=isinstance(job.layout, LayoutA | LayoutG),
                 duration_s=window.duration_s,
             ),
             style_id=plan.reference_style,
@@ -1455,7 +1479,7 @@ def render_story(
             writing=writing,
             window=window,
             lines=tuple(clip_text),
-            layout=framed_layout(job.layout, story_job.style),
+            layout=framed_layout(job.layout, story_job.style, job.layout_v2),
             music=analysis,
             outcome=outcome,
             timings_ms={"render": int((time.monotonic() - started) * 1000)},
@@ -1588,7 +1612,7 @@ def render_clip(item: RenderInput, *, deps: Deps | None = None, force: bool = Fa
 
         def choose_style(writing: ClipWriting, layout: Layout, has_broll: bool) -> tuple[StyleRules, str]:
             facts = clip_facts(
-                writing.style_texts(), has_facecam=isinstance(layout, LayoutA), broll=has_broll
+                writing.style_texts(), has_facecam=isinstance(layout, LayoutA | LayoutG), broll=has_broll
             )
             plan = variants.plan_for(row.id, item.lane, cfg, facts=facts, moment_type=writing.moment_type)
             planned.append(plan)
@@ -1603,7 +1627,7 @@ def render_clip(item: RenderInput, *, deps: Deps | None = None, force: bool = Fa
             rules = campaign_look.rules_for(
                 row.id,
                 cfg.catalog.rules_for(plan.reference_style),
-                has_facecam=isinstance(layout, LayoutA),
+                has_facecam=isinstance(layout, LayoutA | LayoutG),
                 duration_s=max(0.0, writing.end_s - writing.start_s),
             )
             return rules, plan.reference_style

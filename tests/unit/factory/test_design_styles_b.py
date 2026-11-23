@@ -43,9 +43,14 @@ from sixstars.factory.styles import DEFAULT_STYLES, StyleCatalog
 from sixstars.factory.subtitles import SubtitleStyle, credit_bottom
 from sixstars.factory.variants import recipe_json
 
-# The five styles of phases A and B (phases C and E have their own tests).
+# The five styles of phases A and B (phases C and E have their own tests). Render v2 switched off
+# cam_top_viral (R0), headline_card and pov_fullframe (R1); the planner tests switch them on again.
 CATALOG = StyleCatalog.from_setting(
-    {k: v for k, v in DEFAULT_STYLES.items() if k not in ("cam_top_wordcap", "hype_montage")}
+    {
+        k: {**v, "enabled": True}  # type: ignore[dict-item]
+        for k, v in DEFAULT_STYLES.items()
+        if k not in ("cam_top_wordcap", "hype_montage")
+    }
 )
 ACCOUNTS = [
     AccountSlot("instagram_main", "instagram", ("hourly", "spike")),

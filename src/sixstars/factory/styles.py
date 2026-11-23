@@ -59,7 +59,8 @@ DEFAULT_STYLES: dict[str, object] = {
         "rules": CAM_TOP_QUESTION,
     },
     "headline_card": {
-        "enabled": True,
+        # Off since Render v2 R1 (D119, migration 0054): its frame is retired.
+        "enabled": False,
         "weight": 1,
         "lanes": list(LANES),
         "accounts": ALL_ACCOUNTS,
@@ -67,7 +68,8 @@ DEFAULT_STYLES: dict[str, object] = {
         "rules": HEADLINE_CARD,
     },
     "pov_fullframe": {
-        "enabled": True,
+        # Off since Render v2 R1 (D119, migration 0054): its frame is retired.
+        "enabled": False,
         "weight": 1,
         "lanes": list(LANES),
         "accounts": ALL_ACCOUNTS,
@@ -76,7 +78,8 @@ DEFAULT_STYLES: dict[str, object] = {
     },
     # Phase E (migration 0031): hourly only, it needs a facecam and footage around the moment.
     "hype_montage": {
-        "enabled": True,
+        # Off since Render v2 R1 (D119, migration 0054): its frame is retired.
+        "enabled": False,
         "weight": 1,
         "lanes": ["hourly"],
         "accounts": ALL_ACCOUNTS,

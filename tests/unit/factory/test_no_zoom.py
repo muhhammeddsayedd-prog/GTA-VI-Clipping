@@ -16,8 +16,11 @@ from sixstars.factory.layout import (
     LayoutA,
     LayoutB,
     LayoutCard,
+    LayoutG,
+    LayoutG0,
     LayoutMontage,
     LayoutPov,
+    LayoutV2Rules,
 )
 from sixstars.factory.params import FactoryParams
 from sixstars.factory.pipeline import framed_layout
@@ -34,7 +37,11 @@ BASE_LAYOUTS: dict[str, Layout] = {
     "H": LayoutCard(CAM),
     "P": LayoutPov(CAM),
     "M": LayoutMontage(CAM),
+    # Render v2 (R1): drawn with factory.layout_v2 on, with a chat box the gameplay slides away from.
+    "G": LayoutG(CAM, overlay_boxes=(Box(1500, 100, 400, 500),)),
+    "G0": LayoutG0(overlay_boxes=(Box(0, 0, 300, 200),)),
 }
+V2_ON = LayoutV2Rules(enabled=True, scaler="lanczos")
 # A filter is the text between unescaped commas or semicolons; its input labels come first.
 _SPLIT = re.compile(r"(?<!\\)[,;]")
 _LABELS = re.compile(r"^(?:\[[^\]]*\])+")
@@ -95,7 +102,8 @@ def test_no_filter_changes_the_framing_over_time(
     style_id: str, kind: str, params_factory: Callable[..., FactoryParams]
 ) -> None:
     style = _style_rules()[style_id]
-    layout = framed_layout(BASE_LAYOUTS[kind], style)
+    layout = framed_layout(BASE_LAYOUTS[kind], style, V2_ON if kind in ("G", "G0") else None)
+    assert kind not in ("G", "G0") or layout.kind == kind
     graph = build_filter_complex(_spec(layout, style, params_factory(end_card_s=0)))
     assert "eval=frame" not in graph
     assert "zoompan" not in graph

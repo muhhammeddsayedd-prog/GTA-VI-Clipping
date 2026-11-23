@@ -40,13 +40,15 @@ Branch = Literal["weighted", "explore", "learn", "exploit"]
 DEFAULT_DIRECTOR: dict[str, object] = {
     "no_repeat_n": 1,
     "diverse_across_accounts": True,
+    # Migration 0054 (Render v2 R1, D119) removed the retired frames hype_montage, headline_card and
+    # pov_fullframe from the affinity.
     "affinity": {
-        "reaction": {"cam_top_viral": 3, "hype_montage": 2},
-        "discovery": {"headline_card": 3, "cam_top_question": 3, "hype_montage": 3},
-        "action": {"pov_fullframe": 3, "cam_top_viral": 2},
+        "reaction": {"cam_top_viral": 3},
+        "discovery": {"cam_top_question": 3},
+        "action": {"cam_top_viral": 2},
         "story": {"cam_top_title": 3, "cam_top_wordcap": 3},
-        "npc_funny": {"cam_top_title": 2, "pov_fullframe": 2},
-        "fail": {"cam_top_viral": 2, "pov_fullframe": 2},
+        "npc_funny": {"cam_top_title": 2},
+        "fail": {"cam_top_viral": 2},
     },
     # Phase D (migration 0030).
     "mode": "bandit",

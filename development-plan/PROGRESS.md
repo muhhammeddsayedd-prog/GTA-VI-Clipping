@@ -981,3 +981,33 @@ ruff, `ruff format --check`, `mypy --strict src/` clean. Unit: 3789 passed, 6 sk
   - production `tiktok_main.lanes = {hourly}`.
 - PR 5: `clip_campaign_posts` rows, Telegram Submitted/Skip, reminders, expected payout.
 
+## M19 R1 — Render v2: G and G0 geometry, retired frames off (D119) (2026-11-23)
+
+**Branch:** `render-v2-r1` (worktree `../6stars-wt-render`) · **Migration:** 0054 (0053 is held by the campaign-posting work)
+
+### What was built
+
+- `factory/layout.py`: `LayoutKind` gains `G` and `G0`; `LayoutG(facecam_box, face_box, overlay_boxes)` and `LayoutG0(overlay_boxes)`; `LayoutV2Rules` (the setting `factory.layout_v2`, every key validated, a bad value gives the defaults with the switch off); `Geometry.for_canvas(w, h, v2)` adds `g_cam_h`, `g_game_h`, `g0_game_h`, `g0_game_y`; `gameplay_band("G" | "G0", v2)` for the gate.
+- `gameplay_crop_v2` (pure): the largest crop of the panel's aspect at full source height, centred, slid sideways to the nearest position clear of the facecam and the overlay boxes within `max_slide` x source width, else the least overlapping area (nearest the centre on a tie); even offsets; one crop per clip. Candidates are the range ends and the edge-meeting positions (the overlap is piecewise linear), so it is exact and cheap.
+- Filter graphs (`_v2_filters`): G = cam panel 1080x`cam_h` (until R2: the centred crop of the cam box) vstacked over 1080x(1920-`cam_h`) of gameplay; G0 = layout B's blurred background (`blur_background`, factored out) with the 4:5 gameplay at `g0_game_y`. Both Lanczos (the scaler setting), no seam and no progress bar (`render.build_video_filters`).
+- `pipeline.framed_layout(layout, style, v2)`: with `factory.layout_v2.enabled`, G when a facecam was found (any detected layout with a facecam, until R3 verifies it), else G0; `style.frame` and `style.facecam_top` are ignored. Off, nothing changes, and a G/G0 layout from a recipe is drawn as A/B. The rules flow `FactoryConfig.layout_v2` → `RenderJob.layout_v2` → `RenderSpec.layout_v2`, also for story cuts, variants (`clip.variants`) and the gate band (`gate.visual.measure_file(layout_v2=...)`, `gate.store` accepts G/G0).
+- Text until R4: G uses layout C's places on its own seam (720), G0 uses layout B's.
+- `variants.recipe_json` stores `kind`, `facecam_box`, `gameplay_box`, `face_box`, `overlay_boxes`; `layout_from_recipe` reads G/G0 back; old recipes load as A/B and become G/G0 through `framed_layout` while the switch is on.
+- Migration `0054_render_v2_settings.sql` (idempotent, never overwrites a value): seeds `factory.layout_v2` (enabled **false**), `factory.text_v2`, `facecam.detect`, `gate.render_v2`; disables `hype_montage`, `headline_card`, `pov_fullframe` and removes them from `factory.style_director.affinity`. Code defaults (`DEFAULT_STYLES`, `DEFAULT_DIRECTOR`) mirror it. docs/16 documents the four keys; docs/27 marks the three styles disabled.
+- Console: `ClipBits.tsx` names layouts G/G0 and marks the retired styles "(retired)" (the console has no style picker; styles are only displayed).
+
+### Results
+
+ruff, format, `mypy --strict` clean; unit 4022 passed. New `tests/unit/factory/test_layout_v2.py` (32: setting parse and seeded values, geometry, the five crop cases of the plan with production-like boxes, slide limit, even offsets, G/G0 graphs, no seam/progress, master switch for every style, recipe round trip, gate kinds); `test_no_zoom.py` covers G and G0; real-ffmpeg `test_render_v2_frames_have_the_spec_sizes_and_avoid_cam_and_chat` (G: cam panel red = facecam, gameplay panel pure gameplay with no cam or chat pixels; G0: gameplay at 285..1635 without the chat, dark blur above; 1080x1920 checked with ffprobe). Integration: `test_render_v2_settings_migration.py` (idempotent, switch off, styles off, affinities gone, operator value kept).
+
+Render time, local PC, 10 s clip from a 1920x1080 test pattern, normal mode, median of 3 (noisy machine): C bicubic (today) 6.2 s, C Lanczos 4.8 s, B bicubic 5.9 s, G Lanczos 3.8 s, G0 Lanczos 5.4 s. No slowdown from Lanczos measurable.
+
+### Deviations
+
+- Lanczos becomes active for every render once 0054 is applied (the scaler is read with the switch off, as R0 specified).
+- "Staging renders of 3 cam and 2 no-cam clips match the spec sizes" needs `factory.layout_v2.enabled = true` on staging, which the plan schedules from R2 on. The sizes are checked on real ffmpeg renders locally; the staging check is done when the switch goes on (R2).
+- R0's staging framing check is still open: since the R0 deploy (14:49 UTC) every staging render was rejected by the gate for content reasons (music_over_limit, score_too_low, same mix as before), so no post-R0 render has been stored yet; rejected files stay on the server, which this PC cannot reach by SSH.
+
+### Open issues / next
+
+- R2: YuNet face detector (`factory/faces.py`), `cam_window`, the blurred fill and unsharp on the cam panel; switch staging on.
