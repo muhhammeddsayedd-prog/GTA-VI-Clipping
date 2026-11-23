@@ -693,3 +693,55 @@ Production audit 2026-11-21: `youtube_main` had been lowered to the learned-cap 
 - C1 is a visible look change on every clip: facecam 672 → ≥ 768 px in layout C, and phrase captions in the first 2 s and around the peak. Needs the owner's yes before building.
 - YouTube traffic-source reward needs a YouTube OAuth refresh token (`sixstars youtube auth`).
 - OCR: RapidOCR (PP-OCR models on onnxruntime) proposed instead of the paddlepaddle install.
+
+## Cover engine C1 — cover-ready video (2026-11-23)
+
+**Branch:** `covers-c1` (on `covers-c0`). Owner approved the look change, RapidOCR and the plan on 23 Nov.
+
+### What was built
+
+- `factory/coverready.py`: flag `cover.video_ready` (scoring_config, migration `0038_cover_video_ready.sql`, off). `plan()` per clip:
+  - **peak:** cut anchor → writer payoff → busiest chat second (−3 s lag), in clip time;
+  - **face:** MediaPipe BlazeFace on 5–7 frames of the facecam box, median;
+  - **luma:** opening gameplay luma.
+  
+  Never raises; each part drops out on its own failure.
+- Layout (`factory/layout.py`):
+  - `Geometry.for_canvas(..., c_facecam_ref)`: layout C facecam is 768 px when on;
+  - `face_crop_box`: panel aspect, face centre at 45% height, face = `face_target` of the crop, ≥ `face_min_crop_px`, inside the webcam box; used by layouts A and C;
+  - `lift_filter`: `eq` gamma easing back by 1.5 s, on the gameplay chain of A/B/C;
+  - `gameplay_band(kind, facecam_h)`: the gate band starts 96 px lower under the tall facecam.
+- Captions (`subtitles.phrase_chunks`): chunked styles show one still phrase (no pop, no word colour) in the windows; outside them, unchanged. Classic whole-line styles are untouched.
+- Pipeline:
+  - `RenderJob.cover`; the seam-anchored title and question move with the seam;
+  - the story cut reuses the plan, shifted (`coverready.shifted`);
+  - variants carry it in `recipe.json`;
+  - `_finish` stores `clips.peak_s`, `peak_source`, `facecam_h`;
+  - the gate reads `facecam_h` for its band;
+  - the render timing has a `cover` stage.
+- `sixstars covers check-video [--limit 20] [--since]` (`covers/videocheck.py`), on the server:
+  - checks face share at the opening and the peak (≥ 0.35 of the panel), OCR'd caption words against the transcript (no cut word, a phrase per window) and file length;
+  - keeps frames in `$DATA_DIR/covers-check/`.
+- Dependencies:
+  - `mediapipe`, `rapidocr`, `onnxruntime` and `opencv-contrib-python-headless`, with uv overrides dropping the GUI OpenCV builds;
+  - Dockerfile bakes `blaze_face_short_range.tflite` (sha256-pinned), adds `libegl1`/`libgles2`, and self-checks MediaPipe and RapidOCR at build time.
+- Tests:
+  - `tests/unit/factory/test_factory_coverready.py` (18);
+  - `test_factory_coverready_ffmpeg.py`: a real render with the tall facecam, face crop and lift has the plain render's duration and byte-identical audio;
+  - `tests/unit/test_covers_videocheck.py`;
+  - `tests/integration/test_cover_video_ready_migration.py`.
+  
+  Full unit suite: 3756 passed.
+
+### Deviations
+
+- Peak: the prompt names the scoring overhaul's anchor, but that runs only with `cut.adaptive`, which is off on staging. The fallback order (payoff, chat) gives a peak on most clips.
+- Face share target 0.40 with a 0.35 acceptance bar, measured with BlazeFace's box (forehead to chin), the same detector in render and check.
+- The dark lift is a gamma 1.15 (≈ +20–25% on luma 50 frames) rather than a flat +15% brightness, which washes out blacks. It eases back from 1.0 to 1.5 s, so there is no visible jump.
+- Face detection runs in the express lane too, timed as `cover`. Expected 1–3 s per render.
+- Migration 0038 (not 0028). 0037 is claimed by two in-flight branches (`ai-cost-a0`, local `clipcamp-1`).
+
+### Open issues / next
+
+- The Docker image (new deps) is built only by the staging deploy; the build self-check is the first real test of MediaPipe/RapidOCR on Linux.
+- After deploy: turn `cover.video_ready` on in staging, then run `sixstars covers check-video --since <flip>` on 20 layout C clips and write `docs/reports/covers-c1.md`.

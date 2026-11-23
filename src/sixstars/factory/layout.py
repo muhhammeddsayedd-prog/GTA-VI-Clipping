@@ -103,6 +103,63 @@ class Box:
 
 
 @dataclass(frozen=True, slots=True)
+class FaceFraming:
+    """Cover-ready video (`factory/coverready.py`): where the streamer's face is in the source (pixels) and
+    how much of the facecam panel's height it should fill."""
+
+    face: Box
+    target_share: float
+    min_crop_px: int
+
+
+@dataclass(frozen=True, slots=True)
+class GameLift:
+    """Cover-ready video: a gamma lift of the gameplay for the first `until_s` seconds, fading back to
+    normal over the last `fade_s` of them."""
+
+    gamma: float
+    until_s: float
+    fade_s: float
+
+
+def _even_down(value: float) -> int:
+    return max(2, int(value // 2) * 2)
+
+
+def face_crop_box(framing: FaceFraming, facecam: Box, panel_w: int, panel_h: int) -> Box:
+    """The facecam crop of the panel's aspect that puts the face in the middle (its centre at 45% of the
+    crop's height, where a viewer expects eyes) at `target_share` of the crop's height, inside the facecam
+    box.
+
+    The crop is never under `min_crop_px` high (no blurry over-zoom) and never larger than the largest crop
+    of that aspect that fits the box; it slides to stay inside the box. Even sizes and offsets. Pure."""
+    aspect = panel_w / panel_h
+    max_h = min(facecam.h, facecam.w / aspect)
+    face = framing.face
+    wanted_h = face.h / max(framing.target_share, 0.05)
+    crop_h = min(max(wanted_h, float(framing.min_crop_px)), max_h)
+    h = _even_down(crop_h)
+    w = _even_down(crop_h * aspect)
+    w, h = min(w, _even_down(facecam.w)), min(h, _even_down(facecam.h))
+    x = face.x + face.w / 2 - w / 2
+    y = face.y + face.h / 2 - 0.45 * h
+    x = min(max(x, facecam.x), facecam.x + facecam.w - w)
+    y = min(max(y, facecam.y), facecam.y + facecam.h - h)
+    return Box(int(x // 2) * 2, int(y // 2) * 2, w, h)
+
+
+def lift_filter(lift: GameLift) -> str:
+    """The ffmpeg `eq` filter of a lift: gamma `lift.gamma` until `until_s - fade_s`, easing back to 1 at
+    `until_s` (evaluated per frame). Pure."""
+    gain = _number(lift.gamma - 1)
+    if lift.fade_s > 0:
+        ramp = f"clip(({_number(lift.until_s)}-t)/{_number(lift.fade_s)},0,1)"
+    else:
+        ramp = f"lt(t,{_number(lift.until_s)})"
+    return render_filter("eq", [("gamma", f"1+{gain}*{ramp}"), ("eval", "frame")])
+
+
+@dataclass(frozen=True, slots=True)
 class LayoutA:
     """Facecam found: gameplay on top and facecam below (kind "A"), or with `cam_top` the facecam on top
     and the gameplay below (kind "C"). `gameplay_box` None means the whole frame."""
@@ -208,11 +265,13 @@ class Geometry:
     watermark_y: int
 
     @classmethod
-    def for_canvas(cls, width: int, height: int) -> "Geometry":
+    def for_canvas(cls, width: int, height: int, c_facecam_ref: int = C_FACECAM_H) -> "Geometry":
+        """`c_facecam_ref` is layout C's facecam height on the reference canvas (taller with the
+        cover-ready video, `cover.video_ready`)."""
         sx, sy = width / REF_WIDTH, height / REF_HEIGHT
         a_gameplay_h = _even(A_GAMEPLAY_H * sy)
         b_gameplay_h = min(_even(B_GAMEPLAY_H * sy), height)
-        c_facecam_h = _even(C_FACECAM_H * sy)
+        c_facecam_h = _even(c_facecam_ref * sy)
         return cls(
             width=width,
             height=height,
@@ -244,13 +303,15 @@ class Geometry:
         return self.c_seam_y if kind == "C" else self.a_seam_y
 
 
-def gameplay_band(kind: LayoutKind | None) -> tuple[float, float]:
+def gameplay_band(kind: LayoutKind | None, facecam_h: int | None = None) -> tuple[float, float]:
     """The part of the frame (fractions of its height, top and bottom) that shows nothing but moving
     gameplay: the gate looks there for a frozen or black source (`gate.visual`). Below the hook or title
     and above the captions and the credit line of the layout. None (a clip rendered before layout C
-    existed) gives the band of layouts A and B."""
+    existed) gives the band of layouts A and B. `facecam_h` is layout C's facecam height on the reference
+    canvas when it was not `C_FACECAM_H` (cover-ready video): the band starts as far below the seam."""
     if kind == "C":
-        return C_BAND_TOP / REF_HEIGHT, C_BAND_BOTTOM / REF_HEIGHT
+        top = C_BAND_TOP + max(0, (facecam_h or C_FACECAM_H) - C_FACECAM_H)
+        return min(top, C_BAND_BOTTOM - 80) / REF_HEIGHT, C_BAND_BOTTOM / REF_HEIGHT
     if kind == "H":
         return (H_VIDEO_Y + 40) / REF_HEIGHT, (H_VIDEO_Y + H_VIDEO_H - 40) / REF_HEIGHT
     if kind == "P":
@@ -408,12 +469,17 @@ def layout_filters(
     zoom_cut: ZoomCut | None = None,
     punch_ins: PunchIns | None = None,
     broll: Sequence[BrollCut] = (),
+    framing: FaceFraming | None = None,
+    lift: GameLift | None = None,
 ) -> list[str]:
     """Filter chains from the source video link to a `geometry.width`x`geometry.height` frame.
 
-    With `punch_ins`, a full-frame close-up is cut in over the layout during each span.
+    With `punch_ins`, a full-frame close-up is cut in over the layout during each span. With `framing`
+    (cover-ready video) the facecam crop of layouts A and C is placed on the streamer's face; with `lift`
+    the gameplay of layouts A, B and C is lifted at the start.
     """
     g = geometry
+    lifted = [lift_filter(lift)] if lift is not None else []
     if isinstance(layout, LayoutMontage):
         return _montage_filters(
             layout,
@@ -448,9 +514,14 @@ def layout_filters(
         game_h = g.c_gameplay_h if layout.cam_top else g.a_gameplay_h
         face_h = g.c_facecam_h if layout.cam_top else g.a_facecam_h
         game = gameplay_crop(layout, g.width, game_h, source_w, source_h)
-        face = fit_crop(layout.facecam_box, g.width, face_h, source_w, source_h)
+        face = (
+            face_crop_box(framing, layout.facecam_box, g.width, face_h)
+            if framing is not None
+            else fit_crop(layout.facecam_box, g.width, face_h, source_w, source_h)
+        )
         game_chain = [
             _crop(game),
+            *lifted,
             *scale_filters(g.width, game_h, duration_s, zoom=zoom, zoom_cut=zoom_cut),
         ]
         face_chain = [_crop(face), *scale_filters(g.width, face_h, duration_s, zoom=False)]
@@ -488,6 +559,7 @@ def layout_filters(
     ]
     game_chain = [
         _crop(game),
+        *lifted,
         *scale_filters(g.width, g.b_gameplay_h, duration_s, zoom=zoom, zoom_cut=zoom_cut),
     ]
     overlay = render_filter("overlay", [("x", "0"), ("y", str(g.b_gameplay_y))])

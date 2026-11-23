@@ -132,13 +132,15 @@ def _rebalance(groups: list[list[Word]], forced: list[bool], rules: LineRules) -
 @dataclass(frozen=True, slots=True)
 class Chunk:
     """A caption chunk: one or two words shown together (docs/27). `words` are positions in the line's
-    word list; `repeat` is how many times the same chunk was said in a row (shown as `X2`, `X3`)."""
+    word list; `repeat` is how many times the same chunk was said in a row (shown as `X2`, `X3`).
+    `phrase` marks a cover-ready phrase (several chunks of a line shown whole and still, `coverready`)."""
 
     line_index: int
     words: tuple[int, ...]
     start_s: float
     end_s: float
     repeat: int = 1
+    phrase: bool = False
 
 
 # A chunk ends before a word that follows a pause this long, even when it has room for the word.

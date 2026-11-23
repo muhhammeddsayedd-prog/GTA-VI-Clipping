@@ -35,6 +35,7 @@ from sixstars.factory import tools
 from sixstars.factory.assets import load_assets
 from sixstars.factory.bleep import Span
 from sixstars.factory.config import FactoryConfig
+from sixstars.factory.coverready import CoverVideo
 from sixstars.factory.director import AccountSlot, DirectorRules, StylePlan, plan_styles
 from sixstars.factory.layout import Box, Layout, LayoutA, LayoutB, LayoutKind, gameplay_band
 from sixstars.factory.lines import Line, Word
@@ -187,6 +188,7 @@ def recipe_json(
     texts: Mapping[str, str] | None = None,
     window_start_s: float = 0.0,
     broll: bool = False,
+    cover: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """The inputs of a render as JSON (times in clip time, boxes in source pixels). Pure."""
     return {
@@ -212,6 +214,8 @@ def recipe_json(
         ],
         "keywords": {str(index): list(words) for index, words in keywords.items()},
         "duck": [[span.start_s, span.end_s] for span in duck],
+        # Cover-ready video (`factory/coverready.CoverVideo.to_json`), None when off.
+        "cover": None if cover is None else dict(cover),
     }
 
 
@@ -430,11 +434,15 @@ def _render_one(
             style_id=style_id,
             texts={str(k): str(v) for k, v in dict(recipe.get("texts") or {}).items() if v},
             broll_from=ClipWindow(0.0, media.duration_s) if recipe.get("broll") else None,
+            cover=CoverVideo.from_json(recipe.get("cover")),
         )
         outcome = render_file(job)
         kind = framed_layout(job.layout, entry.rules).kind
         settings = profiles.load()
-        facts = visuals.measure_file(output, outcome.clip_duration_s, settings, layout_kind=kind)
+        facecam_h = job.cover.facecam_h if job.cover is not None else None
+        facts = visuals.measure_file(
+            output, outcome.clip_duration_s, settings, layout_kind=kind, facecam_h=facecam_h
+        )
         problems = file_problems(
             facts,
             width=settings.width,
@@ -445,7 +453,7 @@ def _render_one(
             max_freeze_s=settings.max_freeze_s,
         )
         checks = {
-            "band": list(gameplay_band(kind)),
+            "band": list(gameplay_band(kind, facecam_h)),
             "longest_black_s": None if facts is None else facts.longest_black_s,
             "longest_freeze_s": None if facts is None else facts.longest_freeze_s,
             "problems": problems,

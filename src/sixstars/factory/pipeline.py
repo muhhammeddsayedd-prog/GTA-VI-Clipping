@@ -32,7 +32,19 @@ from sixstars.ai.schemas import ClipWriting, SpikeVerdict
 from sixstars.clients.anthropic_client import AnthropicClient, BudgetKind
 from sixstars.clients.transcribe import Mode, Transcriber
 from sixstars.config import env
-from sixstars.factory import anchor, cards, effects, facecam, montage, music, thumbs, tools, variants, writer
+from sixstars.factory import (
+    anchor,
+    cards,
+    coverready,
+    effects,
+    facecam,
+    montage,
+    music,
+    thumbs,
+    tools,
+    variants,
+    writer,
+)
 from sixstars.factory import transcript as transcripts
 from sixstars.factory.assets import FactoryAssets, load_assets
 from sixstars.factory.audio import SfxTrack, parse_loudnorm_report
@@ -41,6 +53,7 @@ from sixstars.factory.config import FactoryConfig
 from sixstars.factory.director import StylePlan, clip_facts
 from sixstars.factory.layout import (
     B_GAMEPLAY_Y,
+    C_FACECAM_H,
     C_QUESTION_GAP,
     C_TITLE_OVERLAP,
     H_HEADER_TOP,
@@ -60,6 +73,7 @@ from sixstars.factory.layout import (
     LayoutPov,
     PunchIns,
     ZoomCut,
+    gameplay_crop,
 )
 from sixstars.factory.lines import Line, clip_lines, group_lines
 from sixstars.factory.params import FactoryParams
@@ -292,6 +306,8 @@ class RenderJob:
     texts: Mapping[str, str] = field(default_factory=dict)
     # Layout M (Phase E): the footage around the clip (file time) the B-roll may come from.
     broll_from: ClipWindow | None = None
+    # Cover-ready video (`cover.video_ready`): None renders the clip as before.
+    cover: coverready.CoverVideo | None = None
 
 
 def framed_layout(layout: Layout, style: StyleRules) -> Layout:
@@ -575,6 +591,57 @@ def _move_into_place(finished: Path, destination: Path) -> None:
         finished.unlink(missing_ok=True)
 
 
+def _plan_cover(
+    item: RenderInput,
+    media: tools.MediaInfo,
+    window: ClipWindow,
+    layout: Layout,
+    *,
+    anchor_s: float | None,
+    payoff_s: float | None,
+    chat_times: tuple[float, ...],
+    ffmpeg: str,
+) -> coverready.CoverVideo | None:
+    """The cover-ready treatment (`cover.video_ready`) of a clip, or None when the flag is off. Never
+    raises: a clip renders as before when planning fails."""
+    try:
+        rules = coverready.load_rules()
+        if rules is None:
+            return None
+        facecam_box = layout.facecam_box if isinstance(layout, LayoutA) else None
+        gameplay = (
+            gameplay_crop(layout, REF_WIDTH, REF_HEIGHT - rules.facecam_h, media.width, media.height)
+            if isinstance(layout, LayoutA)
+            else None
+        )
+        return coverready.plan(
+            rules,
+            coverready.PlanInput(
+                source=item.source_path,
+                clip_start_s=window.start_s,
+                duration_s=window.duration_s,
+                facecam=facecam_box,
+                gameplay=gameplay,
+                anchor_s=anchor_s,
+                payoff_s=payoff_s,
+                chat_times=chat_times,
+            ),
+            ffmpeg=ffmpeg,
+        )
+    except Exception as exc:  # noqa: BLE001 - a cover problem must never stop a render
+        get_logger("factory").warning("cover_video_plan_failed", error=f"{type(exc).__name__}: {exc}"[:300])
+        return None
+
+
+def _story_cover(job: RenderJob, window: ClipWindow) -> coverready.CoverVideo | None:
+    """The short clip's cover-ready treatment moved to the story cut's window (None when off). Pure but
+    for the flag read."""
+    rules = coverready.load_rules() if job.cover is not None else None
+    if job.cover is None or rules is None:
+        return None
+    return coverready.shifted(job.cover, rules, job.window.start_s - window.start_s, window.duration_s)
+
+
 def render_file(job: RenderJob, *, ffmpeg: str = "ffmpeg", ffprobe: str = "ffprobe") -> RenderOutcome:
     """Write the subtitle file and render the clip with ffmpeg.
 
@@ -646,7 +713,9 @@ def render_file(job: RenderJob, *, ffmpeg: str = "ffmpeg", ffprobe: str = "ffpro
     title_top = title_bar_top(params, live_badge=live_badge)
     # Layout C: the title sits on the seam (its bottom just below it), over the streamer's chest, never
     # on the face; the watermark keeps its corner and shows from the start.
-    seam_ref = Geometry.for_canvas(REF_WIDTH, REF_HEIGHT).c_seam_y
+    cover = job.cover
+    facecam_ref_h = cover.facecam_h if cover is not None else C_FACECAM_H
+    seam_ref = Geometry.for_canvas(REF_WIDTH, REF_HEIGHT, facecam_ref_h).c_seam_y
     hook_top: float | None = None
     kind = job.layout.kind
     own_place = kind in ("H", "P") or style.title_look == "question"
@@ -689,8 +758,19 @@ def render_file(job: RenderJob, *, ffmpeg: str = "ffmpeg", ffprobe: str = "ffpro
         follow_text=style.follow_overlay_text,
         follow_s=min(style.follow_overlay_s, duration),
         broll=broll,
+        facecam_ref_h=facecam_ref_h,
+        framing=cover.framing if cover is not None and isinstance(job.layout, LayoutA) else None,
+        lift=cover.lift if cover is not None else None,
         **_seam_fade(job),
     )
+    subtitle_style = SubtitleStyle.from_rules(style)
+    if cover is not None and subtitle_style.chunk_words > 0:
+        subtitle_style = replace(
+            subtitle_style,
+            phrase_windows=cover.phrase_windows,
+            phrase_words=cover.phrase_words,
+            phrase_chars=cover.phrase_chars,
+        )
     ass = build_ass(
         job.lines,
         layout=job.layout.kind,
@@ -701,7 +781,7 @@ def render_file(job: RenderJob, *, ffmpeg: str = "ffmpeg", ffprobe: str = "ffpro
         hook=None if bar is not None else job.hook,
         creator=job.creator or None,
         live_badge=live_badge,
-        style=SubtitleStyle.from_rules(style),
+        style=subtitle_style,
         measure=_measurer(job.assets),
         caption_measure=_caption_measurer(job.assets),
         hook_mode=style.hook_mode,
@@ -996,6 +1076,18 @@ def produce(
             assets = load_assets(cfg.params.font, caption_font=_caption_fonts(cfg, style))
 
     started = time.monotonic()
+    cover = _plan_cover(
+        item,
+        media,
+        window,
+        layout,
+        anchor_s=None if cut_anchor is None else cut_anchor.t_s - window_w.start_s,
+        payoff_s=None if writing.payoff_s is None else writing.payoff_s - window_w.start_s,
+        chat_times=tuple(line.t_s - window_w.start_s for line in window_chat),
+        ffmpeg=deps.ffmpeg,
+    )
+    timed("cover", started)
+    started = time.monotonic()
     job = RenderJob(
         source_path=item.source_path,
         media=media,
@@ -1019,6 +1111,7 @@ def produce(
         style_id=style_id,
         texts=writing.style_texts(),
         broll_from=padded,
+        cover=cover,
     )
     outcome = render_file(job, ffmpeg=deps.ffmpeg, ffprobe=deps.ffprobe)
     timed("render", started)
@@ -1213,6 +1306,12 @@ def _finish(clip_id: str, item: RenderInput, cfg: FactoryConfig, produced: Produ
                 clip_id,
             ),
         )
+        cover = produced.job.cover if produced.job is not None else None
+        if cover is not None:
+            db.execute(
+                "update clips set peak_s = %s, peak_source = %s, facecam_h = %s where id = %s",
+                (cover.peak_s, cover.peak_source or None, cover.facecam_h, clip_id),
+            )
         if item.spike_id is not None:
             db.execute(
                 "update spikes set status = 'clipped', clip_id = %s where id = %s", (clip_id, item.spike_id)
@@ -1277,6 +1376,7 @@ def _prepare_variants(
             texts=job.texts,
             window_start_s=clip_span.start_s - copy_span.start_s,
             broll=montage_planned and job.broll_from is not None,
+            cover=None if job.cover is None else job.cover.to_json(),
         )
         variants.after_reference(
             clip_id,
@@ -1411,6 +1511,7 @@ def render_story(
             style=cfg.catalog.rules_for(plan.reference_style),
             style_id=plan.reference_style,
             payoff_s=None if payoff is None else payoff - window_w.start_s,
+            cover=_story_cover(job, window),
         )
         started = time.monotonic()
         outcome = render_file(story_job, ffmpeg=deps.ffmpeg, ffprobe=deps.ffprobe)

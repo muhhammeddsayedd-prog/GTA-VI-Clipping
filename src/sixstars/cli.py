@@ -747,3 +747,25 @@ def live_cut(
     from sixstars.live import commands
 
     raise typer.Exit(code=commands.cut(session, start, end, output))
+
+
+covers_app = typer.Typer(help="Cover engine (docs/29a): checks and tools.", no_args_is_help=True)
+app.add_typer(covers_app, name="covers")
+
+
+@covers_app.command("check-video")
+def covers_check_video(
+    limit: int = typer.Option(20, "--limit", help="How many of the newest cover-ready clips to check."),
+    since: str | None = typer.Option(None, "--since", help="Only clips created at or after this UTC time."),
+) -> None:
+    """C1 acceptance: face share, whole caption phrases and length on the newest cover-ready clips
+    (`cover.video_ready`). Prints one JSON row per clip and a summary; frames go to $DATA_DIR/covers-check."""
+    from sixstars.covers import videocheck
+
+    with _database():
+        rows = videocheck.summary_rows(videocheck.run(limit, since))
+    for row in rows:
+        typer.echo(json.dumps(row, ensure_ascii=False))
+    passed = sum(1 for row in rows if row["passed"])
+    typer.echo(json.dumps({"checked": len(rows), "passed": passed}))
+    raise typer.Exit(code=0 if rows and passed == len(rows) else 1)

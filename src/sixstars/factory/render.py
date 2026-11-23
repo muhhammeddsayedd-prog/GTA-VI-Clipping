@@ -11,9 +11,12 @@ from sixstars.factory.audio import SFX_GAIN_DB, LoudnormMeasurement, SfxPlan, Sf
 from sixstars.factory.bleep import Span
 from sixstars.factory.escape import normalize_filter_path, render_filter
 from sixstars.factory.layout import (
+    C_FACECAM_H,
     REF_HEIGHT,
     REF_WIDTH,
     BrollCut,
+    FaceFraming,
+    GameLift,
     Geometry,
     Layout,
     LayoutA,
@@ -103,6 +106,11 @@ class RenderSpec:
     broll: tuple[tuple[float, float, float], ...] = ()
     fade_png: PurePath | None = None
     fade_top: int = 0
+    # Cover-ready video (`factory/coverready.py`, flag `cover.video_ready`): layout C's facecam height on
+    # the reference canvas, the face-aware facecam crop and the opening lift of dark gameplay.
+    facecam_ref_h: int = C_FACECAM_H
+    framing: FaceFraming | None = None
+    lift: GameLift | None = None
 
     @property
     def _active_tracks(self) -> tuple[SfxTrack, ...]:
@@ -147,7 +155,7 @@ def broll_cuts(spec: RenderSpec) -> tuple[BrollCut, ...]:
 def build_video_filters(spec: RenderSpec) -> list[str]:
     """Video chains: layout, seam, progress bar, subtitles and overlays, then the end card."""
     params = spec.params
-    geometry = Geometry.for_canvas(params.width, params.height)
+    geometry = Geometry.for_canvas(params.width, params.height, spec.facecam_ref_h)
     duration = spec.clip_duration_s
     chains = layout_filters(
         spec.layout,
@@ -161,6 +169,8 @@ def build_video_filters(spec: RenderSpec) -> list[str]:
         zoom_cut=spec.zoom_cut,
         punch_ins=spec.punch_ins,
         broll=broll_cuts(spec) if isinstance(spec.layout, LayoutMontage) else (),
+        framing=spec.framing,
+        lift=spec.lift,
     )
     if spec.fade_png is not None:
         fade = render_filter("movie", [("filename", normalize_filter_path(str(spec.fade_png)))])

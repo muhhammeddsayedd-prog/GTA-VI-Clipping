@@ -6,7 +6,7 @@ the current word in the accent colour, keywords popping as they are spoken, prof
 inside the safe zone. The hook box, LIVE badge and creator credit are events in the same file.
 """
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, replace
 
 from sixstars.factory.bleep import ProfanityMatcher, mask_word, normalize_word
@@ -97,6 +97,11 @@ class SubtitleStyle:
     active_color: str = ""
     # Phase E: two-tier chunks (a keyword big, italic and glowing; the other words small above it).
     tiers: bool = False
+    # Cover-ready video (`cover.video_ready`): in these clip-time spans the chunks of a line are shown as
+    # one still phrase of at most `phrase_words` words and `phrase_chars` characters, on one row.
+    phrase_windows: tuple[tuple[float, float], ...] = ()
+    phrase_words: int = 6
+    phrase_chars: int = 26
 
     @classmethod
     def from_rules(cls, rules: StyleRules) -> "SubtitleStyle":
@@ -263,6 +268,45 @@ def caption_events(
     return events
 
 
+def _overlaps(start: float, end: float, windows: Sequence[tuple[float, float]]) -> bool:
+    return any(start < w_end and w_start < max(end, start + 0.01) for w_start, w_end in windows)
+
+
+def phrase_chunks(
+    chunks: Sequence[Chunk],
+    *,
+    windows: Sequence[tuple[float, float]],
+    max_words: int,
+    max_chars: int,
+    text_of: Callable[[int, tuple[int, ...]], str],
+    fits: Callable[[str], bool],
+) -> list[Chunk]:
+    """Cover-ready captions: a chunk that overlaps a window starts a phrase that takes the next chunks of
+    the same line while the phrase stays within `max_words`, `max_chars` and one row (`fits`). Repeated
+    chunks (`X2`) and chunks outside the windows are kept as they are. Words are never split. Pure."""
+    out: list[Chunk] = []
+    i = 0
+    while i < len(chunks):
+        chunk = chunks[i]
+        if not windows or chunk.repeat > 1 or not _overlaps(chunk.start_s, chunk.end_s, windows):
+            out.append(chunk)
+            i += 1
+            continue
+        words, end, j = chunk.words, chunk.end_s, i + 1
+        while j < len(chunks):
+            following = chunks[j]
+            if following.line_index != chunk.line_index or following.repeat > 1:
+                break
+            candidate = words + following.words
+            text = text_of(chunk.line_index, candidate)
+            if len(candidate) > max_words or len(text) > max_chars or not fits(text):
+                break
+            words, end, j = candidate, following.end_s, j + 1
+        out.append(Chunk(chunk.line_index, words, chunk.start_s, end, 1, phrase=True))
+        i = j
+    return out
+
+
 def _display_words(line: Line, params: FactoryParams, profanity: ProfanityMatcher | None) -> list[str]:
     texts = [word.text for word in line.words]
     if params.bleep and profanity is not None:
@@ -304,6 +348,23 @@ def chunk_events(
     for line in ordered:
         chunks += chunk_line(line, style.chunk_words, style.chunk_chars)
     chunks = collapse_repeats(ordered, chunks)
+    if style.phrase_windows:
+
+        def text_of(line_index: int, words: tuple[int, ...]) -> str:
+            return " ".join(shown[line_index][i] for i in words)
+
+        def fits(text: str) -> bool:
+            gaps = WORD_GAP_EXTRA * text.count(" ")
+            return measure(text.upper() if style.caps else text, style.min_size) + gaps <= max_width
+
+        chunks = phrase_chunks(
+            chunks,
+            windows=style.phrase_windows,
+            max_words=style.phrase_words,
+            max_chars=style.phrase_chars,
+            text_of=text_of,
+            fits=fits,
+        )
     events: list[str] = []
     for n, chunk in enumerate(chunks):
         start = max(0.0, chunk.start_s)
@@ -322,6 +383,14 @@ def chunk_events(
         size = style.size if width <= max_width else max(style.min_size, int(style.size * max_width / width))
         pop = CHUNK_KEYWORD_POP if any(marked) else CHUNK_POP
         place = f"{{\\an2\\pos({REF_WIDTH // 2},{bottom})" + (f"\\fs{size}" if size != style.size else "")
+        if chunk.phrase:
+            # Cover-ready phrase: whole and still (no pop, no word-by-word colour), keywords in the accent.
+            still = [
+                f"{{\\1c{accent}}}{ass_text(text)}{{\\1c{white}}}" if keyword else ass_text(text)
+                for text, keyword in zip(texts, marked, strict=True)
+            ]
+            events.append(dialogue(LAYER_CAPTION, start, end, "Caption", place + "}" + WORD_GAP.join(still)))
+            continue
         if style.tiers and any(marked):
             # Two tiers: the keyword words big, italic and glowing; the others small above them.
             main = WORD_GAP.join(ass_text(t) for t, m in zip(texts, marked, strict=True) if m)

@@ -129,6 +129,7 @@ def _measure(row: store.ClipRow, settings: GateSettings, deps: GateDeps) -> File
             ffmpeg=deps.ffmpeg,
             ffprobe=deps.ffprobe,
             layout_kind=row.layout_kind,
+            facecam_h=row.facecam_h,
         )
     except tools.FfmpegError as exc:
         get_logger("gate").warning("gate_file_unreadable", error=str(exc)[:300])

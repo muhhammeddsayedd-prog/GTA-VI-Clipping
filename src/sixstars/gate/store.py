@@ -49,7 +49,7 @@ select c.id::text as id, c.creator_id::text as creator_id, c.spike_id::text as s
        c.score_parts, c.music_ratio, c.spoiler, c.safety_flags, c.hook, c.title, c.caption, c.hashtags,
        c.topic, c.commentary,
        c.transcript, c.local_path, c.storage_path, c.gate_result, c.precheck_video_id, c.created_at,
-       c.layout_kind, c.version, c.parent_clip_id::text as parent_clip_id
+       c.layout_kind, c.version, c.parent_clip_id::text as parent_clip_id, c.facecam_h
 from clips c
 """
 
@@ -73,6 +73,7 @@ class ClipRow:
     layout_kind: LayoutKind | None = None  # migration 0027; None for older clips
     version: str = "short"  # migration 0029: "story" for the longer cut of `parent_clip_id`
     parent_clip_id: str | None = None
+    facecam_h: int | None = None  # cover-ready video: layout C's facecam height (reference px)
 
     @property
     def family_id(self) -> str:
@@ -141,6 +142,7 @@ def get_clip(clip_id: str) -> ClipRow | None:
         layout_kind=_layout_kind(row.get("layout_kind")),
         version=str(row.get("version") or "short"),
         parent_clip_id=row.get("parent_clip_id"),
+        facecam_h=int(row["facecam_h"]) if row.get("facecam_h") is not None else None,
     )
 
 
