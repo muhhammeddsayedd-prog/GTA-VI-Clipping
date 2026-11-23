@@ -827,3 +827,30 @@ def test_cache_content_marks_the_last_user_block(scripted: Any) -> None:
     content = sdk.requests[0]["messages"][0]["content"]
     assert content[0]["type"] == "image" and "cache_control" not in content[0]
     assert content[-1] == {"type": "text", "text": "user", "cache_control": {"type": "ephemeral"}}
+
+
+# ── AI cost plan A3: a model per prompt ──────────────────────
+
+
+def test_each_prompt_takes_its_roles_model_by_default(ai_settings: dict[str, Any]) -> None:
+    assert calls.model_for(calls.P2) == calls.model_for(calls.P3) == "claude-sonnet-5-5"
+    assert calls.model_for(calls.P1) == calls.model_for(calls.P7) == "claude-haiku-5-5"
+    assert calls.model_for(calls.P9V) == "claude-sonnet-5-5"  # ai.visual_score_model defaults to writer
+
+
+def test_a_prompt_setting_moves_only_that_prompt(ai_settings: dict[str, Any]) -> None:
+    ai_settings["ai.model.p3_vod_moment_picker"] = "anthropic:claude-haiku-5-5"
+    ai_settings["ai.model.p9_visual_score"] = "claude-haiku-5-5"
+    assert calls.model_for(calls.P3) == "claude-haiku-5-5"
+    assert calls.model_for(calls.P9V) == calls.visual_score_model() == "claude-haiku-5-5"
+    assert calls.model_for(calls.P2) == "claude-sonnet-5-5"
+    fake = FakeAnthropicClient({calls.P3: {"moments": []}})
+    calls.pick_moments([TranscriptChunk(0, 30, "hello")], 0, 8, 20, 60, client=fake)
+    assert only_call(fake)["model"] == "claude-haiku-5-5"
+
+
+def test_a_provider_this_client_cannot_call_is_ignored(ai_settings: dict[str, Any]) -> None:
+    ai_settings["ai.model.p2_clip_writer"] = "openrouter:deepseek/deepseek-v4-flash"
+    assert calls.model_for(calls.P2) == "claude-sonnet-5-5"
+    assert calls.parse_model_setting("") is None and calls.parse_model_setting(None) is None
+    assert calls.parse_model_setting("anthropic:claude-opus-5-5") == "claude-opus-5-5"
