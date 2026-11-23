@@ -28,8 +28,9 @@ from sixstars.covers import hookline, ocr
 OCR_SCALE = 0.15
 OCR_MATCH = 0.85
 SAFE_BAND = (60, 400, 960, 1520)  # x0, y0, x1, y1 on the 1080x1920 canvas
-LUMA_RANGE = (70.0, 200.0)
-CLIPPED_MAX = 0.02
+# Defaults of `cover.exposure` (the setting wins; see covers/config.py).
+LUMA_RANGE = (60.0, 200.0)
+CLIPPED_MAX = 0.10
 PHASH_MIN_DISTANCE = 12
 RECENT_COVERS = 9
 # Face height on the cover (px) per layout: split = 35-75% of the 620 px panel, face-led = 40-55% of the
@@ -98,13 +99,16 @@ def three_in_a_row(recent: Sequence[tuple[str | None, str | None]], new: tuple[s
     return len(recent) >= 2 and all(item == new for item in recent[:2])
 
 
-def exposure(luma: float, clipped: float) -> list[str]:
-    """Exposure problems of the pictures in the safe band. Pure."""
-    low, high = LUMA_RANGE
+def exposure(
+    luma: float, clipped: float, limits: tuple[float, float, float] = (*LUMA_RANGE, CLIPPED_MAX)
+) -> list[str]:
+    """Exposure problems of the pictures in the safe band; `limits` = (luma min, luma max, clipped max),
+    from `cover.exposure`. Pure."""
+    low, high, clipped_max = limits
     problems = []
     if not low <= luma <= high:
         problems.append(f"exposure:luma={round(luma)}")
-    if clipped >= CLIPPED_MAX:
+    if clipped >= clipped_max:
         problems.append(f"exposure:clipped={clipped:.3f}")
     return problems
 
@@ -258,6 +262,7 @@ def rule_problems(
     *,
     recent_hashes: Sequence[int] = (),
     recent_arms: Sequence[tuple[str | None, str | None]] = (),
+    exposure_limits: tuple[float, float, float] = (*LUMA_RANGE, CLIPPED_MAX),
 ) -> list[str]:
     """Every rule check that fails. Pure (all measurements are in `facts`)."""
     problems: list[str] = []
@@ -279,7 +284,7 @@ def rule_problems(
     elif not inside(facts.face_rect):
         problems.append("face_outside_safe_band")
     if facts.luma is not None and facts.clipped is not None:
-        problems += exposure(facts.luma, facts.clipped)
+        problems += exposure(facts.luma, facts.clipped, exposure_limits)
     if facts.phash is not None:
         nearest = min((hamming(facts.phash, other) for other in recent_hashes[:RECENT_COVERS]), default=64)
         if nearest < PHASH_MIN_DISTANCE:
@@ -326,6 +331,7 @@ def review(
     recent_hashes: Sequence[int] = (),
     recent_arms: Sequence[tuple[str | None, str | None]] = (),
     ignore: Sequence[str] = (),
+    exposure_limits: tuple[float, float, float] = (*LUMA_RANGE, CLIPPED_MAX),
     client: Any = None,
     clip_id: str | None = None,
 ) -> QaResult:
@@ -333,7 +339,9 @@ def review(
     plain fallback cover skips the OCR rule)."""
     problems = [
         p
-        for p in rule_problems(facts, recent_hashes=recent_hashes, recent_arms=recent_arms)
+        for p in rule_problems(
+            facts, recent_hashes=recent_hashes, recent_arms=recent_arms, exposure_limits=exposure_limits
+        )
         if p.split(":")[0].split("=")[0] not in ignore
     ]
     if problems:

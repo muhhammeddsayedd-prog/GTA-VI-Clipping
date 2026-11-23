@@ -26,6 +26,14 @@ DEFAULT_WEIGHTS: dict[str, float] = {
 DEFAULT_LANE_MODES: dict[str, LaneMode] = {"normal": "full", "spike": "full", "*": "frame_only"}
 DEFAULT_BRAND_MARK: dict[str, bool] = {"normal": True, "spike": True, "*": False}
 DEFAULT_DEADLINES: dict[str, float] = {"live": 60.0, "normal": 300.0}
+DEFAULT_EXPOSURE: dict[str, float] = {
+    "luma_min": 60.0,
+    "luma_max": 200.0,
+    "clipped_max": 0.10,
+    "lift_below": 70.0,
+    "lift_target": 75.0,
+    "gamma_max": 1.25,
+}
 MIN_EXPLORATION = 0.2
 WILDCARD = "*"
 
@@ -70,6 +78,7 @@ class CoverConfig:
     deadline_s: Mapping[str, float] = field(default_factory=lambda: dict(DEFAULT_DEADLINES))
     upscale_enabled: bool = False
     exploration: float = MIN_EXPLORATION
+    exposure: Mapping[str, float] = field(default_factory=lambda: dict(DEFAULT_EXPOSURE))
 
     @classmethod
     def from_values(cls, raw: Mapping[str, Any], version: int = 0) -> "CoverConfig":
@@ -98,6 +107,14 @@ class CoverConfig:
                 value = _number(deadlines_raw.get(name), -1.0)
                 if value > 0:
                     deadlines[name] = value
+        exposure = dict(DEFAULT_EXPOSURE)
+        exposure_raw = get("exposure")
+        if isinstance(exposure_raw, Mapping):
+            for name in DEFAULT_EXPOSURE:
+                value = _number(exposure_raw.get(name), -1.0)
+                if value >= 0:
+                    exposure[name] = value
+        exposure["gamma_max"] = min(max(exposure["gamma_max"], 1.0), 1.5)  # "mild": never more than 1.5
         return cls(
             version=version,
             enabled=_bool(get("enabled"), False),
@@ -111,6 +128,7 @@ class CoverConfig:
             deadline_s=deadlines,
             upscale_enabled=_bool(get("upscale_enabled"), False),
             exploration=min(max(_number(get("exploration"), MIN_EXPLORATION), MIN_EXPLORATION), 1.0),
+            exposure=exposure,
         )
 
     @classmethod
@@ -128,6 +146,7 @@ class CoverConfig:
             "deadline_s",
             "upscale_enabled",
             "exploration",
+            "exposure",
         )
         raw = {f"cover.{name}": scoring_config.raw(f"cover.{name}") for name in keys}
         return cls.from_values(raw, scoring_config.version())

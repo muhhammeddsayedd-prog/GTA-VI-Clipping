@@ -135,6 +135,7 @@ def _attempt(
         lines=line.lines if line is not None else (),
         key_word=line.key_word if line is not None else "",
         brand_mark=config.brand_mark_for(lane) and not plain,
+        lift=(config.exposure["lift_below"], config.exposure["lift_target"], config.exposure["gamma_max"]),
     )
     name = f"{account_id}_{attempt}"
     result = compose.compose(spec, work, name, render=tools.renderer)
@@ -151,11 +152,13 @@ def _attempt(
         placed_face=result.extras.get("face_rect"),
     )
     hashes = [int(r.phash, 16) for r in recent if r.phash]
+    ex = config.exposure
+    limits = (ex["luma_min"], ex["luma_max"], ex["clipped_max"])
     arms = [(r.layout, r.line_style) for r in recent]
     if plain:
         problems = [
             p
-            for p in qa.rule_problems(facts, recent_hashes=hashes, recent_arms=arms)
+            for p in qa.rule_problems(facts, recent_hashes=hashes, recent_arms=arms, exposure_limits=limits)
             if p.split(":")[0] not in PLAIN_IGNORE
         ]
         verdict = qa.QaResult(
@@ -169,6 +172,7 @@ def _attempt(
             pass_score=config.qa_pass_score,
             recent_hashes=hashes,
             recent_arms=arms,
+            exposure_limits=limits,
             clip_id=str(clip["id"]),
         )
     layout_name = "plain" if plain else result.layout

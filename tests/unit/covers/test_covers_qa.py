@@ -43,7 +43,7 @@ def test_a_good_cover_passes_the_rules() -> None:
         ({"face_h_px": 120.0}, "face_size=120"),
         ({"face_rect": (400, 200, 240, 280)}, "face_outside_safe_band"),
         ({"luma": 30.0}, "exposure:luma=30"),
-        ({"clipped": 0.05}, "exposure:clipped=0.050"),
+        ({"clipped": 0.15}, "exposure:clipped=0.150"),
         ({"line": "THE GTA 6 ENDING", "small_text": "THE GTA 6 ENDING"}, "story_spoiler"),
         (
             {"line": "HE REALLY DID NOT SEE THAT", "small_text": "HE REALLY DID NOT SEE THAT"},

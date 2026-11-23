@@ -75,3 +75,9 @@ def test_render_with_chromium(tmp_path: Path) -> None:
         assert preview.size == (1080, 1440)
     assert result.fits and result.font_size >= 96 and 110 <= result.cap_height <= 170
     assert result.jpeg.stat().st_size < 2_000_000
+
+
+def test_lift_gamma_brightens_only_dark_pictures() -> None:
+    assert compose.lift_gamma(120, 70, 75, 1.25) == 1.0
+    assert 1.0 < compose.lift_gamma(65, 70, 75, 1.25) <= 1.25
+    assert compose.lift_gamma(20, 70, 75, 1.25) == 1.25  # capped: mild only

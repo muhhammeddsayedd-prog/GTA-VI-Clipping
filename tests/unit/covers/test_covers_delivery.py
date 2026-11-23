@@ -146,3 +146,51 @@ def test_youtube_429_retries_later(youtube: Recorder) -> None:
     assert (
         youtube.queued == [{"attempt": 1, "delay": deliver.RATE_LIMIT_RETRY_MIN}] and youtube.statuses == []
     )
+
+
+# ── waiting for the cover (owner, 23 Nov) ─────────────────────
+
+
+class FakeDb:
+    def __init__(self, decided_after: int | None, pending: bool) -> None:
+        self.calls = 0
+        self.decided_after = decided_after
+        self.pending = pending
+
+    def fetch_one(self, sql: str, params: Any = None) -> dict[str, int] | None:
+        if "from covers" in sql:
+            self.calls += 1
+            done = self.decided_after is not None and self.calls > self.decided_after
+            return {"x": 1} if done else None
+        return {"x": 1} if self.pending else None
+
+
+class FakeClock:
+    def __init__(self) -> None:
+        self.now = 0.0
+        self.slept: list[float] = []
+
+    def time(self) -> float:
+        return self.now
+
+    def sleep(self, seconds: float) -> None:
+        self.slept.append(seconds)
+        self.now += seconds
+
+
+@pytest.mark.parametrize(
+    ("decided_after", "pending", "expected", "waited"),
+    [
+        (0, True, True, 0.0),  # ready: no wait
+        (3, True, True, 9.0),  # ready after three checks
+        (None, True, False, 60.0),  # never ready: gives up at the deadline
+        (None, False, False, 0.0),  # no cover job: no wait
+    ],
+)
+def test_wait_for_cover(
+    monkeypatch: pytest.MonkeyPatch, decided_after: int | None, pending: bool, expected: bool, waited: float
+) -> None:
+    fake, clock = FakeDb(decided_after, pending), FakeClock()
+    monkeypatch.setattr(deliver, "db", fake)
+    assert deliver.wait_for_cover("c", "a", 60, sleep=clock.sleep, clock=clock.time) is expected
+    assert sum(clock.slept) == pytest.approx(waited)

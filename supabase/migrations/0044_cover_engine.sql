@@ -62,6 +62,8 @@ insert into scoring_config (key, value, description) values
    'Seconds the cover stage may take before the post goes out without it: live = spike lane, normal = everything else.'),
   ('cover.upscale_enabled', 'false'::jsonb,
    'Real-ESRGAN general 2x upscale of a facecam crop under 400 px tall (never a face model).'),
+  ('cover.exposure', '{"luma_min": 60, "luma_max": 200, "clipped_max": 0.10, "lift_below": 70, "lift_target": 75, "gamma_max": 1.25}'::jsonb,
+   'Cover exposure. The compositor lifts a picture whose mean luma is under lift_below toward lift_target with a gamma of at most gamma_max (a mild global tonal adjustment, no generated pixels); the QA gate then wants the pictures in the safe band at luma_min-luma_max with under clipped_max clipped pixels. Set on 2026-11-23 from 172 clean staging frames: the spec''s 70-200 / 2% passed 34% of them, these values 90%.'),
   ('cover.exploration', '0.2'::jsonb,
    'Bandit exploration share (stage 7), never below 0.2.')
 on conflict (key) do nothing;

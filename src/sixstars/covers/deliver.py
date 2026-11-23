@@ -11,7 +11,8 @@ A cover that is not ready when the post goes out is logged as `skipped_deadline`
 without it. After publishing (`after_published`) the cover row is marked `applied`.
 """
 
-from collections.abc import Mapping
+import time
+from collections.abc import Callable, Mapping
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -27,6 +28,39 @@ RATE_LIMIT_RETRY_MIN = 60
 RATE_LIMIT_GIVE_UP_H = 24
 SIGNED_URL_S = 24 * 3600
 USABLE = ("passed", "fallback_plain")
+WAIT_POLL_S = 3.0
+
+_DECIDED_SQL = """
+select 1 from covers
+where clip_id = %s and account_id = %s
+  and status in ('passed', 'fallback_plain', 'fallback_default', 'applied')
+limit 1
+"""
+_PENDING_SQL = "select 1 from jobs where dedupe_key = %s and status in ('queued', 'running') limit 1"
+
+
+def wait_for_cover(
+    clip_id: str,
+    account_id: str,
+    deadline_s: float,
+    *,
+    sleep: Callable[[float], None] = time.sleep,
+    clock: Callable[[], float] = time.monotonic,
+) -> bool:
+    """Wait until the cover of this clip for this account is decided, at most `deadline_s` (owner, 23 Nov:
+    a post waits for its cover up to `cover.deadline_s`). Returns at once when no cover job is queued or
+    running (the engine is off, or the capture failed). True when a decision exists."""
+    started = clock()
+    while True:
+        if db.fetch_one(_DECIDED_SQL, (clip_id, account_id)) is not None:
+            return True
+        if db.fetch_one(_PENDING_SQL, (f"{miner.JOB_MINE}:{clip_id}",)) is None:
+            return False
+        left = deadline_s - (clock() - started)
+        if left <= 0:
+            return False
+        sleep(min(WAIT_POLL_S, left))
+
 
 _COVER_SQL = """
 select id::text as id, status, storage_path, public_url, rendered_ts_ms, platform
@@ -79,6 +113,8 @@ def cover_fields(clip_id: str, account_id: str, platform: str, lane: str, post_i
         key = lane_key(lane)
         if not config.runs_for(platform, key):
             return {}
+        if platform != "youtube":
+            wait_for_cover(clip_id, account_id, config.deadline_for(key))
         cover = db.fetch_one(_COVER_SQL, (clip_id, account_id))
         timestamp = _timestamp_ms(clip_id)
         if cover is None and platform != "youtube":

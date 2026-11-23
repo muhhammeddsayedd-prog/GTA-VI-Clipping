@@ -1012,3 +1012,28 @@ Four layout C clips were run through the miner, with the rendered file standing 
 - Fault drills as unit tests (`tests/unit/covers/test_covers_drills.py`): a crash in fields or build never stops a post, and alerts once.
 - The 48 h end-to-end run, the staging drills, and every milestone acceptance that needs staging are listed in `docs/29c-cover-staging-runbook.md`, for after the final merge.
 - **Fix found by CI:** `Renderer()` left Playwright's event loop running when Chromium was missing, which broke a later asyncio test. It now stops Playwright on a failed launch.
+
+## Cover engine — owner follow-ups (2026-11-23)
+
+### 1. Posts wait for their cover
+
+- `deliver.wait_for_cover`, called from `cover_fields` for Instagram and TikTok. It waits up to `cover.deadline_s` (60 s live, 300 s normal) while the clip's `cover.mine` job is queued or running, polling every 3 s, and returns at once when no job exists.
+- Spike jobs: priority 10, and 4 OCR'd rendered frames.
+- **Trade-off:** the express worker is blocked up to 60 s per spike post. The spike cover still depends on a free normal-queue worker. If the normal queue is busy with renders or variants, the cover may miss the 60 s and the post goes out with `skipped_deadline`. Watch this in the staging run.
+
+### 2. C4 eval (local, staging data)
+
+`docs/reports/covers-c4.md`:
+- 50/50 clips have a valid line, none invented.
+- Haiku 5.5, $0.017 per 100 clips. With C6's vision call per cover, the total stays far under the 1.5× AI-spend limit.
+
+### 3. Exposure
+
+- **The data:** 172 clean staging frames (facecam above the captions and the text-free gameplay band, 13 clips). Median luma is 65, and only 43% are within 70–200; 62% have < 2% clipped pixels.
+- **The change:** setting `cover.exposure` holds luma 60–200, clipped < 10%, and a gamma lift (≤ 1.25) of dark pictures toward 75.
+- **The result:** the pass rate goes from 34% to 90%.
+- **Rollback:** SQL in docs/CHANGELOG-scoring.md.
+
+### 4. YouTube traffic-source reward
+
+Dropped (owner). The bandit learns from views only.

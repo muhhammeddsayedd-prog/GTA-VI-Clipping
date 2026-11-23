@@ -52,3 +52,11 @@ def test_storage_keys_and_public_url() -> None:
     assert storage.public_url("covers-public/staging/a b.jpg") == (
         "https://x.supabase.co/storage/v1/object/public/covers-public/staging/a%20b.jpg"
     )
+
+
+def test_exposure_setting() -> None:
+    default = CoverConfig.from_values({})
+    assert default.exposure["luma_min"] == 60 and default.exposure["clipped_max"] == 0.10
+    custom = CoverConfig.from_values({"cover.exposure": {"luma_min": 55, "gamma_max": 3, "clipped_max": "x"}})
+    assert custom.exposure["luma_min"] == 55 and custom.exposure["gamma_max"] == 1.5
+    assert custom.exposure["clipped_max"] == 0.10

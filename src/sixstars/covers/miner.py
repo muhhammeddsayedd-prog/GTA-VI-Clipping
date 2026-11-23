@@ -41,6 +41,9 @@ PEAK_HALF_S = 2.0
 CHANGE_LAG_S = 0.5
 GAME_MAX_W = 1280
 TOP_COUNT = 5
+# Rendered frames OCR'd for TikTok's timestamp (fewer on the spike lane, whose post waits for the cover).
+RENDERED_CHECKS, RENDERED_CHECKS_SPIKE = 12, 4
+SPIKE_PRIORITY = 10
 COPY_TIMEOUT_S = 180.0
 EXTRACT_TIMEOUT_S = 300.0
 LANDMARKER_ENV = "SIXSTARS_FACE_LANDMARKER"
@@ -207,7 +210,11 @@ def capture(
             "update clips set peak_s = %s, peak_source = %s where id = %s",
             (peak_s, peak_source or None, clip_id),
         )
-        queued = jobs.enqueue("normal", JOB_MINE, {"clip_id": clip_id}, dedupe_key=f"{JOB_MINE}:{clip_id}")
+        # A spike post waits for its cover (up to `cover.deadline_s` live): its job goes first.
+        priority = SPIKE_PRIORITY if lane == "spike" else 0
+        queued = jobs.enqueue(
+            "normal", JOB_MINE, {"clip_id": clip_id}, priority=priority, dedupe_key=f"{JOB_MINE}:{clip_id}"
+        )
         log.info("cover_captured", clip_id=clip_id, linked=linked, queued=queued is not None)
         return queued is not None
     except Exception as exc:  # noqa: BLE001 - a cover must never fail a render
@@ -292,7 +299,8 @@ def _score_rendered(
     engine = RapidOCR()
     results: list[dict[str, Any]] = []
     best: tuple[float, int] | None = None
-    for frame in sorted(scored, key=lambda f: -f.score)[:12]:
+    count = RENDERED_CHECKS_SPIKE if manifest.lane == "spike" else RENDERED_CHECKS
+    for frame in sorted(scored, key=lambda f: -f.score)[:count]:
         if frame.rejected is not None:
             continue
         rgb_frame = ocr.frame_rgb(Path(manifest.rendered_path), frame.t_ms / 1000, ffmpeg)

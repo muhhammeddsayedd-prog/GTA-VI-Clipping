@@ -112,9 +112,24 @@ def choose_layout(proposed: CoverLayout, face_crop_h: int | None, face_h: int | 
 # ── Pictures (Pillow, MediaPipe) ──────────────────────────────
 
 
-def _finish(image: Any, *, sharpen: bool) -> Any:
-    from PIL import ImageEnhance, ImageFilter
+def lift_gamma(mean_luma: float, below: float, target: float, gamma_max: float) -> float:
+    """The gamma that brings a dark picture's mean luma toward `target` (1.0 when it is bright enough),
+    never above `gamma_max`. Pure."""
+    import math
 
+    if mean_luma >= below or mean_luma <= 0 or target <= mean_luma:
+        return 1.0
+    return min(gamma_max, max(1.0, math.log(mean_luma / 255) / math.log(target / 255)))
+
+
+def _finish(image: Any, *, sharpen: bool, lift: tuple[float, float, float] | None = None) -> Any:
+    from PIL import ImageEnhance, ImageFilter, ImageStat
+
+    if lift is not None:
+        gamma = lift_gamma(ImageStat.Stat(image.convert("L")).mean[0], *lift)
+        if gamma > 1.0:
+            table = [round(255 * (v / 255) ** (1 / gamma)) for v in range(256)]
+            image = image.point(table * len(image.getbands()))
     image = ImageEnhance.Contrast(image).enhance(CONTRAST)
     image = ImageEnhance.Color(image).enhance(SATURATION)
     if sharpen:
@@ -187,6 +202,8 @@ class CoverSpec:
     brand_mark: bool = False
     # The line's centre (canvas y); None = the layout's place (`LINE_Y`).
     line_y: int | None = None
+    # `cover.exposure`: lift a picture darker than luma `[0]` toward `[1]` with a gamma of at most `[2]`.
+    lift: tuple[float, float, float] | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -237,7 +254,10 @@ def prepare(spec: CoverSpec, work: Path) -> tuple[CoverLayout, dict[str, str]]:
         if layout == "face_led":
             assert box is not None
             rect = face_crop(box, face_img.width, face_img.height, 9, 16, FACE_LED_SHARE, FACE_LED_CENTRE)
-            save("face", _finish(_crop_resize(face_img, rect, (CANVAS_W, CANVAS_H)), sharpen=True))
+            save(
+                "face",
+                _finish(_crop_resize(face_img, rect, (CANVAS_W, CANVAS_H)), sharpen=True, lift=spec.lift),
+            )
             files["face_rect"] = ",".join(map(str, placed_face(box, rect, 0, 0, CANVAS_W)))
         elif layout in ("split", "tiktok_native"):
             rect = (
@@ -247,23 +267,26 @@ def prepare(spec: CoverSpec, work: Path) -> tuple[CoverLayout, dict[str, str]]:
                 if box is not None
                 else cover_crop(face_img.width, face_img.height, *SPLIT_FACE)
             )
-            face_panel = _finish(_crop_resize(face_img, rect, SPLIT_FACE), sharpen=True)
+            face_panel = _finish(_crop_resize(face_img, rect, SPLIT_FACE), sharpen=True, lift=spec.lift)
             save("face", face_panel)
             if box is not None:
                 files["face_rect"] = ",".join(map(str, placed_face(box, rect, 0, 380, SPLIT_FACE[0])))
             save("fillTop", _fill(face_panel))
         elif layout == "moment_led" and box is not None:
             rect = face_crop(box, face_img.width, face_img.height, 4, 5, CUTOUT_FACE_SHARE, 0.42)
-            portrait = _finish(_crop_resize(face_img, rect, (480, 600)), sharpen=True)
+            portrait = _finish(_crop_resize(face_img, rect, (480, 600)), sharpen=True, lift=spec.lift)
             save("cutout", cut_out(portrait))
             files["face_rect"] = ",".join(map(str, placed_face(box, rect, 64, 1180, 480 * 340 / 600)))
     if game_img is not None:
         if layout == "moment_led":
             rect = cover_crop(game_img.width, game_img.height, CANVAS_W, CANVAS_H)
-            save("game", _finish(_crop_resize(game_img, rect, (CANVAS_W, CANVAS_H)), sharpen=False))
+            save(
+                "game",
+                _finish(_crop_resize(game_img, rect, (CANVAS_W, CANVAS_H)), sharpen=False, lift=spec.lift),
+            )
         elif layout in ("split", "tiktok_native"):
             rect = cover_crop(game_img.width, game_img.height, *SPLIT_GAME)
-            game_panel = _finish(_crop_resize(game_img, rect, SPLIT_GAME), sharpen=False)
+            game_panel = _finish(_crop_resize(game_img, rect, SPLIT_GAME), sharpen=False, lift=spec.lift)
             save("game", game_panel)
             save("fillBottom", _fill(game_panel))
     return layout, files
