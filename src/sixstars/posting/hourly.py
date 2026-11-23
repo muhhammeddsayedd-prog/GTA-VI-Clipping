@@ -92,7 +92,19 @@ def plan_slot(
     queue = clips_only(store.load_hourly_queue(posted_since))
     spikes = clips_only(store.load_spike_clips())
     history = store.load_history(now, [clip.id for clip in (*queue, *spikes)])
-    plan = plan_hourly_slot(accounts, history, queue, slot_at, now, params, spike_clips=spikes)
+    loader = getattr(store, "load_campaign_lanes", None)  # D118
+    quotas, lane_rules = loader(now) if loader is not None else ({}, {})
+    plan = plan_hourly_slot(
+        accounts,
+        history,
+        queue,
+        slot_at,
+        now,
+        params,
+        spike_clips=spikes,
+        campaign_quotas=quotas,
+        lane_rules=lane_rules,
+    )
     return plan, {clip.id: clip for clip in queue}, {account.id: account for account in accounts}
 
 
