@@ -431,3 +431,5 @@ Campaign lanes, decision D118 (migration 0050). The campaigns themselves live in
 | `campaigns.vod_priority` | `35` | Job priority of a campaign VOD and of a campaign session's replay (normal VODs 30, replays 25). |
 | `campaigns.watcher_stale_s` | `300` | The guardian alerts when the `campaign:watcher` heartbeat is older than this while a campaign is active. |
 | `twitch_clips.campaign_first` | `true` | Viewer clips of campaign streamers are read per broadcaster and come before the game-wide list, inside `twitch_clips.daily_cap`. |
+| `lanes.return_unused_at_utc` | `18` | From this UTC hour (20:00 Cairo) unused campaign quota goes back to the Normal lane for the rest of the day. Before it, Normal posts leave room for the campaign minimums still open. |
+| `lanes.campaign_gap_s` | `3600` | Seconds between two posts of the same campaign on one account. |

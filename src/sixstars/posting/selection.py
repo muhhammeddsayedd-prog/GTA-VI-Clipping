@@ -6,10 +6,12 @@ that clip, when its previous hourly post was by the same creator (R9), or when a
 platform has the clip (D42).
 """
 
-from collections.abc import Iterable, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
 
+from sixstars.posting import campaign_lane
+from sixstars.posting.campaign_lane import CampaignQuota, LaneRules
 from sixstars.posting.caps import account_posts
 from sixstars.posting.gate import duplicate_channels
 from sixstars.posting.models import (
@@ -35,6 +37,10 @@ from sixstars.posting.precedence import (
 from sixstars.posting.slots import check_slot
 
 EMPTY_SLOTS_BEFORE_ALERT = 2  # R10: alert when this many slots in a row were empty (docs/11, no setting)
+
+
+# Without campaign settings (tests, old callers): campaign hours 08-22 UTC, return at 18 UTC, 60-min gap.
+DEFAULT_LANE_RULES = LaneRules(hours=frozenset(range(8, 22)), return_unused_hour=18, gap_s=3600)
 
 
 def hourly_candidates(clips: Iterable[Clip], now: datetime, params: PostingParams) -> list[Clip]:
@@ -153,6 +159,8 @@ def plan_hourly_slot(
     *,
     spike_clips: Iterable[Clip] = (),
     fallback: Iterable[Clip] = (),
+    campaign_quotas: Mapping[str, Mapping[str, CampaignQuota]] | None = None,
+    lane_rules: Mapping[str, LaneRules] | None = None,
 ) -> SlotPlan:
     """Decides the hourly slot `slot_at` for every account.
 
@@ -185,7 +193,18 @@ def plan_hourly_slot(
         if not decision.would_post:
             decisions.append(decision)
             continue
-        clip = pick_clip(account, candidates, working, decision.dry_run, now, params)
+        # D118: the account's campaign lanes decide the order (and keep campaign clips off accounts, hours
+        # and days where their campaign has no room).
+        ordered = campaign_lane.order_candidates(
+            account,
+            candidates,
+            working,
+            (campaign_quotas or {}).get(account.id, {}),
+            (lane_rules or {}).get(account.platform.value, DEFAULT_LANE_RULES),
+            now,
+            decision.dry_run,
+        )
+        clip = pick_clip(account, ordered, working, decision.dry_run, now, params)
         from_fallback = False
         if clip is None:
             clip = pick_clip(account, spare, working, decision.dry_run, now, params)
