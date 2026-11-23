@@ -9,9 +9,9 @@ Two lanes, one cap manager, one publisher (Upload-Post).
 | `tiktok_main` | TikTok @6starsclipping | `default` | hourly | 14 | 0 | 0,1,2,11,12,14,15,17,18,19,20,21,22,23 | — |
 | `tiktok_live` | TikTok (disabled) | `default` | spike | 14 | 14 | — | — |
 | `instagram_main` | Instagram @6starsclippy | `default` | hourly, spike | 45 | 10 | all 24 | — |
-| `youtube_main` | YouTube @6starsClips-m3x | `default` | hourly, spike | 16 | 4 | 0,10,13,14,16,17,18,19,20,21,22,23 | 3000 |
+| `youtube_main` | YouTube @6starsClips-m3x | `default` | hourly, spike | 16 | 10 | 0,14,17,19,21,23 | 3000 |
 
-Why: TikTok's API allows about 15 posts/day/account (shared across all apps), so TikTok main only takes the 14 best hours. Instagram via Upload-Post allows 50/24 h. YouTube's limit is set per channel by YouTube and is unpublished: the cap manager lowers `cap_24h` by 2 on every "limit reached" (floor 10). Migration 0034 (2026-11-21) raised it to 16 after the channel's ID verification, with 12 hourly hours (= 16 − 4 reserved for spikes) chosen for the audience (North America, Northern and Western Europe, Australia/NZ) and a 50-minute hourly gap. An account with hourly hours lists exactly `cap_24h − spike_reserve` of them (tested on the seeds).
+Why: TikTok's API allows about 15 posts/day/account (shared across all apps), so TikTok main only takes the 14 best hours. Instagram via Upload-Post allows 50/24 h. YouTube's limit is set per channel by YouTube and is unpublished: the cap manager lowers `cap_24h` by 2 on every "limit reached" (floor 10). Migration 0034 (2026-11-21) raised it to 16 after the channel's ID verification, with 12 hourly hours (= 16 − 4 reserved for spikes) chosen for the audience (North America, Northern and Western Europe, Australia/NZ) and a 50-minute hourly gap. Migration 0056 (2026-11-23, D121) made spikes the main YouTube lane: 10 of the 16 slots are kept for spikes and the hourly lane posts in 6 of those hours (0, 14, 17, 19, 21, 23 UTC); the unused reserve is not released, so a day with fewer than 10 spikes posts fewer than 16. An account with hourly hours lists exactly `cap_24h − spike_reserve` of them (tested on the seeds).
 
 ## 2. Gate checks before any post (both lanes)
 
