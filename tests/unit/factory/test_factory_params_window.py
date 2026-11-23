@@ -33,6 +33,10 @@ def test_fields_match_the_documented_factory_settings_one_to_one() -> None:
     documented.remove("factory.style_director")
     # Story cuts (development-plan/M18 Phase C): `FactoryConfig.story`.
     documented.remove("factory.story")
+    # The checks before the clip writer (AI cost plan A5a): read by `factory.precheck`.
+    documented.remove("factory.pre_p2_checks")
+    documented.remove("factory.pre_p2_throttle")
+    documented.remove("factory.pre_p2_queue_min")
     assert list(FactoryParams.setting_keys()) == documented
 
 
