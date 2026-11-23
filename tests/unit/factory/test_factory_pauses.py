@@ -476,7 +476,7 @@ def test_transcript_without_punctuation_gets_its_sentence_ends_from_p10(
         settings, "_all", lambda: {"ai.model_fast": "claude-haiku-5-5", "ai.daily_budget_usd": 25}
     )
     monkeypatch.setattr(transcripts.calls.anthropic_client, "budget_ok", lambda kind="vod": True)
-    monkeypatch.setattr(transcripts.calls, "_system_values", lambda: {"game": "GTA V", "watermark": "@x"})
+    monkeypatch.setattr(transcripts.calls, "system_values", lambda: {"game": "GTA V", "watermark": "@x"})
     spoken = "no way he did that look at him go"
     fake = FakeAnthropicClient({"p10_sentence_ends": {"ends": [1, 4]}})
     words = punctuation_run(tmp_path, monkeypatch, spoken, fake, punctuate_below=0.02)

@@ -133,3 +133,30 @@ def test_a_request_that_fails_is_a_zero_cost_http_error_row(rows: Rows) -> None:
     assert rows[0]["cost_usd"] == 0.0
     assert rows[0]["detail"].outcome == "http_error"
     assert rows[0]["detail"].detail == "APIConnectionError"
+
+
+def test_a_raw_json_call_is_recorded_under_the_given_service(
+    scripted: Callable[..., tuple[AnthropicClient, ScriptedSdk]], rows: Rows
+) -> None:
+    client, sdk = scripted('{"score": 6}')
+    result = client.complete_raw_json(
+        "p9_visual_score",
+        "system",
+        "user",
+        {"type": "object"},
+        "claude-haiku-5-5",
+        1024,
+        service="anthropic_shadow",
+    )
+    assert result.data == {"score": 6} and result.error is None and result.cost > 0
+    assert rows[0]["provider"] == "anthropic_shadow" and rows[0]["detail"].outcome == "ok"
+    assert sdk.requests[0]["output_config"]["format"] == {"type": "json_schema", "schema": {"type": "object"}}
+
+
+def test_a_raw_json_reply_that_is_not_json_is_kept_as_an_error(
+    scripted: Callable[..., tuple[AnthropicClient, ScriptedSdk]], rows: Rows
+) -> None:
+    client, _ = scripted("no json here")
+    result = client.complete_raw_json("p2_clip_writer", "s", "u", {}, "claude-haiku-5-5", 1024)
+    assert result.data is None and result.error is not None
+    assert rows[0]["detail"].outcome == "invalid"
