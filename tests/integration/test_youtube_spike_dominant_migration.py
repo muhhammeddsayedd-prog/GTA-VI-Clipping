@@ -76,3 +76,19 @@ def test_other_accounts_are_not_touched(test_database_url: str) -> None:
     after = db.fetch_all("select * from platform_accounts where id <> 'youtube_main' order by id")
     strip = [{k: v for k, v in row.items() if k != "updated_at"} for row in before]
     assert [{k: v for k, v in row.items() if k != "updated_at"} for row in after] == strip
+
+
+def test_the_spike_lane_quota_follows_the_reserve(test_database_url: str) -> None:
+    set_youtube(spike_reserve=4, hourly_hours_utc=OLD_HOURS)
+    db.execute(
+        "insert into lane_quotas (account_id, lane_key, min_day, max_day) "
+        "values ('youtube_main', 'spike', 0, 4) "
+        "on conflict (account_id, lane_key) do update set max_day = 4"
+    )
+
+    apply_twice(test_database_url)
+
+    row = db.fetch_one(
+        "select max_day from lane_quotas where account_id = 'youtube_main' and lane_key = 'spike'"
+    )
+    assert row is not None and row["max_day"] == 10

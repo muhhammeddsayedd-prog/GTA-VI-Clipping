@@ -1289,6 +1289,7 @@ Dropped (owner). The bandit learns from views only.
 - **Guards:** the migration changes each value only while it still holds what migration 0034 set, so an operator's value wins. Both seeds now carry the same values.
 - **No code change.** `cap_state` already stops the hourly lane at `free > reserve_left`. Spikes may still take more than 10 posts when the hourly lane left room; `posting.spike_max_per_hour` (2) still applies.
 - **Trade-off (owner choice):** the unused reserve is not released (`posting.reserve_release_*` stays unset, because that setting is global). A day with fewer than 10 spikes posts fewer than 16. Over 2026-11-20..23 production got 5–11 YouTube spikes a day.
+- **Campaign lanes (D118):** campaign clips post through the hourly slots, so on YouTube they now share the same 6 hourly posts with normal clips. The `lane_quotas` spike row is synced to 10. YouTube campaign hours (`lanes.campaign_hours_utc.youtube`, 8–17) overlap the new hourly hours only at 14 and 17, so a YouTube campaign gets at most 2 posts a day until those hours are changed. Production had no campaigns on 2026-11-23.
 - **Tests:** a unit test for the 16/10 cap maths, a migration test (`tests/integration/test_youtube_spike_dominant_migration.py`), and the seed and hour tests moved to the new values.
 - **Rollback:** `update platform_accounts set spike_reserve = 4, hourly_hours_utc = '{0,10,13,14,16,17,18,19,20,21,22,23}' where id = 'youtube_main';`
 - **Check after 24–48 h in production:** youtube_main posts per lane per day. Expect hourly ≤ 6 and spikes the majority.

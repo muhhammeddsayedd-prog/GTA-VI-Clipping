@@ -24,3 +24,13 @@ update platform_accounts
    set hourly_hours_utc = '{0,14,17,19,21,23}'
  where id = 'youtube_main'
    and hourly_hours_utc = '{0,10,13,14,16,17,18,19,20,21,22,23}';
+
+-- The Spike lane row of D118's lane_quotas mirrors spike_reserve (campaigns.store.refresh_base_rows keeps it in
+-- step; this sets it now). The Normal row (cap 16 - campaign share 6 = 10) holds the reserve and is unchanged.
+update lane_quotas q
+   set max_day = a.spike_reserve
+  from platform_accounts a
+ where q.account_id = a.id
+   and a.id = 'youtube_main'
+   and q.lane_key = 'spike'
+   and q.max_day is distinct from a.spike_reserve;

@@ -108,7 +108,7 @@ def test_tiktok_only_posts_in_its_hours_and_the_clip_is_done_after_the_slot(
     production: None, video: Path
 ) -> None:
     go_live()
-    slot = T0 - timedelta(hours=1)  # 13:00 UTC is not one of TikTok's hours (it is one of YouTube's)
+    slot = T0 - timedelta(hours=1)  # 13:00 UTC: not a TikTok or YouTube hour (0056)
     clip = add_clip(add_creator(), video, approved_at=slot - timedelta(minutes=30))
 
     run = run_hourly_slot(slot, FakeUploadPostClient(), clock=fixed(slot + timedelta(minutes=2)))
@@ -116,7 +116,8 @@ def test_tiktok_only_posts_in_its_hours_and_the_clip_is_done_after_the_slot(
     assert run.plan is not None
     codes = {d.account_id: d.code for d in run.plan.decisions}
     assert codes[TT] is Reason.OUTSIDE_HOURLY_HOURS
-    assert [r["account_id"] for r in posts()] == [IG, YT]
+    assert codes[YT] is Reason.OUTSIDE_HOURLY_HOURS
+    assert [r["account_id"] for r in posts()] == [IG]
     assert clip_row(clip)["status"] == "posted"
     assert "posting.slot_skipped" in event_types()
 
