@@ -33,6 +33,7 @@ from sixstars.clients.upload_post import (
     UploadPostClient,
     UploadStatus,
 )
+from sixstars.clock import DATE_TIME, fmt_local
 from sixstars.logging import get_logger
 from sixstars.posting.caps import on_rate_limit
 from sixstars.posting.captions import UploadRequest, build_upload_request
@@ -430,7 +431,7 @@ class Publisher:
         self._store.notify(
             "critical",
             f"Reconnect {account.id} in Upload-Post",
-            f"{reason}. The account is paused until {until.isoformat()}.",
+            f"{reason}. The account is paused until {fmt_local(until, DATE_TIME)}.",
         )
         return self._fail(work.post, f"auth: {message}", alert=False)
 

@@ -10,7 +10,7 @@ import { Bars, HBars, Legend, Line, SegBar, Stacked } from "@/components/kit/cha
 import { Badge, Btn, Card, CardHead, ErrorState, PageHead, RefreshBtn, Seg, SkeletonCards } from "@/components/kit/primitives";
 import { POLL, useApi } from "@/lib/api/client";
 import type { Pipeline } from "@/lib/api/types";
-import { fmtTime, humanize } from "@/lib/format";
+import { fmtTime, humanize, zonedHour } from "@/lib/format";
 import { splitReason } from "@/lib/shape";
 
 const STAGE_COLORS = ["#C9C2FF", "#9F94FF", "#7C6EFF", "#5A4AF4", "#3A2CC7", "#12A150", "#0D7A3D", "#6b6b82"];
@@ -108,13 +108,13 @@ export function PipelineView() {
   );
 }
 
-/** The API lists only hours that had approvals; spread them over the last 24 UTC hours (oldest first). */
+/** The API lists only hours that had approvals; spread them over the last 24 hours (oldest first), labelled in the app zone. */
 function hourBuckets(rows: { t: string; n: number }[], now = Date.now()) {
   const top = Math.floor(now / 3_600_000) * 3_600_000;
   const byHour = new Map(rows.map((r) => [Math.floor(Date.parse(r.t) / 3_600_000) * 3_600_000, r.n]));
   return Array.from({ length: 24 }, (_, i) => {
     const t = top - (23 - i) * 3_600_000;
-    return { h: new Date(t).getUTCHours(), n: byHour.get(t) ?? 0 };
+    return { h: zonedHour(t), n: byHour.get(t) ?? 0 };
   });
 }
 

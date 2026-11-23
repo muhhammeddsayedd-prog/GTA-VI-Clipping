@@ -1043,3 +1043,68 @@ Real footage (the owner's Kai Cenat reference Short, its cam region 720x460 as t
 ### M19 R2 fix — odd cam boxes (2026-11-23)
 
 First staging renders with `factory.layout_v2.enabled` on (staging only, from 16:49 UTC): two clips drawn as G with the face found in 5 of 5 frames (face check 1.4 and 1.8 s on the server), one MissMikkaa live clip drawn as G0 with **0 frames read**. Her cached cam box (1402, 477, 518, 603) has an odd y and height; ffmpeg rounds a crop of 4:2:0 video, so it returned 602 rows, every frame was shorter than expected and was dropped. Fix: the face check grabs `faces.even_box(cam_box)` (the largest even box inside the cam box) and maps the face back from it; `CamFaceCheck.reason` tells `no_frames` (no frame could be read) from `no_face`, in the log, `clip.rendered.cam_check` and `clip.cam_no_face`.
+
+## TZ — App time zone, default Cairo (built 2026-11-21, rebased onto develop 2026-11-23)
+
+Branch `app-timezone-v2` (rebuilt on develop 2026-11-23; the original 2026-11-21 work was never committed and sat 75 commits behind). Owner request: run the whole app on Cairo time with a time zone setting in the console; limits keep working in UTC. Decision D120 (D116 was taken on develop meanwhile).
+
+### What was built
+
+- Migration `0055_app_timezone.sql` (first written as 0034, which develop has since used): setting `app.timezone` = `"Africa/Cairo"`; `reports.timezone` removed.
+- `src/sixstars/clock.py`: `app_zone()` (cached 30 s; never raises; invalid name or no database means Cairo), `fmt_local()` ("14:32 Cairo (12:32 UTC)"), `zone_label()`, `is_valid_zone()`.
+- Telegram text in the app zone, with UTC in brackets:
+  - the pre-launch summary title and `/status` (launch time, pause times)
+  - discovery failing/recovered and blocked-downloads notes
+  - live-lane blocked/recovered
+  - the Upload-Post reconnect alert
+  - "Hourly queue empty"
+  - the proxy status line
+- The daily report day follows `app.timezone`, and its issue times now use that zone too (before, they were hard-coded UTC).
+- `POST /v1/control/settings` refuses an invalid zone (`422 invalid_timezone`).
+- `GET /v1/reports/daily?due=1`: claims the local day that just ended through a `report.daily_sent` event, so each day is sent once.
+- WF06 builder: every hour at :05, then fetch with `due=1`, then IF `due`, then Telegram.
+- Console (`web/`):
+  - `lib/format.ts` formats in the display zone (Intl, DST-safe). Hover titles show the UTC instant.
+  - `TimeZoneSync` keeps the display zone in line with the setting.
+  - `<main key={zone}>` re-renders every page once when the zone changes.
+  - Header clock (app zone plus UTC; popover with app, UTC and browser zones).
+  - Settings → Time zone card (searchable list, live preview, saves through the usual confirm step).
+  - "UTC" labels on shown times are replaced by the zone label.
+  - UTC-hour slot grids stay labelled UTC; each cell's tooltip shows the local hour.
+
+### Kept in UTC on purpose
+
+Storage, API payloads, caps and budgets (UTC day), `hourly_hours_utc`, `posting.reserve_release_hour_utc`, the YouTube quota day (LA), AI prompts, CLI output, stored decision reasons (`posting/precedence.py`, `posting/gate.py`, `gate/checks.py`, `posting/caps.py`, discovery gate details), containers `TZ=UTC`.
+
+### Deploy order (important)
+
+1. Apply 0055 and deploy the server.
+2. Only then re-apply WF06 (`build_workflows.py apply --env staging`).
+
+An old API ignores `due=1`, so the new WF06 would send the report every hour. The first run after deploy sends the report for the Cairo day that just ended. The `workflows/*.json` exports refresh on the next `export`.
+
+### Tests
+
+- Python unit: all pass (13 new in `test_clock.py`; status, discovery and blocked-platform text expectations updated).
+- Integration (throwaway postgres:17):
+  - new tests: zone validation, the `due` flow sending once, and the Cairo day boundary of the report
+  - updated: the stats and blocked-discovery tests
+  - full suite: 57 failures, the same 57 that fail on untouched develop (`test_gate_run`, `test_gate_visual_score`, `test_precheck_flow` and others), none from this change
+- Web: vitest 36 passed (Cairo, DST, midnight rollover, offsets, UTC hover); lint, typecheck and build clean.
+- Not checked in a browser (no browser tools in this session).
+
+### Rebase onto develop (2026-11-23)
+
+- Rebuilt as one commit on `origin/develop` (c776f27). Conflicts only in `scheduler.py` imports (kept the campaign watcher), `00-decisions.md` and this file.
+- Renumbered: migration 0034 → 0055 (develop runs to 0054; cover-engine holds 0044), decision D116 → D120.
+- `claim_due_day` now takes a transaction advisory lock per day, so a manual WF06 run overlapping the hourly one cannot send the report twice.
+- New develop code checked for human-facing UTC times: none added to the console; the one new UTC string (`posting/store.py` campaign refusal) is a stored decision reason and stays UTC by design.
+- Checks on the rebased branch: ruff, ruff format, `mypy --strict src/` clean; unit 4052 passed, 6 skipped; web lint, tsc, vitest 36, build clean; all 55 migrations apply on fresh postgres:17; integration 531 passed, 58 failed; untouched develop gives 528 passed and the identical 58 failures (`test_gate_run`, `test_gate_visual_score`, `test_precheck_flow`, `test_gate_cli`, `test_factory_pipeline`), so none come from this change.
+
+### Release checklist (for the merge to production)
+
+1. Merge this PR into `develop`; the staging deploy applies 0055 automatically (`supabase db push`).
+2. After the staging server is healthy: `uv run python n8n/build_workflows.py apply --env staging` (WF06). Never before the server deploy: an old API ignores `due=1`, so the report would go out every hour.
+3. Check on staging: `/status` in Telegram shows Cairo times with UTC in brackets; console header clock; Settings → Time zone card saves; `GET /v1/reports/daily?due=1` answers `due: true` once, then `due: false`.
+4. Merge `develop` → `main`; the production deploy applies 0055; then re-apply WF06 with `--env production` (same order: server first).
+5. The first WF06 run after the re-apply sends the report for the Cairo day that just ended, so one extra report around the switch is expected.

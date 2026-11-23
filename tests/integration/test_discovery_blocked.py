@@ -22,6 +22,7 @@ from sixstars.clients.fakes import (
     FakeYouTubeClient,
     fake_video,
 )
+from sixstars.clock import DATE_TIME, fmt_local
 from sixstars.discovery import config as discovery_config
 from sixstars.discovery.run import DiscoveryClients, DiscoverySummary, run_discovery
 from sixstars.discovery.ytsearch import FakeYtDlpSearch, FlatVideo
@@ -208,7 +209,7 @@ def test_a_backlog_of_blocked_youtube_videos_no_longer_starves_twitch() -> None:
     # Said once in the summary, and to nobody's phone.
     assert summary.notes == [
         "12 video(s) that waited out a download block were skipped (more than 12 waiting per platform)",
-        f"youtube downloads are blocked since {NOW - timedelta(minutes=10):%Y-%m-%d %H:%M} UTC: "
+        f"youtube downloads are blocked since {fmt_local(NOW - timedelta(minutes=10), DATE_TIME)}: "
         "2 video(s) not queued, 12 waiting for the VOD lane's retry",
     ]
     assert count("notify_outbox") == 0

@@ -3,7 +3,7 @@
 import { AlertTriangle } from "lucide-react";
 
 import { Banner } from "@/components/kit/primitives";
-import { fmtDay, fmtTime } from "@/lib/format";
+import { fmtTime, fmtFull, zoneLabel } from "@/lib/format";
 import { useNow } from "@/lib/use-now";
 import { isRecord, num, str } from "@/lib/shape";
 
@@ -39,10 +39,10 @@ export function BlockBanners({ blocks, what }: { blocks: SourceBlock[]; what: st
         const retry = b.skipUntil && now && Date.parse(b.skipUntil) > now ? b.skipUntil : null;
         return (
           <Banner key={b.platform} tone="amber" icon={<AlertTriangle size={17} />}>
-            <b>{name} {what} are blocked from this server</b> since {fmtDay(b.since)} {fmtTime(b.since)} UTC
+            <b>{name} {what} are blocked from this server</b> since {fmtFull(b.since)}
             {b.blocks ? <> · {b.blocks} refused attempt{b.blocks === 1 ? "" : "s"}</> : null}
-            {b.lastBlockedAt ? <> · last {fmtTime(b.lastBlockedAt)} UTC</> : null}
-            {retry ? <> · next try {fmtTime(retry)} UTC</> : null}. The work waits instead of failing.
+            {b.lastBlockedAt ? <> · last {fmtTime(b.lastBlockedAt)} {zoneLabel()}</> : null}
+            {retry ? <> · next try {fmtTime(retry)} {zoneLabel()}</> : null}. The work waits instead of failing.
             {b.access && <div className="xs" style={{ marginTop: 4 }}>Access: {b.access}</div>}
             {b.error && <div className="xs ellipsis" style={{ marginTop: 2, opacity: 0.8 }} title={b.error}>Last error: {b.error}</div>}
           </Banner>

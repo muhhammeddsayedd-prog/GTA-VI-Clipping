@@ -13,7 +13,7 @@ from fastapi.responses import JSONResponse
 from psycopg.types.json import Jsonb
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 
-from sixstars import db, events, notify, settings
+from sixstars import clock, db, events, notify, settings
 from sixstars.api import status as status_view
 from sixstars.api.errors import ApiError
 from sixstars.learning import delivery
@@ -179,6 +179,10 @@ def control_settings(body: SettingBody) -> JSONResponse:
         raise ApiError(422, "invalid_value", "value must be JSON (NaN and Infinity are not)") from exc
     if "\\u0000" in encoded:
         raise ApiError(422, "invalid_value", "value must not contain NUL characters")
+    if body.key == clock.TIMEZONE_KEY and not clock.is_valid_zone(body.value):
+        raise ApiError(
+            422, "invalid_timezone", f"{body.value!r} is not an IANA time zone such as Africa/Cairo"
+        )
     with db.transaction():
         current = db.fetch_one("select key, value from settings where key = %s for update", (body.key,))
         if current is None:
