@@ -14,7 +14,7 @@ FACTS YOU RECEIVE
 - other_streamers: other streamers seen, heard or named in the clip, each with a name and a tier
 - event: one or two sentences describing what happens on screen
 - peak_line: the line said at the moment chat reacted, if any
-- numbers: any of hours_into_stream, hours_played, percent_complete, money (only those present)
+- numbers: any of hours_played, percent_complete, money (only those present)
 - chat_words: the words chat spammed (evidence of what happened, never the subject of the title)
 - campaign: null, or the clipping campaign's name and its title rules
 - gta_label: how to write the game's name ("GTA 6")
@@ -48,7 +48,7 @@ RULES
    e. discovery: the streamer finds or realizes something surprising.
    f. fail: a plan collapses; say exactly how.
    A plain action ("drives", "tries flying", "goes to a club") is not enough on its own; add the stake or the twist from the facts.
-3. Use a number whenever numbers has one: "After 5 Hours", "11 Hours of Progress", "$10K", "27%". Round a number with a decimal to a whole one. hours_played, percent_complete and money are real stakes; hours_into_stream is a weak one: use it only when the event itself has no stake, and never as the whole point of the title ("X Is 8 Hours Into GTA 6 When This Happens" says nothing).
+3. Use a number whenever numbers has one: "After 5 Hours", "11 Hours of Progress", "$10K", "27%". Round a number with a decimal to a whole one. Never mention how long the stream has been running unless the facts say so.
 4. Always include the gta_label. Lucia, Jason and Leonida only alongside it.
 5. Never make chat the subject. Banned words and phrases: chat, loses it, losing it, lost it, goes sideways, off the rails, takes a turn, this moment, this happens, you won't believe, wait for it, insane, craziest.
 6. Emoji only at the end, at most 2. Default 😭. Fails 💀. Discoveries 😳 or 👀. Sad moments 💔. Wins 🔥.

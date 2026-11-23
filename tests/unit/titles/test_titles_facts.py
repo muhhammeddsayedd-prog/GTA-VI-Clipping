@@ -72,13 +72,6 @@ def test_spoken_numbers() -> None:
     assert facts.spoken_numbers("I lost 2 million dollars") == {"money": 2_000_000.0}
 
 
-def test_hours_into_stream_only_from_one_hour() -> None:
-    assert facts.hours_into_stream(1800) is None
-    assert facts.hours_into_stream(5 * 3600 + 1200) == 5.0
-    assert facts.hours_into_stream(5 * 3600 + 2400) == 6.0
-    assert facts.hours_into_stream(None) is None
-
-
 def test_chat_words_counts_each_message_once() -> None:
     messages = ["KEKW KEKW KEKW", "kekw he crashed", "crashed lol", "LMAO", "one"]
     assert facts.chat_words(messages) == ("kekw", "crashed")
@@ -92,14 +85,13 @@ def test_build_finds_other_streamers_and_numbers() -> None:
         event="Kai's car flips and he loses the mission.",
         lines=lines,
         peak_s=1.0,
-        offset_s=4 * 3600,
         chat=["W", "LMAO"],
         gta_label="GTA 6",
         spoiler=False,
     )
     assert built.streamer_tier == "S"
     assert built.other_streamers == ("Vinesauce Vinny",)
-    assert built.numbers == {"hours_into_stream": 4.0, "hours_played": 3.0}
+    assert built.numbers == {"hours_played": 3.0}  # no hours into the stream
     payload = json.loads(built.to_json())
     assert payload["other_streamers"] == [{"name": "Vinesauce Vinny", "tier": "B"}]
     assert payload["gta_label"] == "GTA 6"

@@ -14,7 +14,7 @@ BOOK_RECENT_DAYS = 30
 
 
 def clip_row(clip_id: str) -> Mapping[str, Any] | None:
-    """The clip with its creator and the spike it was cut around (chat sample, position on the stream)."""
+    """The clip with its creator and the spike it was cut around (chat sample, position of the peak)."""
     return db.fetch_one(
         """
         select c.id::text as id, c.status, c.title, c.caption, c.hashtags, c.hook, c.topic, c.spoiler,
@@ -22,12 +22,10 @@ def clip_row(clip_id: str) -> Mapping[str, Any] | None:
                c.source_type, c.source_platform, c.spike_id::text as spike_id,
                c.creator_id::text as creator_id,
                cr.handle, cr.display_name, cr.title_name, cr.title_aliases, cr.follower_count,
-               s.mode as spike_mode, s.spike_offset_s, s.chat_sample,
-               extract(epoch from (s.spike_wall - ls.started_at)) as live_offset_s
+               s.mode as spike_mode, s.spike_offset_s, s.chat_sample
           from clips c
           join creators cr on cr.id = c.creator_id
           left join spikes s on s.id = c.spike_id
-          left join live_sessions ls on ls.id = s.live_session_id
          where c.id = %s
         """,
         (clip_id,),
