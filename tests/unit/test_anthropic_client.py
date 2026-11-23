@@ -160,7 +160,24 @@ def test_output_format_uses_the_api_schema_dialect_and_is_the_same_for_bound_sub
     score = fmt["schema"]["properties"]["score"]
     # Limits the API does not accept move into the description; Pydantic still enforces them here.
     assert "minimum" not in score and "maximum" not in score and "minimum: 1" in score["description"]
-    assert fmt["schema"]["required"] == ["score"]
+    # Every property is required (AI cost plan A6: optional properties made the P2 schema "too complex").
+    assert fmt["schema"]["required"] == ["score", "note"]
+
+
+def test_all_required_keeps_nullable_fields_nullable() -> None:
+    class Nested(BaseModel):
+        flag: bool = False
+
+    class Reply(BaseModel):
+        title: str
+        commentary: str | None = None
+        nested: Nested = Nested()
+
+    schema = output_format(Reply)["schema"]
+    assert schema["required"] == ["title", "commentary", "nested"]
+    assert {"type": "null"} in schema["properties"]["commentary"]["anyOf"]
+    nested = schema["$defs"]["Nested"]
+    assert nested["required"] == ["flag"]
 
 
 def test_invalid_reply_is_retried_with_the_error_appended() -> None:
