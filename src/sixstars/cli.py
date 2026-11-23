@@ -792,3 +792,215 @@ def titles_queue(
     with _database():
         code = commands.queue(limit, apply)
     raise typer.Exit(code=code)
+
+
+# Clipping campaigns (D118). Kept as one block so other milestones' edits to this file do not collide with it.
+campaign_app = typer.Typer(help="Clipping campaigns (D118): registry, quotas, status.", no_args_is_help=True)
+app.add_typer(campaign_app, name="campaign")
+
+_STREAMER_HELP = "Streamer: twitch:<login>, youtube:@<handle> or youtube:<channel id> (repeatable)."
+_QUOTA_HELP = "Daily quota per platform: youtube=2-3 (repeatable)."
+
+
+@campaign_app.command("add")
+def campaign_add(
+    slug: str = typer.Argument(..., help="Short id, e.g. dylanpage-marathon."),
+    name: str = typer.Option(..., "--name"),
+    rate: float = typer.Option(..., "--rate", help="Payout per 1,000 views."),
+    platforms: str = typer.Option(..., "--platforms", help="Comma list: youtube,instagram,tiktok."),
+    streamer: list[str] = typer.Option(..., "--streamer", help=_STREAMER_HELP),
+    quota: list[str] = typer.Option(..., "--quota", help=_QUOTA_HELP),
+    min_payout: float | None = typer.Option(None, "--min-payout"),
+    max_payout: float | None = typer.Option(None, "--max-payout"),
+    currency: str | None = typer.Option(None, "--currency"),
+    budget: float | None = typer.Option(None, "--budget", help="Total budget (budget left starts equal)."),
+    budget_left: float | None = typer.Option(None, "--budget-left"),
+    profile: str | None = typer.Option(None, "--profile", help="Render profile id (default brand-disclose)."),
+    priority: int | None = typer.Option(None, "--priority"),
+    starts: str | None = typer.Option(None, "--starts", help="ISO time (UTC)."),
+    ends: str | None = typer.Option(None, "--ends", help="ISO time (UTC)."),
+    game: str | None = typer.Option(None, "--game", help='Required game, or "any".'),
+    tag: list[str] = typer.Option([], "--tag", help="Required hashtag (repeatable)."),
+    mention: str | None = typer.Option(None, "--mention"),
+    cta: str | None = typer.Option(None, "--cta", help="Required caption line."),
+    banned: list[str] = typer.Option([], "--banned", help="Banned caption word (repeatable)."),
+    brief: str | None = typer.Option(None, "--brief", help='Brief rules JSON, e.g. {"min_len": 10}.'),
+    submit_url: str | None = typer.Option(None, "--submit-url"),
+    notes: str | None = typer.Option(None, "--notes"),
+) -> None:
+    """Add a campaign as a draft (look at it with `show`, then `activate`)."""
+    from sixstars.campaigns import commands
+
+    options = {
+        "name": name,
+        "rate": rate,
+        "platforms": platforms,
+        "streamer": streamer,
+        "quota": quota,
+        "min_payout": min_payout,
+        "max_payout": max_payout,
+        "currency": currency,
+        "budget": budget,
+        "budget_left": budget_left,
+        "profile": profile,
+        "priority": priority,
+        "starts": starts,
+        "ends": ends,
+        "game": game,
+        "tag": tag,
+        "mention": mention,
+        "cta": cta,
+        "banned": banned,
+        "brief": brief,
+        "submit_url": submit_url,
+        "notes": notes,
+    }
+    with _database():
+        code = commands.add(slug, options)
+    raise typer.Exit(code=code)
+
+
+@campaign_app.command("edit")
+def campaign_edit(
+    slug: str = typer.Argument(...),
+    name: str | None = typer.Option(None, "--name"),
+    rate: float | None = typer.Option(None, "--rate"),
+    platforms: str | None = typer.Option(None, "--platforms"),
+    streamer: list[str] = typer.Option([], "--streamer", help=_STREAMER_HELP + " Replaces the list."),
+    quota: list[str] = typer.Option([], "--quota", help=_QUOTA_HELP + " Replaces the quota."),
+    min_payout: float | None = typer.Option(None, "--min-payout"),
+    max_payout: float | None = typer.Option(None, "--max-payout"),
+    budget: float | None = typer.Option(None, "--budget"),
+    budget_left: float | None = typer.Option(None, "--budget-left"),
+    profile: str | None = typer.Option(None, "--profile"),
+    priority: int | None = typer.Option(None, "--priority"),
+    starts: str | None = typer.Option(None, "--starts"),
+    ends: str | None = typer.Option(None, "--ends"),
+    game: str | None = typer.Option(None, "--game"),
+    tag: list[str] = typer.Option([], "--tag"),
+    mention: str | None = typer.Option(None, "--mention"),
+    cta: str | None = typer.Option(None, "--cta"),
+    banned: list[str] = typer.Option([], "--banned"),
+    brief: str | None = typer.Option(None, "--brief"),
+    submit_url: str | None = typer.Option(None, "--submit-url"),
+    notes: str | None = typer.Option(None, "--notes"),
+    reason: str | None = typer.Option(None, "--reason"),
+) -> None:
+    """Change a campaign (only the options given)."""
+    from sixstars.campaigns import commands
+
+    options = {
+        "name": name,
+        "rate": rate,
+        "platforms": platforms,
+        "streamer": streamer,
+        "quota": quota,
+        "min_payout": min_payout,
+        "max_payout": max_payout,
+        "budget": budget,
+        "budget_left": budget_left,
+        "profile": profile,
+        "priority": priority,
+        "starts": starts,
+        "ends": ends,
+        "game": game,
+        "tag": tag,
+        "mention": mention,
+        "cta": cta,
+        "banned": banned,
+        "brief": brief,
+        "submit_url": submit_url,
+        "notes": notes,
+        "reason": reason,
+    }
+    with _database():
+        code = commands.edit(slug, options)
+    raise typer.Exit(code=code)
+
+
+def _campaign_status(slug: str, status: str, reason: str | None) -> None:
+    from sixstars.campaigns import commands
+
+    with _database():
+        code = commands.set_status(slug, status, reason)  # type: ignore[arg-type]
+    raise typer.Exit(code=code)
+
+
+@campaign_app.command("activate")
+def campaign_activate(
+    slug: str = typer.Argument(...), reason: str | None = typer.Option(None, "--reason")
+) -> None:
+    """Draft or paused -> active: the campaign gets slots, recording priority and its look."""
+    _campaign_status(slug, "active", reason)
+
+
+@campaign_app.command("resume")
+def campaign_resume(
+    slug: str = typer.Argument(...), reason: str | None = typer.Option(None, "--reason")
+) -> None:
+    """Paused -> active."""
+    _campaign_status(slug, "active", reason)
+
+
+@campaign_app.command("pause")
+def campaign_pause(
+    slug: str = typer.Argument(...), reason: str | None = typer.Option(None, "--reason")
+) -> None:
+    """Active -> paused: its slots return to the Normal lane."""
+    _campaign_status(slug, "paused", reason)
+
+
+@campaign_app.command("end")
+def campaign_end(
+    slug: str = typer.Argument(...), reason: str | None = typer.Option(None, "--reason")
+) -> None:
+    """End a campaign (kept for the earnings history)."""
+    _campaign_status(slug, "ended", reason)
+
+
+@campaign_app.command("budget")
+def campaign_budget(slug: str = typer.Argument(...), amount: float = typer.Argument(...)) -> None:
+    """Record the budget left (from the Content Rewards page)."""
+    from sixstars.campaigns import commands
+
+    with _database():
+        code = commands.budget(slug, amount)
+    raise typer.Exit(code=code)
+
+
+@campaign_app.command("list")
+def campaign_list(status: str | None = typer.Option(None, "--status")) -> None:
+    """List campaigns."""
+    from sixstars.campaigns import commands
+
+    with _database():
+        code = commands.list_campaigns(status)
+    raise typer.Exit(code=code)
+
+
+@campaign_app.command("show")
+def campaign_show(slug: str = typer.Argument(...)) -> None:
+    """Show one campaign and its lane quotas."""
+    from sixstars.campaigns import commands
+
+    with _database():
+        code = commands.show(slug)
+    raise typer.Exit(code=code)
+
+
+@campaign_app.command("lookup")
+def campaign_lookup(ref: str = typer.Argument(..., help=_STREAMER_HELP)) -> None:
+    """Look a streamer up on their platform (nothing is saved), to confirm the right person."""
+    from sixstars.campaigns import commands
+
+    raise typer.Exit(code=commands.find(ref))
+
+
+@campaign_app.command("quotas")
+def campaign_quotas(account: str | None = typer.Option(None, "--account")) -> None:
+    """Daily quotas per account and lane (normal, spike, campaign:<slug>)."""
+    from sixstars.campaigns import commands
+
+    with _database():
+        code = commands.quotas(account)
+    raise typer.Exit(code=code)

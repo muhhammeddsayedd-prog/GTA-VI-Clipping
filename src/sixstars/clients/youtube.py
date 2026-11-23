@@ -312,6 +312,23 @@ class YouTubeClient:
         """`channels.list` by channel id (50 per request). Returns the raw API items."""
         return self._list("channels", ids, parts)
 
+    def channel_for_handle(
+        self, handle: str, parts: Sequence[str] = DEFAULT_CHANNEL_PARTS
+    ) -> dict[str, Any] | None:
+        """`channels.list?forHandle=` (1 quota unit): the channel of an @handle, or None if there is none."""
+        if not self._api_key:
+            raise NotConfiguredError("YOUTUBE_API_KEY is not set")
+        endpoint = "GET /youtube/v3/channels"
+        params: dict[str, str | int] = {"part": ",".join(parts), "forHandle": "@" + handle.removeprefix("@")}
+        call = partial(
+            self._http.get, f"{API_BASE}/channels", params=params, headers={"X-goog-api-key": self._api_key}
+        )
+        response = _http.send(SERVICE, endpoint, call)
+        _http.raise_for_status(SERVICE, endpoint, response)
+        usage.record(SERVICE, "channels.list", units=QUOTA_LIST)
+        items = response.json().get("items") or []
+        return dict(items[0]) if items else None
+
     def search_list(
         self,
         q: str,

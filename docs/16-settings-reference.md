@@ -407,3 +407,12 @@ Clip thumbnails and creator profile pictures for the admin console (docs/26, mig
 | `console.thumb_jpeg_qscale` | `5` | ffmpeg JPEG quality of the thumbnail (`-q:v`, 2 best to 31 worst; 5 is about JPEG quality 80). |
 | `console.avatar_refresh_days` | `7` | A creator's profile picture is looked up again after this many days. |
 | `console.avatars_per_pass` | `100` | Creators whose picture is looked up per discovery pass, at most (Twitch: 100 per request; YouTube: 50 per request, 1 quota unit each, inside `discovery.youtube_quota_daily_units`). |
+
+## Clipping campaigns (lanes)
+
+Campaign lanes, decision D118 (migration 0050). The campaigns themselves live in `clip_campaigns`, not in settings.
+
+| Key | Default | Meaning |
+|---|---|---|
+| `lanes.campaign_share` | `{"youtube_main": 6, "instagram_main": 18, "tiktok_main": 6}` | Posts a day per account that all campaigns together may take, inside `cap_24h`. The Normal lane gets the rest (`lane_quotas` row `normal`), which also holds the spike reserve. A save whose campaign quotas add up to more is refused. |
+| `lanes.campaign_max_per_day` | `{"youtube": 3, "instagram": 10, "tiktok": 3}` | Most posts one campaign may get per platform and day; a quota above it is refused. |

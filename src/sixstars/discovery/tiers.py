@@ -94,13 +94,16 @@ def clip_allowed(creator: Creator, require_check: bool) -> bool:
 def decide_tier(current: str, reason: str | None, verdict: PermissionVerdict) -> tuple[str, str | None]:
     """The tier and reason to store after a P6 verdict.
 
-    `blocked` never changes. A creator who forbids clipping is always `restricted`. A tier the owner set
-    by hand (reason starting with "manual") is otherwise kept.
+    `blocked` never changes. A creator who forbids clipping is always `restricted` (even with an active
+    campaign: the campaign is paused, see `sixstars.campaigns.service.on_creator_forbidden`). A tier the
+    owner set by hand (reason starting with "manual") and the `campaign` tier (D118) are otherwise kept.
     """
     if current == "blocked":
         return current, reason
     if verdict.tier == "restricted":
         return "restricted", verdict.evidence or "channel text forbids clipping"
+    if current == "campaign":
+        return current, reason
     if reason is not None and reason.startswith(MANUAL_PREFIX):
         return current, reason
     return verdict.tier, verdict.evidence
@@ -180,7 +183,15 @@ def block(creator: Creator, reason: str) -> Creator:
         message=f"{creator.platform} {creator.handle} blocked: {reason}",
         data={"reason": reason, "videos_skipped": skipped},
     )
+    _pause_campaigns(creator.id, reason)
     return replace(creator, tier="blocked")
+
+
+def _pause_campaigns(creator_id: str, reason: str) -> None:
+    """D118: a streamer who became restricted or blocked pauses their active clipping campaigns."""
+    from sixstars.campaigns import service  # local: campaigns imports discovery modules
+
+    service.on_creator_forbidden(creator_id, reason)
 
 
 def set_tier(platform: str, channel: str, tier: str, reason: str) -> Creator | None:
@@ -203,6 +214,7 @@ def set_tier(platform: str, channel: str, tier: str, reason: str) -> Creator | N
     )
     if tier == "restricted":
         store.retire_creator_work(creator.id)
+        _pause_campaigns(creator.id, note)
     events.emit(
         "creator.tier_changed",
         entity_type="creator",
@@ -361,6 +373,8 @@ def apply_verdict(creator: Creator, verdict: PermissionVerdict, now: datetime) -
     )
     if tier != current:
         skipped = store.retire_creator_work(creator.id) if tier == "restricted" else 0
+        if tier == "restricted":
+            _pause_campaigns(creator.id, new_reason or "channel text forbids clipping")
         events.emit(
             "creator.tier_changed",
             level="warn" if tier == "restricted" else "info",
