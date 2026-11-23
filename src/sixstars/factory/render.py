@@ -170,7 +170,7 @@ def build_video_filters(spec: RenderSpec) -> list[str]:
         out="v_layout",
         broll=broll_cuts(spec) if isinstance(spec.layout, LayoutMontage) else (),
         scaler=spec.scaler,
-        max_slide=spec.layout_v2.max_slide,
+        v2=spec.layout_v2,
     )
     if spec.fade_png is not None:
         fade = render_filter("movie", [("filename", normalize_filter_path(str(spec.fade_png)))])

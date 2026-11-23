@@ -1011,3 +1011,31 @@ Render time, local PC, 10 s clip from a 1920x1080 test pattern, normal mode, med
 ### Open issues / next
 
 - R2: YuNet face detector (`factory/faces.py`), `cam_window`, the blurred fill and unsharp on the cam panel; switch staging on.
+
+## M19 R2 — Render v2: face-aware cam panel (D119) (2026-11-23)
+
+**Branch:** `render-v2-r2` · no migration (the settings came with 0054)
+
+### What was built
+
+- Dependency `opencv-python-headless>=4.14.0.94,<5` (4.14.0.94, July 2026). The model `assets/models/face_detection_yunet_2023mar.onnx` (opencv_zoo, MIT, `LICENSE-yunet.txt`; sha256 `8f2383e4…`, matches the LFS pointer) is bundled. docs/14 records the version, the API as checked and why 4.x (5.1.0.95 is six days old; the 2023mar model has a fixed input shape for the 4.x DNN engine). docs.opencv.org refused automated fetches (403), so the API was read from the installed package's docstrings.
+- `factory/faces.py`: `YuNetDetector` (CPU, crops shorter than 320 px enlarged before detection, one per process, locked), `FakeFaceDetector`, `FaceDetectRules` (the setting `facecam.detect`), `grab_frames` (ffmpeg → raw BGR of the cam box), `sample_times`, `median_face`, `find_cam_face` → `CamFaceCheck` (median face box in source pixels, hits, frames, ms).
+- `layout.cam_window` (pure): window of the panel's aspect; the face height at the middle of `cam_face_h_min..max` when that window fits the cam box, else the largest share up to `cam_face_h_max` that fits, else `cam_face_h_max` with a blurred fill; face centred horizontally, its centre at `cam_face_center_y`; never cut (the window grows, a smaller face, until the face fits with 5% margins); only cam-box pixels taken from the source. Returns `CamWindow` (window, even sharp crop, scale, placement, fill, face in panel pixels).
+- `layout.cam_panel_filters`: crop → Lanczos → `unsharp=5:5:cam_unsharp` on the cam, over a blurred (`cam_fill_blur`) and darkened (`cam_fill_darken`) copy of the cam box when the crop does not cover the panel. Layout G uses it when it has a face box (`layout_filters(..., v2=rules)` replaces the R1 `max_slide` argument).
+- `pipeline.frame_cam` (in `render_file`): with the switch on, a layout-G job gets its face from `find_cam_face`; no face in any checked frame, or a check that cannot run, draws the clip as G0 (log `cam_no_face` / `cam_face_check_failed`). `RenderOutcome.layout` is the layout actually drawn (recorded as `clips.layout_kind` / `clip_renders.layout_kind` and used for the gate band); `RenderOutcome.cam_check` goes into `clip.rendered` and `clip_renders.checks.cam`; a G0 fallback emits `clip.cam_no_face` (clip, story cut and per-account renders). `FactoryConfig.face_detect` → `RenderJob.face_rules`.
+
+### Results
+
+ruff, format, `mypy --strict` clean; unit 4071 passed. New `test_cam_framing.py` (40): `cam_window` on the production cam boxes of Jerma (248x246), MissMikkaa (518x608), Kai (393x222), a 16:9 cam, a face at the box edge, a tiny face and a face filling the cam: face fully inside the panel with ≥ 4 px to every edge, height share within 0.40..0.60, only cam-box pixels, even crop; panel filters with and without fill; detector helpers; YuNet loads and finds nothing in a blank frame; `frame_cam` accept / no face → G0 / switch off / failed check → G0. Real ffmpeg: a Jerma-sized cam framed on the face, sharp cam in place, dark fill beside, no gameplay pixels in the panel.
+
+Real footage (the owner's Kai Cenat reference Short, its cam region 720x460 as the cam box): YuNet found the face in 3 of 5 frames (the other two are the Short's own zoomed close-ups), panel framed at a 0.50 share, whole face, centred. **Face check latency: 1.1 s per clip on the dev PC** (5 frames, about 200 ms each, mostly the ffmpeg seek), under the 3 s budget. Render of a 10 s G clip with the framed panel: 5.8 s (normal mode).
+
+### Deviations
+
+- The window is not moved into the cam box to avoid fill: the plan places the face exactly (centred, at `cam_face_center_y`) and fills whatever lies outside the box, so a cam whose face is near its edge gets a blurred band on that side.
+- The face is detected again on every render of a clip (reference and each style, about 1 s each); R3 caches it per source.
+
+### Open issues / next
+
+- Switch `factory.layout_v2.enabled` on in staging (plan: from R2) and check staging renders (R1 sizes, R2 faces of Jerma/MissMikkaa/Kai-style sources).
+- R3: detection v2 (P4 overlays, face-verified cam boxes, source cache, migration).

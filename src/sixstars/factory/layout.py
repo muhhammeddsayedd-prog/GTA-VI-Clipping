@@ -18,6 +18,7 @@ gameplay crop slides clear of the facecam and the streamer's overlays (`gameplay
 stay until R7.
 """
 
+import math
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Literal
@@ -532,11 +533,11 @@ def layout_filters(
     out: str = "v_layout",
     broll: Sequence[BrollCut] = (),
     scaler: str = DEFAULT_SCALER,
-    max_slide: float | None = None,
+    v2: LayoutV2Rules | None = None,
 ) -> list[str]:
     """Filter chains from the source video link to a `geometry.width`x`geometry.height` frame. Every crop
-    and scale is fixed for the whole clip (D119). `max_slide` bounds the gameplay slide of layouts G and
-    G0."""
+    and scale is fixed for the whole clip (D119). `v2` (`factory.layout_v2`) sizes the slide of the gameplay
+    and the cam framing of layouts G and G0."""
     g = geometry
     if isinstance(layout, LayoutG | LayoutG0):
         return _v2_filters(
@@ -548,7 +549,7 @@ def layout_filters(
             source=source,
             out=out,
             scaler=scaler,
-            max_slide=LayoutV2Rules().max_slide if max_slide is None else max_slide,
+            v2=v2 or LayoutV2Rules(),
         )
     if isinstance(layout, LayoutMontage):
         return _montage_filters(
@@ -600,6 +601,166 @@ def layout_filters(
     ]
 
 
+# The face's width must not take more than this share of the cam window's width (it stays clear of the
+# sides), and the window keeps at least this share of its height above and below the face.
+CAM_FACE_MAX_WIDTH_SHARE = 0.8
+CAM_FACE_MIN_MARGIN = 0.05
+
+
+@dataclass(frozen=True, slots=True)
+class CamWindow:
+    """The framing of the cam panel of layout G (Render v2 R2), from `cam_window`.
+
+    `window` is the part of the source the panel shows (x, y, w, h in source pixels, may reach past the
+    cam box). `crop` is the sharp part, the window inside the cam box (even source pixels). `scale` is
+    panel pixels per source pixel. `placed` is where the sharp crop sits in the panel; `fill` is True when
+    it does not cover the panel and a blurred copy fills the rest. `face` is the face in panel pixels.
+    """
+
+    window: tuple[float, float, float, float]
+    crop: Box
+    scale: float
+    placed: Box
+    fill: bool
+    face: Box
+
+    @property
+    def face_share(self) -> float:
+        """Face height as a share of the panel height."""
+        return self.face.h / (self.window[3] * self.scale)
+
+
+def _even_floor(value: float) -> int:
+    return int(math.floor(value / 2)) * 2
+
+
+def _even_ceil(value: float) -> int:
+    return int(math.ceil(value / 2)) * 2
+
+
+def cam_window(
+    face_box: Box,
+    cam_box: Box,
+    panel_w: int,
+    panel_h: int,
+    rules: LayoutV2Rules,
+    source_w: int | None = None,
+    source_h: int | None = None,
+) -> CamWindow:
+    """Frame the cam panel around the face (Render v2 R2). Pure.
+
+    The window has the panel's aspect. Its height puts the face at the middle of `cam_face_h_min` ..
+    `cam_face_h_max` of the panel when that window fits the cam box, else at the largest share up to
+    `cam_face_h_max` that does, else at `cam_face_h_max` (the window then reaches past the box and a
+    blurred fill covers the rest). The face is centred horizontally with its centre at `cam_face_center_y`
+    of the height; whatever of the window lies outside the cam box is the blurred fill. The face is never
+    cut: the window grows (a smaller face) until the face fits with a margin. Only pixels of the cam box
+    are taken from the source.
+    """
+    source_w = source_w if source_w is not None else cam_box.x + cam_box.w
+    source_h = source_h if source_h is not None else cam_box.y + cam_box.h
+    bx0, by0 = cam_box.x, cam_box.y
+    bx1, by1 = min(cam_box.x + cam_box.w, source_w), min(cam_box.y + cam_box.h, source_h)
+    # The face, clipped to the cam box.
+    fx0, fy0 = max(face_box.x, bx0), max(face_box.y, by0)
+    fx1, fy1 = min(face_box.x + face_box.w, bx1), min(face_box.y + face_box.h, by1)
+    if fx1 - fx0 < 1 or fy1 - fy0 < 1:
+        raise ValueError("the face is outside the cam box")
+    fw, fh = fx1 - fx0, fy1 - fy0
+    aspect = panel_w / panel_h
+    centre_y = rules.cam_face_center_y
+    middle = (rules.cam_face_h_min + rules.cam_face_h_max) / 2
+    fits = min(by1 - by0, (bx1 - bx0) / aspect)
+    if fh / middle <= fits:
+        height = fh / middle
+    elif fh / rules.cam_face_h_max <= fits:
+        height = fits
+    else:
+        height = fh / rules.cam_face_h_max
+    # Never cut the face: room on both sides and above and below its centre line.
+    height = max(
+        height,
+        fw / (aspect * CAM_FACE_MAX_WIDTH_SHARE),
+        (fh / 2) / (centre_y - CAM_FACE_MIN_MARGIN),
+        (fh / 2) / (1 - centre_y - CAM_FACE_MIN_MARGIN),
+    )
+    width = height * aspect
+    wx = (fx0 + fx1) / 2 - width / 2
+    wy = (fy0 + fy1) / 2 - centre_y * height
+    scale = panel_w / width
+    # The sharp crop: the window inside the cam box, on even pixels.
+    cx0, cy0 = _even_ceil(max(wx, bx0)), _even_ceil(max(wy, by0))
+    cx1, cy1 = _even_floor(min(wx + width, bx1)), _even_floor(min(wy + height, by1))
+    if cx1 - cx0 < 2 or cy1 - cy0 < 2:
+        raise ValueError("the cam box is too small to frame")
+    crop = Box(cx0, cy0, cx1 - cx0, cy1 - cy0)
+    px, py = _even_floor((cx0 - wx) * scale), _even_floor((cy0 - wy) * scale)
+    pw = min(_even_ceil(crop.w * scale), panel_w - px)
+    ph = min(_even_ceil(crop.h * scale), panel_h - py)
+    fill = not (px <= 2 and py <= 2 and pw >= panel_w - 2 and ph >= panel_h - 2)
+    if not fill:
+        px, py, pw, ph = 0, 0, panel_w, panel_h
+    face = Box(
+        max(0, round((fx0 - wx) * scale)),
+        max(0, round((fy0 - wy) * scale)),
+        max(1, round(fw * scale)),
+        max(1, round(fh * scale)),
+    )
+    return CamWindow((wx, wy, width, height), crop, scale, Box(px, py, pw, ph), fill, face)
+
+
+def cam_panel_filters(
+    cam_box: Box,
+    framing: CamWindow,
+    geometry: Geometry,
+    rules: LayoutV2Rules,
+    *,
+    source_w: int,
+    source_h: int,
+    scaler: str,
+    source: str,
+    out: str,
+) -> list[str]:
+    """The cam panel of layout G framed by `framing`: the sharp crop scaled and sharpened
+    (`cam_unsharp`), over a blurred, darkened copy of the cam box (`cam_fill_blur`, `cam_fill_darken`)
+    where it does not cover the panel."""
+    g = geometry
+    sharp = [_crop(framing.crop), *scale_filters(framing.placed.w, framing.placed.h, scaler=scaler)]
+    if rules.cam_unsharp > 0:
+        sharp.insert(
+            -1,
+            render_filter(
+                "unsharp",
+                [
+                    ("luma_msize_x", "5"),
+                    ("luma_msize_y", "5"),
+                    ("luma_amount", _number(rules.cam_unsharp)),
+                ],
+            ),
+        )
+    if not framing.fill:
+        return [f"[{source}]{','.join(sharp)}[{out}]"]
+    cover = fit_crop(cam_box, g.width, g.g_cam_h, source_w, source_h)
+    small_w, small_h = _even(g.width / B_BLUR_DOWNSCALE), _even(g.g_cam_h / B_BLUR_DOWNSCALE)
+    sy = g.height / REF_HEIGHT
+    blur = max(1, round(rules.cam_fill_blur * sy / B_BLUR_DOWNSCALE))
+    fill = [
+        _crop(cover),
+        render_filter("scale", [("w", str(small_w)), ("h", str(small_h))]),
+        render_filter("boxblur", [("luma_radius", str(blur)), ("luma_power", str(B_BLUR_POWER))]),
+        render_filter("drawbox", [("color", f"black@{rules.cam_fill_darken:g}"), ("thickness", "fill")]),
+        render_filter("scale", [("w", str(g.width)), ("h", str(g.g_cam_h)), ("flags", "bilinear")]),
+        "setsar=1",
+    ]
+    overlay = render_filter("overlay", [("x", str(framing.placed.x)), ("y", str(framing.placed.y))])
+    return [
+        f"[{source}]split=2[{out}_fill_in][{out}_sharp_in]",
+        f"[{out}_fill_in]{','.join(fill)}[{out}_fill]",
+        f"[{out}_sharp_in]{','.join(sharp)}[{out}_sharp]",
+        f"[{out}_fill][{out}_sharp]{overlay}[{out}]",
+    ]
+
+
 def blur_background(geometry: Geometry) -> list[str]:
     """The cover background of layouts B and G0: the frame scaled to cover the canvas, blurred and darkened
     on a smaller copy, scaled back up."""
@@ -646,21 +807,38 @@ def _v2_filters(
     source: str,
     out: str,
     scaler: str,
-    max_slide: float,
+    v2: LayoutV2Rules,
 ) -> list[str]:
-    """Layouts G and G0 (Render v2). G: the cam panel stacked over the gameplay, no seam. G0: the 4:5
-    gameplay over the blurred background. Both still for the whole clip."""
+    """Layouts G and G0 (Render v2). G: the cam panel (framed around `face_box` by `cam_window`, else the
+    centred crop of the cam box) stacked over the gameplay, no seam. G0: the 4:5 gameplay over the blurred
+    background. Both still for the whole clip."""
     g = geometry
     head = f"[{source}]{render_filter('fps', [('fps', str(fps))])},split=2"
-    game = v2_gameplay_crop(layout, g, source_w, source_h, max_slide)
+    game = v2_gameplay_crop(layout, g, source_w, source_h, v2.max_slide)
     if isinstance(layout, LayoutG):
-        # Until R2 frames the panel around the face: the largest centred crop of the cam box.
-        cam = fit_crop(layout.facecam_box, g.width, g.g_cam_h, source_w, source_h)
-        cam_chain = [_crop(cam), *scale_filters(g.width, g.g_cam_h, scaler=scaler)]
         game_chain = [_crop(game), *scale_filters(g.width, g.g_game_h, scaler=scaler)]
+        if layout.face_box is not None:
+            framing = cam_window(
+                layout.face_box, layout.facecam_box, g.width, g.g_cam_h, v2, source_w, source_h
+            )
+            cam_chains = cam_panel_filters(
+                layout.facecam_box,
+                framing,
+                g,
+                v2,
+                source_w=source_w,
+                source_h=source_h,
+                scaler=scaler,
+                source="v_face_in",
+                out="v_face",
+            )
+        else:
+            cam = fit_crop(layout.facecam_box, g.width, g.g_cam_h, source_w, source_h)
+            cam_chain = [_crop(cam), *scale_filters(g.width, g.g_cam_h, scaler=scaler)]
+            cam_chains = [f"[v_face_in]{','.join(cam_chain)}[v_face]"]
         return [
             f"{head}[v_face_in][v_game_in]",
-            f"[v_face_in]{','.join(cam_chain)}[v_face]",
+            *cam_chains,
             f"[v_game_in]{','.join(game_chain)}[v_game]",
             f"[v_face][v_game]vstack=inputs=2[{out}]",
         ]

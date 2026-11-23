@@ -439,3 +439,51 @@ def test_render_v2_frames_have_the_spec_sizes_and_avoid_cam_and_chat(
         assert _share(game, blue) > 0.97 and _share(game, green) < 0.001
         top = pixels(image, (0, 0, 1080, 270))
         assert top.max() < 230 and _share(top, blue) < 0.5, "blurred, darkened band above"
+
+
+def test_render_v2_cam_panel_is_framed_on_the_face_with_a_dark_fill(
+    ffmpeg_tools: tuple[str, str], params_factory: Callable[..., FactoryParams], tmp_path: Path
+) -> None:
+    """Render v2 R2: a small square cam (Jerma's box) framed around the face: the sharp cam in the middle of
+    the 1080x720 panel, a darker blurred copy of the cam on both sides, nothing from outside the cam box."""
+    from sixstars.factory.layout import Box as LBox
+    from sixstars.factory.layout import LayoutG, LayoutV2Rules, cam_window
+
+    ffmpeg, ffprobe = ffmpeg_tools
+    source = tmp_path / "jerma.mp4"
+    video = "color=c=0x0000FF:s=1920x1080:r=30:d=2,drawbox=x=0:y=651:w=248:h=246:color=0xFF0000:t=fill"
+    run([ffmpeg, "-hide_banner", "-loglevel", "error", "-nostdin", "-y", "-f", "lavfi", "-i", video,
+         "-f", "lavfi", "-i", "sine=frequency=440:sample_rate=48000:duration=2", "-c:v", "libx264",
+         "-preset", "ultrafast", "-crf", "10", "-pix_fmt", "yuv420p", "-c:a", "aac", "-shortest",
+         str(source)])  # fmt: skip
+    rules = LayoutV2Rules(enabled=True, scaler="lanczos")
+    cam, face = LBox(0, 651, 248, 246), LBox(80, 700, 80, 100)
+    framing = cam_window(face, cam, 1080, 720, rules, 1920, 1080)
+    assert framing.fill
+    params = params_factory(watermark="", end_card_s=0)
+    ass_path = tmp_path / "empty.ass"
+    ass_path.write_text(build_ass([], layout="G", params=params, duration_s=2.0), encoding="utf-8")
+    output = tmp_path / "g_face.mp4"
+    spec = RenderSpec(
+        source=SourceInfo(source, 1920, 1080),
+        window=ClipWindow(0.0, 2.0),
+        layout=LayoutG(cam, face_box=face),
+        ass_path=ass_path,
+        output_path=output,
+        series_no=1,
+        params=params,
+        mode="express",
+        scaler="lanczos",
+        layout_v2=rules,
+    )
+    run(build_render_command(spec, ffmpeg=ffmpeg))
+    assert_streams(probe(ffprobe, output), expected_duration=2.0)
+    image = frame_at(ffmpeg, output, 1.0, tmp_path / "g_face.png")
+    p = framing.placed
+    sharp = pixels(image, (p.x + 20, p.y + 20, p.x + p.w - 20, p.y + p.h - 20))
+    assert _share(sharp, (255, 0, 0)) > 0.95, "the sharp cam fills its place"
+    panel = pixels(image, (0, 0, 1080, 716))
+    assert _share(panel, (0, 0, 255)) < 0.001, "no gameplay pixels in the cam panel"
+    if p.x > 30:
+        side = pixels(image, (4, 100, p.x - 10, 600))
+        assert side[..., 0].mean() < 230 and side[..., 0].mean() > 80, "a darkened red fill beside the cam"
