@@ -910,3 +910,52 @@ Read-only production analysis, 11-17 to 11-22:
 - Migration 0044 instead of 0028.
 - `cover.enabled` is seeded `false` (the prompt's staging default is `true`). One migration serves both environments, and production must start off, so staging is switched on by hand.
 - `cover.lane_modes` and `cover.brand_mark` include `spike` next to `normal`: our live lane is ours, like the normal lane. Campaign lanes (`campaign:<slug>`, from the unmerged `clipcamp-1`) fall to `*`, which is `frame_only` with no mark.
+
+## Cover engine — restructure after Render v2 (2026-11-23)
+
+The owner decided on 23 Nov:
+- Render v2 (M19, D119, another session) owns the framing. Its spec supersedes the cover prompt's "facecam ≥ 40%" rule (cam 720 px = 37.5%) and verifies and centres the face itself.
+- C1's renderer changes are therefore dropped: the 768 px facecam, the face crop, the phrase windows, the dark lift and migration 0038. The code stays on branch `covers-c1` for reference.
+- What survives from C1 moves into this stack: the clip's peak (`covers/peak.py`, stored as `clips.peak_s`), and caption OCR and judging (`covers/ocr.py`).
+- The cover-specific extras (whole caption phrase in the first 2 s and ±1 s around the peak, dark-opening lift, the `check-video` acceptance tool) are rebuilt on Render v2's text_v2 once its R1/R2 land.
+- Branches are rebuilt as one stack on develop (`cover-engine`). Migrations are renumbered to 0044+ (0038–0042 landed on develop and render-v2 holds 0043); check again before the final merge. PRs #74, #79 and #81 are replaced.
+- Merges into develop wait until all sessions are done (owner), so the staging checks of every C milestone are batched after that merge.
+- YouTube custom thumbnails: the owner saw the probe thumbnail in Studio on a non-Partner channel, so C7 tests them on staging. Production still waits for the owner's yes.
+
+## Cover engine C3 — frame miner and scorer (2026-11-23)
+
+### What was built
+
+- `covers/miner.py`:
+  - `capture` runs in the render job after the variants are prepared, for the short clip and the story cut (peak moved into the story's time). When `cover.enabled` is on, it keeps the clip's source span in `$DATA_DIR/covers/<clip_id>/source.mkv`. That is a hard link to `variants/<clip_id>/source.mkv` when one exists, so it costs nothing on most clips; otherwise it is the same frame-exact copy. It also writes `manifest.json`, stores `clips.peak_s/peak_source` and queues `cover.mine`.
+  - `mine` (the job): one ffmpeg pass at 4 fps for the facecam box (native pixels) and the gameplay region (≤ 1280 px wide). It scores 4 fps frames in peak ±2 s and 1 fps elsewhere, keeps the top 5 (≥ 0.5 s apart) in `top/` and `covers-work/<clip_id>/`, and writes `mine.json`. It OCRs the rendered file at the 12 best frames to pick `cover_timestamp_ms`, then deletes the source copy.
+- `covers/scorer.py`, pure maths plus OpenCV/MediaPipe:
+  - **Features:** expression (max of jawOpen / eyeWide / browInnerUp / smile, +0.15 when two are ≥ 0.4), eyes open, face area (height share), sharpness (percentile among frames with a face), exposure (90–190 ideal, clipped pixels), gameplay (brightness factor × mean of detail and change percentiles).
+  - **Hard rejects:** no face, eyes < 0.35, face cut by the edge, bottom 20% sharpness.
+  - **Layout proposal:** face-led if gameplay < 0.3 or moment_type "emotional"; moment-led if gameplay > 0.7 and face < 0.25; else split.
+- `covers/peak.py`: anchor, else payoff, else chat. `covers/ocr.py`: caption tokens across y 200–1760 and cut-word judging.
+- Pipeline: `Produced.peak_s/peak_source`, `_capture_cover`, `_story_peak`.
+- Worker: `cover.mine` is registered.
+- Dependencies: `mediapipe`, `rapidocr`, `onnxruntime` and `opencv-contrib-python-headless`, with uv overrides dropping the GUI OpenCV builds.
+- Dockerfile: the face landmarker is baked (sha256-pinned), `libegl1`/`libgles2` are added, and the landmarker and RapidOCR load at build time.
+- Tests: `tests/unit/covers/test_covers_mining.py` (17).
+
+### Local check on real staging clips
+
+Four layout C clips were run through the miner, with the rendered file standing in for the source:
+- 22–54 frames scored per clip, in 21–39 s with OCR;
+- the top picks show visible, expressive faces;
+- a death screen gave the face-led proposal;
+- OCR reads wordcap captions and title pills.
+
+### Deviations
+
+- The prompt's "save clean layers from the renderer" is met without touching the renderer: the facecam and gameplay boxes of the kept source span are the clean layers.
+- "Talking/quotable" has no tag; the writer's `moment_type = "emotional"` stands in.
+- Scorer thresholds (eyes 0.35, blur 20%, layout 0.3/0.7/0.25) are spec structure, kept as constants. The weights are the `cover.weights` setting.
+- OCR also reads the title pill, so a title that repeats transcript words counts as a phrase. To refine once Render v2's text layout is final.
+
+### Open issues / next
+
+- The C3 acceptance (blind top-vs-random pairs on 30 staging clips, `docs/reports/covers-c3.md`) needs the staging deploy, after the final merge.
+- A localised death screen ("МЕРТВА") can be a top gameplay frame: the C6 QA must reject non-English text.

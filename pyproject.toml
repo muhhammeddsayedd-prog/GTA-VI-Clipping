@@ -26,6 +26,12 @@ dependencies = [
     "numpy",
     "pillow",
     "python-multipart",
+    # Cover engine (docs/29a): face landmarks + blendshapes and OCR. One headless OpenCV for both (see
+    # override-dependencies): the slim image has no libGL for the GUI builds.
+    "mediapipe",
+    "rapidocr",
+    "onnxruntime",
+    "opencv-contrib-python-headless",
 ]
 
 [project.scripts]
@@ -80,11 +86,30 @@ mypy_path = "src"
 module = ["faster_whisper", "faster_whisper.*"]
 ignore_missing_imports = true
 
+[[tool.mypy.overrides]]
+module = ["mediapipe", "mediapipe.*", "rapidocr", "rapidocr.*"]
+ignore_missing_imports = true
+
+# OpenCV ships partial stubs that strict mode cannot use; treat it as untyped.
+[[tool.mypy.overrides]]
+module = ["cv2", "cv2.*"]
+ignore_missing_imports = true
+follow_imports = "skip"
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
 markers = ["ffmpeg: renders real video with ffmpeg (skipped when ffmpeg is missing)"]
 asyncio_default_fixture_loop_scope = "function"
+
+[tool.uv]
+# mediapipe asks for opencv-contrib-python and rapidocr for opencv-python-headless: both install the `cv2`
+# package, and the GUI build needs libGL. opencv-contrib-python-headless (declared above) serves both.
+override-dependencies = [
+    "opencv-contrib-python; sys_platform == 'never'",
+    "opencv-python; sys_platform == 'never'",
+    "opencv-python-headless; sys_platform == 'never'",
+]
 
 [tool.uv.sources]
 torch = [{ index = "pytorch-cpu" }]
