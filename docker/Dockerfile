@@ -91,7 +91,7 @@ ENV TZ=UTC \
 # /secrets directories are readable and writable without extra permissions.
 # fonts-noto-color-emoji: colour emoji in the title bar (docs/27), drawn with Pillow (SIL OFL 1.1).
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends ca-certificates curl fontconfig fonts-noto-color-emoji libicu72 tini \
+    && apt-get install -y --no-install-recommends ca-certificates curl fontconfig fonts-noto-color-emoji libatomic1 libicu72 tini \
        libegl1 libgles2 \
     && rm -rf /var/lib/apt/lists/* \
     && groupadd --gid 1000 sixstars \
