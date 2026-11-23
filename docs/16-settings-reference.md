@@ -292,8 +292,8 @@ Residential proxy (DataImpulse) for the VOD lane only, added 2026-11-18 (migrati
 | `ai.shadow.<prompt_id>` | `["anthropic:claude-haiku-5-5"]` for `p2_clip_writer` and `p9_visual_score` | AI cost plan B1: models asked the same prompt in shadow after a sampled production call; the answers go to `ai_shadow` and never to production (`ai/shadow.py`, job `ai.shadow`). Migration 0041. |
 | `ai.shadow_rate` | `0.2` | Share of hourly/VOD P2 and P9V calls that get a shadow run; express calls never do. `0` turns shadow runs off. Migration 0041. |
 | `ai.shadow_daily_budget_usd` | `2` | Daily cap on shadow requests, recorded in `api_usage` under provider `anthropic_shadow`, which `ai.daily_budget_usd` does not count. Migration 0041. |
-| `ai.visual_score_adaptive` | `true` | AI cost plan A2: ask the further `ai.visual_score_samples` only when the first P9V score is from `ai.visual_score_margin` below the hourly pass line up to the line; the frames are cached for the re-asks. Migration 0040. |
-| `ai.visual_score_margin` | `1` | See `ai.visual_score_adaptive`. Migration 0040. |
+| `ai.visual_score_adaptive` | `true` | AI cost plan A2: ask the further `ai.visual_score_samples` only when the first P9V score is from `ai.visual_score_margin` below the hourly pass line up to the line; the frames are cached for the re-asks. Migration 0042. |
+| `ai.visual_score_margin` | `1` | See `ai.visual_score_adaptive`. Migration 0042. |
 | `transcribe.express_provider` | `"openai"` | Hosted transcription for express: groq | openai. |
 | `transcribe.daily_budget_usd` | `5` | Daily hosted transcription cap. |
 
@@ -330,7 +330,7 @@ Residential proxy (DataImpulse) for the VOD lane only, added 2026-11-18 (migrati
 | `posting.spike_hold_s` | `420` | Holding window (R12, docs/11): the spike lane waits this long after the first waiting spike clip was approved, then posts the best-ranked clip of the batch first; never later than 2 min before a clip reaches `posting.spike_max_age_s`. `0` or absent: each spike clip posts as soon as it is ready. Added by migration 0023. |
 | `posting.freshness_half_life_h` | `{"live": 6, "vod": 24}` | Freshness decay half-life by source. |
 | `posting.max_clip_age_h` | `72` | Approved clips older than this expire. |
-| `posting.rank_uses_visual_score` | `false` | AI cost plan A2: the posting rank starts from the clip writer's score instead of the P9V score (which did not predict views); the gate still decides on P9V. Migration 0040. |
+| `posting.rank_uses_visual_score` | `false` | AI cost plan A2: the posting rank starts from the clip writer's score instead of the P9V score (which did not predict views); the gate still decides on P9V. Migration 0042. |
 | `posting.sibling_gap_h` | `12` | Hours between two clips of one family (a short clip and its story cut) on the same account (M18 Phase C, migration 0029). Absent: 12. |
 | `posting.cross_platform_min_gap_s` | `2700` | D116, hourly lane only: an hourly post does not take a clip another platform posted less than this many seconds ago (planned posts of the same slot count); the account takes its next best clip. `0`: off, every platform gets the top clip (D18). Migration 0035. Absent: 0. |
 | `posting.platform_priority` | `["youtube", "tiktok", "instagram"]` | D116: the order in which platforms pick their clip in an hourly slot; unlisted platforms last, then by account id. Missing or malformed: account id order. Migration 0035. |

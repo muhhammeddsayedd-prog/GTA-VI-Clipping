@@ -189,6 +189,14 @@ Code-side backstop (`calls.bounded_score`): the stored score is never more than 
 
 ---
 
+## P11 — title_writer (model: `titles.v2.model`: `"fast"` by default, or `"writer"`)
+
+Runs after the gate approves a clip, only with scoring_config `titles.v2` on (docs/30-titles-v2.md). Input: one
+JSON object of facts (streamer and tier, other streamers, the P9V `seen` sentence as the event, the line at
+the chat peak, numbers, chat words, gta_label, story_spoiler). Output: `candidates` (5 × pattern, title,
+facts_used) and `caption_short`. The title rules are checked by code (`titles.checks`), not by the schema;
+nothing passing → one retry with the failures listed, then a fallback title.
+
 ## Cost control
 - P1 batches in replay mode.
 - P2 uses prompt caching for its long rules block.

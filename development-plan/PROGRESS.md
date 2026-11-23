@@ -670,6 +670,29 @@ Production audit 2026-11-21: `youtube_main` had been lowered to the learned-cap 
 - The bandit judges a style on posts 48 h to 14 days old; read the twins against their originals after about two weeks of YouTube hourly posts.
 - Later: `posting.youtube_cap_ramp` (not built; after PR-A has run clean for 48 h).
 
+## Title writer v2 (2026-11-23)
+
+**Branch:** `titles-v2` (off `develop`). Reference: `docs/30-titles-v2.md`.
+
+### What was built
+
+- Migration `0040_titles_v2.sql` (additive): `creators.title_name` + `creators.title_aliases` (30 names seeded where empty), table `clip_titles` (facts, all candidates with failed checks, chosen title, caption, tags, explored, features, prior title, applied), scoring_config `titles.v2` (**disabled**).
+- Prompt `p11_title_writer.md` (brief Part 1 + spoiler rule), schema `TitleSet`, `ai.calls.write_titles` (fast model by default, low effort, cached system prompt).
+- `sixstars/titles/`: `facts` (name book, facts builder: P9V `seen` as the event, peak line, hours into stream, hours/percent/money said, chat words, other streamers), `checks` (Part 2 as pure functions, choice in pattern order, 20% exploration stable per clip id, features, fallback), `store`, `service` (one retry, fallback, apply only while not posted, scoring_log stage `title`, events `clip.retitled` / `clip.title_fallback`), `commands`.
+- Gate: `title_v2.after_approval` right after approval and before the spike handoff. Never raises; the P2 title stays on any failure.
+- CLI: `sixstars titles retitle|compare|queue`.
+- Tests: `tests/unit/titles/` (checks, facts, service with stubs).
+
+### Deviations
+
+See docs/30 "Differences from the brief": spoiler rule kept, two brief examples left out of the prompt (they break the banned-phrase rule), "GTA 6" counts as one word, `title_name` instead of `display_name`, no campaign concept, no per-line audio level, migration 0040 (0038/0039 are taken by `ai-cost-a5`), no ranking boost.
+
+### Open issues / next
+
+- Staging: enable `titles.v2`, run `sixstars titles compare --limit 30 --status approved --status rejected --status posted` (staging has only one posted clip), owner reviews old vs new.
+- Production: only after owner approval: flag on, then `sixstars titles queue --apply`. The comparison on production's 30 most recent posted clips needs a production read (not done from this machine).
+- Learning Loop L2 reads `clip_titles.features` where `applied`.
+
 ## AI cost plan — A0, A7, A5a, A5b, A2, A3 (2026-11-23)
 
 **Decision:** D117. **Branches / PRs:** `ai-cost-a0` (#72, merged), `ai-cost-a5` (#73, merged), `ai-cost-a2` (#75: A2 + A3).
@@ -705,7 +728,7 @@ Read-only production analysis, 11-17 to 11-22:
   - `factory/throttle.py` logs `would_skip` / `keep` per hourly candidate to `scoring_log`; nothing is enforced.
   - **Effective queue:** approved hourly clips that the busiest hourly account (at its 24-hour pace) reaches before `posting.max_clip_age_h`.
   - **Candidate rank:** chat percentile × spike bonus × freshness, compared with the queue median.
-- **A2** (migration 0040)
+- **A2** (migration 0042)
   - Adaptive P9V: further samples are asked only when the first score is from 1 below the hourly pass line up to the line.
   - The frames get a cache breakpoint when more than one sample may be asked.
   - The posting rank starts from the writer's score (`posting.rank_uses_visual_score` false). The gate still uses P9V.
