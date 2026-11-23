@@ -1060,3 +1060,19 @@ An old API ignores `due=1`, so the new WF06 would send the report every hour. Th
   - full suite: 57 failures, the same 57 that fail on untouched develop (`test_gate_run`, `test_gate_visual_score`, `test_precheck_flow` and others), none from this change
 - Web: vitest 36 passed (Cairo, DST, midnight rollover, offsets, UTC hover); lint, typecheck and build clean.
 - Not checked in a browser (no browser tools in this session).
+
+### Rebase onto develop (2026-11-23)
+
+- Rebuilt as one commit on `origin/develop` (c776f27). Conflicts only in `scheduler.py` imports (kept the campaign watcher), `00-decisions.md` and this file.
+- Renumbered: migration 0034 → 0055 (develop runs to 0054; cover-engine holds 0044), decision D116 → D120.
+- `claim_due_day` now takes a transaction advisory lock per day, so a manual WF06 run overlapping the hourly one cannot send the report twice.
+- New develop code checked for human-facing UTC times: none added to the console; the one new UTC string (`posting/store.py` campaign refusal) is a stored decision reason and stays UTC by design.
+- Checks on the rebased branch: ruff, ruff format, `mypy --strict src/` clean; unit 4052 passed, 6 skipped; web lint, tsc, vitest 36, build clean; all 55 migrations apply on fresh postgres:17; integration 531 passed, 58 failed; untouched develop gives 528 passed and the identical 58 failures (`test_gate_run`, `test_gate_visual_score`, `test_precheck_flow`, `test_gate_cli`, `test_factory_pipeline`), so none come from this change.
+
+### Release checklist (for the merge to production)
+
+1. Merge this PR into `develop`; the staging deploy applies 0055 automatically (`supabase db push`).
+2. After the staging server is healthy: `uv run python n8n/build_workflows.py apply --env staging` (WF06). Never before the server deploy: an old API ignores `due=1`, so the report would go out every hour.
+3. Check on staging: `/status` in Telegram shows Cairo times with UTC in brackets; console header clock; Settings → Time zone card saves; `GET /v1/reports/daily?due=1` answers `due: true` once, then `due: false`.
+4. Merge `develop` → `main`; the production deploy applies 0055; then re-apply WF06 with `--env production` (same order: server first).
+5. The first WF06 run after the re-apply sends the report for the Cairo day that just ended, so one extra report around the switch is expected.
