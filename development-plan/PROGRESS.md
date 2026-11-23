@@ -1005,3 +1005,10 @@ Four layout C clips were run through the miner, with the rendered file standing 
 - **Console:** Covers page (`web/app/(console)/covers`) and `GET /v1/admin/covers`, with nav under Insights. The web app was checked by CI only: there are no node modules on this machine.
 - **Weekly report:** `sixstars covers report`.
 - **Arm storage:** the cover arm is a column of `covers`. `clip_features` (docs/28 L2) does not exist yet; the arm joins in when it lands.
+
+## Cover engine T — unit level done, staging level after the merge (2026-11-23)
+
+- Unit tests cover every pure function: fit and geometry, line validation, the QA rules, the bandit, the report and the fields.
+- Fault drills as unit tests (`tests/unit/covers/test_covers_drills.py`): a crash in fields or build never stops a post, and alerts once.
+- The 48 h end-to-end run, the staging drills, and every milestone acceptance that needs staging are listed in `docs/29c-cover-staging-runbook.md`, for after the final merge.
+- **Fix found by CI:** `Renderer()` left Playwright's event loop running when Chromium was missing, which broke a later asyncio test. It now stops Playwright on a failed launch.
