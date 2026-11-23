@@ -776,3 +776,46 @@ Production audit 2026-11-21: `youtube_main` had been lowered to the learned-cap 
 - PR 4: allocation, captions, paid labels, base hashtags, TikTok re-enable (ask).
 - Staging: renders are deferred until 00:02 UTC because `ai.daily_budget_usd` ($5) was used up on 23 Nov. The first campaign-look clip on staging will appear after that.
 
+## Clipping campaigns PR 4 — allocation, captions, paid labels (2026-11-23)
+
+**Branch:** `clipcamp-4` (on top of `clipcamp-3`). Migration `0053_campaign_posting.sql` (`lanes.return_unused_at_utc` 18, `lanes.campaign_gap_s` 3600).
+
+### What was built
+
+- **`posting/campaign_lane.py`** (pure): orders each account's candidates in the slot (docs/11 R15).
+  - Campaigns below their minimum go first, then Normal (with room kept for open minimums until 18 UTC), then campaigns up to their maximum.
+  - Campaign hours per platform and the 60-minute same-campaign gap per account apply.
+  - A campaign clip is never posted as Normal.
+- **Wiring:**
+  - `selection.plan_hourly_slot` takes `campaign_quotas` / `lane_rules`.
+  - `DbStore.load_campaign_lanes` reads open lanes (active, started, not ended, budget left) and the `lanes.*` settings.
+  - `hourly.plan_slot` passes them on.
+- **Posts:** `posts.campaign_id` is set at insert from the clip. The history carries it, so quotas and gaps count per campaign.
+- **Publisher:** re-checks the campaign (status, dates, budget) right before sending (`DbStore.campaign_refusal`).
+- **Captions:**
+  - Required line (CTA and mention) after the credit; required tags first among the hashtags; only the clip line is cut.
+  - No first comment on campaign posts.
+  - Paid labels: YouTube `hasPaidProductPlacement`; TikTok `brand_content_toggle`, not on `SELF_ONLY`; Instagram none (manual).
+- **Tests:**
+  - `tests/unit/posting/test_posting_campaign_lane.py`.
+  - `tests/integration/test_campaign_posting.py`: YouTube and Instagram take the campaign clip with its tag, line, tags and label; TikTok, with no quota, takes a Normal clip; a paused campaign gets no post.
+
+### Findings
+
+- Production `posting.base_hashtags` is already `#GTA6 #GTAVI #GTA6Clips` (read 23 Nov). The plan's "replace #GTA5 #GTAV" is not needed.
+- Production `tiktok_main.lanes` is `[]`. TikTok campaign posts need it set back to `{hourly}` (owner approved the idea; ask before the change).
+
+### Deviations
+
+- Spike clips of campaign streamers post through the spike lane as before (spikes unchanged). They count toward their campaign but are not limited by its quota.
+- A campaign clip that waits past its hours or its campaign is not re-rendered as Normal. It waits for the next campaign hours, or expires with `posting.max_clip_age_h`. The plan's "held until 10:00 if under 8 h old, else Normal (re-render)" needs re-rendering, which is left for later.
+- Instagram's paid-partnership label cannot be set through Upload-Post (Instagram Login). It goes into the PR 5 submission alert as a manual step.
+
+### Open issues / next
+
+- Release of phase 1 (PR 1-4) to production needs the owner's go:
+  - merge `clipcamp-4` (with 1-3) to `main`; `main` gained 0037-0042 meanwhile, so expect doc conflicts;
+  - migrations 0050-0053 applied by the production deploy;
+  - production `tiktok_main.lanes = {hourly}`.
+- PR 5: `clip_campaign_posts` rows, Telegram Submitted/Skip, reminders, expected payout.
+

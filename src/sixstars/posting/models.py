@@ -134,6 +134,8 @@ class PostRecord:
     slot_at: datetime | None = None
     # M18 Phase C: the short clip of the posted clip's family (itself, or the clip it is the story cut of).
     family_id: str | None = None
+    # D118: the clipping campaign the post was made for (`posts.campaign_id`), None for a Normal post.
+    campaign_id: str | None = None
 
     def __post_init__(self) -> None:
         if self.status not in POST_STATUSES:
@@ -173,6 +175,11 @@ class Clip:
     # The gate profile that approved the clip (`clips.gate_profile`): "hourly" for a clip cut for the hourly
     # lane, "express" for a spike clip (also after it was demoted to the hourly lane).
     gate_profile: str | None = None
+    # D118: the clip's clipping campaign and what its brief requires in the caption (call to action and
+    # mention as one line, required hashtags). None/empty for a Normal clip.
+    campaign_id: str | None = None
+    campaign_line: str = ""
+    campaign_tags: tuple[str, ...] = ()
 
     @property
     def is_story(self) -> bool:

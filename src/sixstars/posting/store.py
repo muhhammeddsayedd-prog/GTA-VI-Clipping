@@ -13,8 +13,9 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any, Protocol
 
-from sixstars import db, events, jobs, notify
+from sixstars import db, events, jobs, notify, settings
 from sixstars.config import env
+from sixstars.posting.campaign_lane import CampaignQuota, LaneRules
 from sixstars.posting.caps import DAY
 from sixstars.posting.models import Account, Clip, Lane, Platform, PostRecord, ensure_utc
 from sixstars.posting.params import OPTIONAL_KEYS, REQUIRED_KEYS, PostingParams, with_cut_minimum
@@ -35,9 +36,11 @@ _CLIP_SQL = """
 select c.id::text as id, c.creator_id::text as creator_id, c.lane, c.rank_score, c.status, c.approved_at,
        s.spike_wall, cr.handle as creator_handle, c.source_platform, c.title, c.caption, c.hook,
        c.hashtags, c.local_path, c.spike_id::text as spike_id,
-       coalesce(c.parent_clip_id, c.id)::text as family_id, c.duration_s, c.gate_profile
+       coalesce(c.parent_clip_id, c.id)::text as family_id, c.duration_s, c.gate_profile,
+       c.campaign_id::text as campaign_id, k.caption_rules as campaign_caption_rules
 from clips c
 join creators cr on cr.id = c.creator_id
+left join clip_campaigns k on k.id = c.campaign_id
 left join spikes s on s.id = c.spike_id
 """
 _ACCOUNT_SQL = """
@@ -168,7 +171,16 @@ def record_from_row(row: Mapping[str, Any]) -> PostRecord:
         creator_id=row["creator_id"],
         slot_at=_utc(row["slot_at"]),
         family_id=row.get("family_id"),
+        campaign_id=row.get("campaign_id"),
     )
+
+
+def campaign_line(rules: Mapping[str, Any] | None) -> str:
+    """D118: the brief's required caption line: its call to action and the mention, on one line."""
+    if not rules:
+        return ""
+    parts = [str(rules.get("cta") or "").strip(), str(rules.get("mention") or "").strip()]
+    return " ".join(part for part in parts if part)
 
 
 def clip_from_row(row: Mapping[str, Any]) -> LoadedClip:
@@ -190,6 +202,11 @@ def clip_from_row(row: Mapping[str, Any]) -> LoadedClip:
         family_id=row.get("family_id"),
         duration_s=float(row["duration_s"]) if row.get("duration_s") is not None else None,
         gate_profile=row.get("gate_profile"),
+        campaign_id=row.get("campaign_id"),
+        campaign_line=campaign_line(row.get("campaign_caption_rules")),
+        campaign_tags=tuple(
+            str(tag) for tag in (row.get("campaign_caption_rules") or {}).get("required_tags", [])
+        ),
     )
     return LoadedClip(clip=clip, local_path=row["local_path"], spike_id=row["spike_id"])
 
@@ -272,7 +289,7 @@ class DbStore:
             """
             select p.account_id, p.platform, p.clip_id::text as clip_id, p.lane, p.status, p.created_at,
                    p.published_at, p.dry_run, p.slot_at, c.creator_id::text as creator_id,
-                   coalesce(c.parent_clip_id, c.id)::text as family_id
+                   coalesce(c.parent_clip_id, c.id)::text as family_id, p.campaign_id::text as campaign_id
             from posts p
             join clips c on c.id = p.clip_id
             where p.created_at >= %(since)s
@@ -288,6 +305,57 @@ class DbStore:
             {"since": since, "clip_ids": list(clip_ids)},
         )
         return [record_from_row(row) for row in rows]
+
+    def load_campaign_lanes(
+        self, now: datetime
+    ) -> tuple[dict[str, dict[str, CampaignQuota]], dict[str, LaneRules]]:
+        """D118: the open campaign lanes per account (active, started, not ended, budget left) and the lane
+        rules per platform from `lanes.*` settings."""
+        rows = db.fetch_all(
+            """
+            select q.account_id, k.id::text as campaign_id, k.slug, q.min_day, q.max_day
+            from lane_quotas q
+            join clip_campaigns k on q.lane_key = 'campaign:' || k.slug
+            where k.status = 'active' and (k.ends_at is null or k.ends_at > %(now)s)
+              and (k.starts_at is null or k.starts_at <= %(now)s)
+              and (k.budget_left is null or k.budget_left > 0)
+            """,
+            {"now": now},
+        )
+        quotas: dict[str, dict[str, CampaignQuota]] = {}
+        for row in rows:
+            quotas.setdefault(row["account_id"], {})[row["campaign_id"]] = CampaignQuota(
+                row["campaign_id"], row["slug"], int(row["min_day"]), int(row["max_day"])
+            )
+        hours = settings.get_dict("lanes.campaign_hours_utc", {"default": list(range(8, 22))})
+        default_hours = [int(h) for h in hours.get("default", list(range(8, 22)))]
+        back = settings.get_int("lanes.return_unused_at_utc", 18)
+        gap = settings.get_int("lanes.campaign_gap_s", 3600)
+        rules = {
+            platform.value: LaneRules(
+                frozenset(int(h) for h in hours.get(platform.value, default_hours)), back, gap
+            )
+            for platform in Platform
+        }
+        return quotas, rules
+
+    def campaign_refusal(self, campaign_id: str, now: datetime) -> str | None:
+        """D118: why a campaign may not get a post right now (paused, ended, out of budget), or None."""
+        row = db.fetch_one(
+            "select slug, status, ends_at, starts_at, budget_left from clip_campaigns where id = %s",
+            (campaign_id,),
+        )
+        if row is None:
+            return "the campaign no longer exists"
+        if row["status"] != "active":
+            return f"campaign {row['slug']} is {row['status']}"
+        if row["ends_at"] is not None and row["ends_at"] <= now:
+            return f"campaign {row['slug']} ended at {row['ends_at']:%Y-%m-%d %H:%M} UTC"
+        if row["starts_at"] is not None and row["starts_at"] > now:
+            return f"campaign {row['slug']} has not started"
+        if row["budget_left"] is not None and float(row["budget_left"]) <= 0:
+            return f"campaign {row['slug']} has no budget left"
+        return None
 
     def load_hourly_queue(self, posted_since: datetime | None = None) -> list[LoadedClip]:
         """Approved hourly clips, best rank first. With `posted_since` (D116) also the hourly clips marked
@@ -344,8 +412,9 @@ class DbStore:
         row = db.fetch_one(
             """
             insert into posts
-              (clip_id, account_id, platform, lane, slot_at, status, dry_run, idempotency_key, created_at)
-            values (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+              (clip_id, account_id, platform, lane, slot_at, status, dry_run, idempotency_key, created_at,
+               campaign_id)
+            values (%s, %s, %s, %s, %s, %s, %s, %s, %s, (select campaign_id from clips where id = %s::uuid))
             on conflict (idempotency_key) do nothing
             returning id::text as id
             """,
@@ -359,6 +428,7 @@ class DbStore:
                 dry_run,
                 idempotency_key,
                 now,
+                clip_id,
             ),
         )
         return None if row is None else str(row["id"])

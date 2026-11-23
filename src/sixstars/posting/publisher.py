@@ -191,6 +191,12 @@ class Publisher:
             age_s = (work.now - clip.spike_at).total_seconds()
             if age_s > work.params.spike_max_age_s:
                 return f"spike_too_old: the spike is {int(age_s)} s old"
+        if clip.campaign_id is not None:
+            # D118: status and budget are checked at the moment of posting, not when the clip was queued.
+            check = getattr(self._store, "campaign_refusal", None)
+            reason = check(clip.campaign_id, work.now) if check is not None else None
+            if reason is not None:
+                return f"campaign_closed: {reason}"
         return None
 
     def _send(self, work: _Work) -> PublishResult:
