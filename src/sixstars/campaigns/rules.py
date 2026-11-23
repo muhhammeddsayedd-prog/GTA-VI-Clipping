@@ -1,4 +1,4 @@
-"""Pure rules of the campaign registry (D117): status transitions, the checks every save passes, quota
+"""Pure rules of the campaign registry (D118): status transitions, the checks every save passes, quota
 parsing, the lane-quota rows a campaign holds, and the tier a streamer gets. No database, no network.
 
 Every save, from any door (CLI, console, Telegram), goes through `sixstars.campaigns.service.apply_change`,

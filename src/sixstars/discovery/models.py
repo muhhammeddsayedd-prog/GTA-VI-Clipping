@@ -10,7 +10,7 @@ Platform = Literal["twitch", "youtube"]
 SourceType = Literal["live", "vod"]
 Tier = Literal["campaign", "preferred", "auto", "restricted", "blocked"]
 
-# D117: `campaign` (an active clipping campaign) ranks like `preferred`.
+# D118: `campaign` (an active clipping campaign) ranks like `preferred`.
 PREFERRED_LIKE_TIERS: Final[frozenset[str]] = frozenset({"campaign", "preferred"})
 
 # Tiers that are never clipped (decision D10): no candidate row, no live slot, no job.

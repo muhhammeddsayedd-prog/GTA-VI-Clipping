@@ -13,7 +13,7 @@ PROFILES = (HOURLY, EXPRESS)
 LANE_SPIKE = "spike"
 LANE_HOURLY = "hourly"
 
-TIER_CAMPAIGN = "campaign"  # D117: a creator with an active clipping campaign; treated like preferred
+TIER_CAMPAIGN = "campaign"  # D118: a creator with an active clipping campaign; treated like preferred
 TIER_PREFERRED = "preferred"
 TIER_AUTO = "auto"
 # Tiers that count as "the creator invites clipping" (express lane, ranking boost, no daily cap).

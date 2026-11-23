@@ -749,8 +749,8 @@ def live_cut(
     raise typer.Exit(code=commands.cut(session, start, end, output))
 
 
-# Clipping campaigns (D117). Kept as one block so other milestones' edits to this file do not collide with it.
-campaign_app = typer.Typer(help="Clipping campaigns (D117): registry, quotas, status.", no_args_is_help=True)
+# Clipping campaigns (D118). Kept as one block so other milestones' edits to this file do not collide with it.
+campaign_app = typer.Typer(help="Clipping campaigns (D118): registry, quotas, status.", no_args_is_help=True)
 app.add_typer(campaign_app, name="campaign")
 
 _STREAMER_HELP = "Streamer: twitch:<login>, youtube:@<handle> or youtube:<channel id> (repeatable)."

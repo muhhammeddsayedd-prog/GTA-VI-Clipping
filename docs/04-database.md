@@ -37,7 +37,7 @@ Source of truth: `supabase/migrations/0001_init.sql` (schema) and `0002_seed_set
 | `notify_outbox` | Telegram alerts waiting to be sent | severity, title, sent_at | notify |
 | `api_usage` | Spend tracking | provider, operation, cost_usd | every client |
 | `heartbeats` | Liveness + trigger tracking | name, last_seen | every service, API routes |
-| `clip_campaigns` | Clipping campaigns, D117 (migration 0037) | slug (unique), status draft/active/paused/ended, platforms, rate_per_1k, min/max_payout, budget_left, ends_at, render_profile, caption_rules, brief_rules, quota, priority, required_game, version | `campaigns.service.apply_change` only |
+| `clip_campaigns` | Clipping campaigns, D118 (migration 0040) | slug (unique), status draft/active/paused/ended, platforms, rate_per_1k, min/max_payout, budget_left, ends_at, render_profile, caption_rules, brief_rules, quota, priority, required_game, version | `campaigns.service.apply_change` only |
 | `clip_campaign_creators` | The streamers of a campaign | campaign_id + creator_id | `campaigns.service` |
 | `clip_campaign_posts` | One row per campaign post: submission, approval, payout | post_id (unique), status to_submit/submitted/skipped/missed, deadline, approval, expected_usd, paid_usd | posting (PR 5), Telegram buttons, CLI |
 | `render_profiles` | Render looks (watermark, logo, overlay, disclosure) | id, watermark, logo_path, logo_pos, keep_overlay, disclosure_text, disclosure_s | migration seed, campaign setup |

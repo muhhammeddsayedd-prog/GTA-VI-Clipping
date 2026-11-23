@@ -431,7 +431,7 @@ def test_clip_allowed() -> None:
 
 
 def test_decide_tier_keeps_campaign_unless_the_creator_forbids_clipping() -> None:
-    """D117: the P6 read never overwrites tier `campaign`, but a creator who forbids clipping wins."""
+    """D118: the P6 read never overwrites tier `campaign`, but a creator who forbids clipping wins."""
     assert tiers.decide_tier("campaign", "campaign: x", verdict("auto")) == ("campaign", "campaign: x")
     assert tiers.decide_tier("campaign", "campaign: x", verdict("preferred")) == ("campaign", "campaign: x")
     assert tiers.decide_tier("campaign", "campaign: x", verdict("restricted", "no reuploads")) == (

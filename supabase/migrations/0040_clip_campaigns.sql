@@ -1,5 +1,5 @@
 -- Clipping campaigns PR 1 (2026-11-23): campaign registry, render profiles, lane quotas, tier `campaign`.
--- Decision D117 (supersedes D05): paid clipping campaigns (Content Rewards) run inside the system as lanes.
+-- Decision D118 (supersedes D05): paid clipping campaigns (Content Rewards) run inside the system as lanes.
 -- Spec: "6 Stars Clips — Lanes & Clipping Campaigns Plan" (Plan + Operating flows tabs).
 -- Naming: clip_campaigns / clip_campaign_posts, so they never mix with the paid-ads `ad_campaigns` of docs/28.
 --

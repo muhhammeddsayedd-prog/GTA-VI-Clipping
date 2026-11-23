@@ -373,7 +373,7 @@ def test_express_tiers() -> None:
 
 
 def test_a_campaign_creator_is_treated_like_a_preferred_one() -> None:
-    """D117: tier `campaign` passes the creator check, has no daily cap and may post at once."""
+    """D118: tier `campaign` passes the creator check, has no daily cap and may post at once."""
     assert run(who=creator("campaign", clips_today=50)).approved
     settings = make_settings()
     preferred_only = replace(settings, express=replace(settings.express, tiers=("preferred",)))

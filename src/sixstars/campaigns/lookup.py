@@ -1,4 +1,4 @@
-"""Find a campaign streamer by platform id or name and register them as a creator (D117). A streamer is
+"""Find a campaign streamer by platform id or name and register them as a creator (D118). A streamer is
 always chosen by their platform account and confirmed by a person, never matched by name alone ("Jerma"
 vs "Jerma985").
 

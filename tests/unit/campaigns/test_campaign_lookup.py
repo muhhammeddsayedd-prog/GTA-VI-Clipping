@@ -1,4 +1,4 @@
-"""Streamer lookup for campaigns (D117): references are parsed strictly and resolved on the platform."""
+"""Streamer lookup for campaigns (D118): references are parsed strictly and resolved on the platform."""
 
 import pytest
 

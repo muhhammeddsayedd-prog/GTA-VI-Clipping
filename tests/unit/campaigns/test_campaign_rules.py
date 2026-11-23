@@ -1,4 +1,4 @@
-"""Pure rules of the clipping-campaign registry (D117): transitions, save checks, quota fit, lane rows,
+"""Pure rules of the clipping-campaign registry (D118): transitions, save checks, quota fit, lane rows,
 tiers and the audit diff. No database, no network."""
 
 from dataclasses import replace

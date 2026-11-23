@@ -1,4 +1,4 @@
-"""SQL for the campaign registry (D117): read and write `clip_campaigns`, its streamers, its `lane_quotas`
+"""SQL for the campaign registry (D118): read and write `clip_campaigns`, its streamers, its `lane_quotas`
 rows, and the context a save is validated against. Writes are meant to run inside `db.transaction()`
 opened by `sixstars.campaigns.service`.
 """

@@ -96,7 +96,7 @@ def decide_tier(current: str, reason: str | None, verdict: PermissionVerdict) ->
 
     `blocked` never changes. A creator who forbids clipping is always `restricted` (even with an active
     campaign: the campaign is paused, see `sixstars.campaigns.service.on_creator_forbidden`). A tier the
-    owner set by hand (reason starting with "manual") and the `campaign` tier (D117) are otherwise kept.
+    owner set by hand (reason starting with "manual") and the `campaign` tier (D118) are otherwise kept.
     """
     if current == "blocked":
         return current, reason
@@ -188,7 +188,7 @@ def block(creator: Creator, reason: str) -> Creator:
 
 
 def _pause_campaigns(creator_id: str, reason: str) -> None:
-    """D117: a streamer who became restricted or blocked pauses their active clipping campaigns."""
+    """D118: a streamer who became restricted or blocked pauses their active clipping campaigns."""
     from sixstars.campaigns import service  # local: campaigns imports discovery modules
 
     service.on_creator_forbidden(creator_id, reason)

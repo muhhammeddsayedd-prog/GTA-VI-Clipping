@@ -1,4 +1,4 @@
-"""Clipping-campaign registry against the real schema (D117, PR 1): migration 0037, `apply_change` with its
+"""Clipping-campaign registry against the real schema (D118, PR 1): migration 0040, `apply_change` with its
 checks and versions, lane quotas, tier `campaign` in and out, the audit event, and the pause when a
 streamer forbids clipping."""
 

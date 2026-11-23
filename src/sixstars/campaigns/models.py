@@ -1,4 +1,4 @@
-"""Data shapes of the clipping-campaign registry (D117): a `Campaign` row with its streamers and quotas, and
+"""Data shapes of the clipping-campaign registry (D118): a `Campaign` row with its streamers and quotas, and
 the facts `rules.validate` checks a campaign against. Pure: no database, no network.
 """
 

@@ -1,4 +1,4 @@
-"""Implementation of `sixstars campaign …` (D117, PR 1): add, edit, activate, pause, resume, end, budget,
+"""Implementation of `sixstars campaign …` (D118, PR 1): add, edit, activate, pause, resume, end, budget,
 list, show, lookup and quotas. Each returns an exit code; every change goes through
 `service.apply_change`, so the CLI can never save a campaign the checks refuse.
 """

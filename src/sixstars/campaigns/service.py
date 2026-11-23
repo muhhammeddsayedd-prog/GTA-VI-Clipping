@@ -1,4 +1,4 @@
-"""The one write path of the campaign registry (D117). Every change, from the CLI, the admin console or a
+"""The one write path of the campaign registry (D118). Every change, from the CLI, the admin console or a
 Telegram command, goes through `apply_change`: it checks the change (`rules.validate`), saves it with a
 new version number, rewrites the campaign's lane quotas, moves its streamers in or out of tier `campaign`,
 writes a `campaign.changed` audit event and sends one Telegram line. The engine reads only saved, checked
@@ -140,7 +140,7 @@ def sync_tiers(creator_ids: set[str] | frozenset[str], slug: str) -> list[dict[s
 
 def on_creator_forbidden(creator_id: str, reason: str) -> list[str]:
     """A streamer became restricted or blocked: pause every active campaign they are in (the guardian of
-    D117). Returns the slugs paused. Never raises: a failure is logged and the caller carries on."""
+    D118). Returns the slugs paused. Never raises: a failure is logged and the caller carries on."""
     paused: list[str] = []
     for slug in store.active_campaigns_of_creator(creator_id):
         try:
