@@ -145,6 +145,11 @@ def _profile_problems(c: Campaign, ctx: Context) -> list[str]:
         return [f"render profile {c.render_profile} does not exist"]
     if profile.logo_pos is not None and not profile.logo_path:
         return [f"render profile {c.render_profile} places a logo but has none uploaded"]
+    if profile.keep_overlay:
+        return [
+            f"render profile {c.render_profile} keeps the stream overlay, which needs a full-frame layout "
+            "the renderer does not have yet (Render v2)"
+        ]
     return []
 
 

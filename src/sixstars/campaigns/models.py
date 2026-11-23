@@ -103,6 +103,7 @@ class ProfileInfo:
     id: str
     logo_pos: str | None
     logo_path: str | None
+    keep_overlay: bool = False
 
 
 @dataclass(frozen=True)

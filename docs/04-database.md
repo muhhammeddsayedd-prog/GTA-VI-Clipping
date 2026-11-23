@@ -41,11 +41,11 @@ Source of truth: `supabase/migrations/0001_init.sql` (schema) and `0002_seed_set
 | `clip_campaigns` | Clipping campaigns, D118 (migration 0050) | slug (unique), status draft/active/paused/ended, platforms, rate_per_1k, min/max_payout, budget_left, ends_at, render_profile, caption_rules, brief_rules, quota, priority, required_game, version | `campaigns.service.apply_change` only |
 | `clip_campaign_creators` | The streamers of a campaign | campaign_id + creator_id | `campaigns.service` |
 | `clip_campaign_posts` | One row per campaign post: submission, approval, payout | post_id (unique), status to_submit/submitted/skipped/missed, deadline, approval, expected_usd, paid_usd | posting (PR 5), Telegram buttons, CLI |
-| `render_profiles` | Render looks (watermark, logo, overlay, disclosure) | id, watermark, logo_path, logo_pos, keep_overlay, disclosure_text, disclosure_s | migration seed, campaign setup |
+| `render_profiles` | Render looks (watermark, logo, overlay, disclosure) | id, watermark, logo_png (the logo PNG; `logo_path` = `db:<sha256>`), logo_pos, keep_overlay, disclosure_text, disclosure_s | migration seed, `sixstars campaign profile-add` |
 | `lane_quotas` | Daily quota per account and lane | account_id + lane_key (`normal`, `spike`, `campaign:<slug>`), min_day, max_day | `campaigns.store` |
 | `creator_live_status` | Live state of campaign streamers | creator_id, live, game, stream_id, checked_at | campaign watcher (PR 2) |
 
-`campaign_id` (nullable) is on `live_sessions`, `videos`, `viewer_clips`, `spikes`, `clips` and `posts`; `clips.render_profile` names the look a clip was rendered with. `creators.tier` also allows `campaign`, with the tier to return to in `creators.tier_before_campaign`.
+`campaign_id` (nullable) is on `live_sessions`, `videos`, `viewer_clips`, `spikes`, `clips` and `posts`; `clips.render_profile` names the look a clip was rendered with; `clips.brief_result` keeps its `brief_match` outcome (0052). `creators.tier` also allows `campaign`, with the tier to return to in `creators.tier_before_campaign`.
 
 ## 3. Important rules
 

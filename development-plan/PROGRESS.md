@@ -853,6 +853,15 @@ Read-only production analysis, 11-17 to 11-22:
 - YouTube uploads that were never live are not queued (campaign streamers are taken from their streams).
 - Several live campaign streamers beyond `live.campaign_slots` are not recorded. They are taken from their VOD after the stream, as the Operating flows tab says.
 
+### Staging (2026-11-23)
+
+- Merged via #84 (branch `clipcamp-staging-2`). #84 went in with a failed `ruff format --check` on `cli.py` (my merge command did not wait for green CI). #85 fixed it with CI green, and the staging deploy (14:05 UTC, run of #82) applied 0051.
+- First watcher pass on staging:
+  - `jerma985` live in Grand Theft Auto VI (7,134 viewers).
+  - His running trending session was re-tagged to `staging-test-jerma`, not restarted (`retagged: 1, started: 0`).
+  - The heartbeat beats every 60 s and `creator_live_status` is filled.
+- Still to see: the session moving `assigned -> recording` after the deploy restart, and the first clip carrying `campaign_id` / `render_profile`.
+
 ### Open issues / next
 
 - Not yet verified: a multi-day session (a 120 h marathon) without a forced restart.
@@ -864,3 +873,38 @@ Read-only production analysis, 11-17 to 11-22:
 - PR 5 notes:
   - WF08 can be live in only one environment (one bot webhook).
   - Warn alerts are rate-limited per title, so each reminder needs its own title.
+
+## Clipping campaigns PR 3 — render profiles and brief_match (2026-11-23)
+
+**Branch:** `clipcamp-3` (on top of `clipcamp-2`). Migration `0052_campaign_render.sql` (`render_profiles.logo_png`, `clips.brief_result`).
+
+### What was built
+
+- `campaigns/profiles.py`:
+  - `apply(rules, profile)` (pure) turns a style's rules into the campaign version: watermark off/on, the disclosure line, the logo, no follow line, no POV crop.
+  - `styled(clip_id, rules)` applies the clip's own profile.
+  - A logo PNG is kept in its profile row and written to `$DATA_DIR/logos/<sha256>.png` when needed.
+- `campaigns/brief.py` (pure) and `campaigns/look.py`: `brief_match` runs in the factory's style step, where the face cam and the window length are known.
+  - A failed brief clears the clip's campaign tag, sets profile `brand` and writes `clips.brief_result` and a `campaign.brief_failed` event. The clip is drawn as a Normal clip: no re-render, never dropped.
+  - Applied to the reference render, the story cut and every per-account variant.
+- Renderer:
+  - `RenderSpec.disclosure_text/disclosure_s`, drawn by `overlays.disclosure_filter`: top left of the safe zone, dark box, first N seconds.
+  - `RenderSpec.campaign_logo/campaign_logo_pos`, drawn by `render.campaign_logo_filters`: 200 px reference width, a corner inside the safe zone.
+  - Both are set from the style rules in `pipeline.render_file`.
+- CLI: `sixstars campaign profile-add <id> --from partner-logo --logo file.png --pos bottom_right [--no-watermark] [--disclosure ...]` and `sixstars campaign profiles`.
+- Save checks: a logo profile without its logo is refused, and so is `overlay-keep`.
+- Tests:
+  - `tests/unit/factory/test_factory_campaign_look.py` includes a **real ffmpeg frame check**: the disclosure box is there at 0.5 s and gone at 2.2 s, and the logo pixels sit in the corner in both frames.
+  - `tests/integration/test_campaign_render.py`.
+
+### Deviations
+
+- `brief_match` runs before drawing, not as a gate check after it. The plan's gate check would have needed a re-render, and the source window may be gone by then. Its facts (face cam, length, streamer) are all known before drawing. Required tags are checked at caption time (PR 4).
+- `overlay-keep` is refused: today's crops cut the stream overlay, and a full-frame layout belongs to Render v2 (M19, another session).
+- The disclosure line is drawn on the frame. The platform paid-partnership labels come in PR 4.
+
+### Open issues / next
+
+- PR 4: allocation, captions, paid labels, base hashtags, TikTok re-enable (ask).
+- Staging: renders are deferred until 00:02 UTC because `ai.daily_budget_usd` ($5) was used up on 23 Nov. The first campaign-look clip on staging will appear after that.
+

@@ -115,7 +115,7 @@ def context(campaign: Campaign, now: Any) -> Context:
         if creator_ids
         else []
     )
-    profile_rows = db.fetch_all("select id, logo_pos, logo_path from render_profiles")
+    profile_rows = db.fetch_all("select id, logo_pos, logo_path, keep_overlay from render_profiles")
     account_rows = db.fetch_all(
         "select id, platform, cap_24h from platform_accounts where enabled order by id"
     )
@@ -124,7 +124,10 @@ def context(campaign: Campaign, now: Any) -> Context:
     return Context(
         now=now,
         creators={r["id"]: CreatorInfo(r["id"], r["platform"], r["handle"], r["tier"]) for r in creator_rows},
-        profiles={r["id"]: ProfileInfo(r["id"], r["logo_pos"], r["logo_path"]) for r in profile_rows},
+        profiles={
+            r["id"]: ProfileInfo(r["id"], r["logo_pos"], r["logo_path"], bool(r["keep_overlay"]))
+            for r in profile_rows
+        },
         accounts=tuple(AccountInfo(r["id"], r["platform"], int(r["cap_24h"])) for r in account_rows),
         campaign_share={str(k): int(v) for k, v in share.items()},
         max_per_day={str(k): int(v) for k, v in ceiling.items()},
