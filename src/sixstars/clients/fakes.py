@@ -137,6 +137,24 @@ class FakeTwitchClient(_Recorder, TwitchClient):
         self._record("get_streams", game_id=game_id, max_items=max_items)
         return [stream for stream in self.streams if stream.game_id == game_id][:max_items]
 
+    def get_streams_by_user(self, user_ids: Sequence[str]) -> list[TwitchStream]:
+        self._record("get_streams_by_user", user_ids=list(user_ids))
+        wanted = set(user_ids)
+        return [stream for stream in self.streams if stream.user_id in wanted]
+
+    def get_clips_by_broadcaster(
+        self, broadcaster_id: str, started_at: datetime, ended_at: datetime | None = None, max_items: int = 20
+    ) -> list[TwitchClip]:
+        self._record("get_clips_by_broadcaster", broadcaster_id=broadcaster_id, started_at=started_at)
+        found = [
+            clip
+            for clip in self.clips
+            if clip.broadcaster_id == broadcaster_id
+            and clip.created_at >= started_at
+            and (ended_at is None or clip.created_at <= ended_at)
+        ]
+        return sorted(found, key=lambda clip: -clip.view_count)[:max_items]
+
     def get_videos_by_game(
         self,
         game_id: str,

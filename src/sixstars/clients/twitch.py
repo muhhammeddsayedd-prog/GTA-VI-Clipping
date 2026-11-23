@@ -405,6 +405,35 @@ class TwitchClient:
             params.append(("is_featured", "true" if is_featured else "false"))
         return [_clip(item) for item in self._paginate("get_clips", "/clips", params, max_items)]
 
+    def get_streams_by_user(self, user_ids: Sequence[str]) -> list[TwitchStream]:
+        """Live streams of these users (any game), 100 user ids per request; offline users are absent."""
+        streams: list[TwitchStream] = []
+        unique = [item for item in dict.fromkeys(user_ids) if item]
+        requests = 0
+        for start in range(0, len(unique), IDS_PER_REQUEST_MAX):
+            chunk = unique[start : start + IDS_PER_REQUEST_MAX]
+            params: list[tuple[str, str | int]] = [("user_id", user_id) for user_id in chunk]
+            body = self._get("/streams", [*params, ("type", "live"), ("first", IDS_PER_REQUEST_MAX)])
+            requests += 1
+            streams.extend(_stream(item) for item in body.get("data") or [])
+        if requests:
+            usage.record(SERVICE, "get_streams_by_user", units=requests)
+        return streams
+
+    def get_clips_by_broadcaster(
+        self, broadcaster_id: str, started_at: datetime, ended_at: datetime | None = None, max_items: int = 20
+    ) -> list[TwitchClip]:
+        """Viewer-made clips of one channel created in a time window, most viewed first."""
+        params: list[tuple[str, str | int]] = [
+            ("broadcaster_id", broadcaster_id),
+            ("started_at", rfc3339(started_at)),
+        ]
+        if ended_at is not None:
+            params.append(("ended_at", rfc3339(ended_at)))
+        return [
+            _clip(item) for item in self._paginate("get_clips_by_broadcaster", "/clips", params, max_items)
+        ]
+
     def _by_ids(self, operation: str, path: str, ids: Sequence[str]) -> list[dict[str, Any]]:
         """GET `path` with `id=` repeated, 100 ids per request; unknown ids are simply absent."""
         items: list[dict[str, Any]] = []

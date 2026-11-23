@@ -89,6 +89,7 @@ def test_the_scheduler_has_the_m11_and_m13_tasks_with_their_intervals() -> None:
         "prune": 3600.0,
         "launch_summary": 60.0,
         "vod_recovery": 15.0,
+        "campaign_watch": 10.0,
     }
 
 
