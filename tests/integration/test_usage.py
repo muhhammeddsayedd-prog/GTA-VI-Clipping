@@ -36,6 +36,28 @@ def test_record_writes_a_row() -> None:
     assert rows[1]["units"] == 1 and float(rows[1]["cost_usd"]) == 0.0
 
 
+def test_record_writes_the_call_detail_columns() -> None:
+    """Migration 0037: stop reason, attempt, outcome, cache tokens and a short reason."""
+    detail = usage.CallDetail(
+        stop_reason="end_turn",
+        attempt=2,
+        outcome="invalid",
+        cache_read_tokens=6600,
+        cache_write_tokens=0,
+        detail="x" * 500,
+    )
+    assert usage.record("anthropic", "p2_clip_writer", cost_usd=0.01, ref_id="clip-8", detail=detail)
+    row = db.fetch_one("select * from api_usage where ref_id = 'clip-8'")
+    assert row is not None
+    assert (row["stop_reason"], row["attempt"], row["outcome"]) == ("end_turn", 2, "invalid")
+    assert (row["cache_read_tokens"], row["cache_write_tokens"]) == (6600, 0)
+    assert row["detail"] == "x" * usage.DETAIL_MAX_CHARS
+    # a row without detail leaves the columns empty
+    assert usage.record("youtube", "videos.list", units=1)
+    plain = db.fetch_one("select * from api_usage where provider = 'youtube'")
+    assert plain is not None and plain["outcome"] is None and plain["attempt"] is None
+
+
 def test_record_never_raises(monkeypatch: pytest.MonkeyPatch) -> None:
     def broken(*args: object, **kwargs: object) -> int:
         raise RuntimeError("database is down")
