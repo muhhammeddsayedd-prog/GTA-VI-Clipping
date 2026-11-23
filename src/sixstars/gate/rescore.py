@@ -212,6 +212,7 @@ def run(
     *,
     client: AnthropicClient | None = None,
     ffmpeg: str = "ffmpeg",
+    pass_line: float | None = None,
 ) -> tuple[store.ClipRow, Shots | None]:
     """Score the rendered clip and store the score. Returns the row the gate should judge (reloaded when
     the score was stored) and the extracted frames for P5 (None when they could not be extracted).
@@ -230,6 +231,7 @@ def run(
         peak = chat.peak_s if chat is not None else None
         audience = None if chat is not None else viewer_audience(row)
         shots = visuals.sample_score_frames(Path(row.local_path), row.duration_s, count, peak, ffmpeg)
+        adaptive = settings.get_bool("ai.visual_score_adaptive", False)
         scored, asked = calls.score_clip_visual_samples(
             rendered_clip(row, chat, audience),
             [jpeg for _, jpeg in shots],
@@ -237,8 +239,10 @@ def run(
             samples=samples,
             lane=lane,
             client=client,
+            pass_line=pass_line if adaptive else None,
+            margin=settings.get_float("ai.visual_score_margin", 1.0),
         )
-        document = score_document(row, scored, calls.visual_score_model(), len(shots), samples, asked)
+        document = score_document(row, scored, calls.visual_score_model(), len(shots), len(asked), asked)
         stored = store.store_visual_score(row.id, scored.score, document)
     except calls.BudgetExceededError:
         raise

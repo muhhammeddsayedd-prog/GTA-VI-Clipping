@@ -14,6 +14,7 @@ from typing import Any
 from psycopg.types.json import Jsonb
 
 from sixstars import db, events
+from sixstars import settings as app_settings
 from sixstars.factory.layout import LayoutKind
 from sixstars.gate import visual as visuals
 from sixstars.gate.models import (
@@ -31,6 +32,7 @@ from sixstars.gate.models import (
     VisualFindings,
 )
 from sixstars.posting.precedence import demoted_rank
+from sixstars.posting.ranking import RANK_USES_VISUAL_SETTING, rank_input_score
 
 LOCK_NAME = "sixstars.gate.decide"
 STATUS_GATING = "gating"
@@ -410,6 +412,9 @@ def store_decision(
     Returns False (and writes nothing) when the clip left the status it was loaded in.
     """
     score = _float(row.raw["score"])
+    if score is not None:
+        use_visual = app_settings.get_bool(RANK_USES_VISUAL_SETTING, True)
+        score = rank_input_score(score, row.raw.get("score_parts"), use_visual)
     if decision.verdict is Verdict.APPROVE:
         rank = None if score is None else (demoted_rank(score) if boosted else score) + rank_bonus
         changed = db.execute(
