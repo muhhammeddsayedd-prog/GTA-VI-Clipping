@@ -1039,3 +1039,7 @@ Real footage (the owner's Kai Cenat reference Short, its cam region 720x460 as t
 
 - Switch `factory.layout_v2.enabled` on in staging (plan: from R2) and check staging renders (R1 sizes, R2 faces of Jerma/MissMikkaa/Kai-style sources).
 - R3: detection v2 (P4 overlays, face-verified cam boxes, source cache, migration).
+
+### M19 R2 fix — odd cam boxes (2026-11-23)
+
+First staging renders with `factory.layout_v2.enabled` on (staging only, from 16:49 UTC): two clips drawn as G with the face found in 5 of 5 frames (face check 1.4 and 1.8 s on the server), one MissMikkaa live clip drawn as G0 with **0 frames read**. Her cached cam box (1402, 477, 518, 603) has an odd y and height; ffmpeg rounds a crop of 4:2:0 video, so it returned 602 rows, every frame was shorter than expected and was dropped. Fix: the face check grabs `faces.even_box(cam_box)` (the largest even box inside the cam box) and maps the face back from it; `CamFaceCheck.reason` tells `no_frames` (no frame could be read) from `no_face`, in the log, `clip.rendered.cam_check` and `clip.cam_no_face`.

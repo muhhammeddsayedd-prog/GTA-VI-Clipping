@@ -630,7 +630,7 @@ def frame_cam(job: RenderJob, *, ffmpeg: str = "ffmpeg") -> tuple[RenderJob, dic
         }
     result: dict[str, object] = check.as_json()
     if check.face_box is None:
-        log.warning("cam_no_face", frames=check.frames, ms=check.elapsed_ms)
+        log.warning("cam_no_face", reason=check.reason, frames=check.frames, ms=check.elapsed_ms)
         return replace(job, layout=LayoutG0(layout.overlay_boxes)), {**result, "fallback": "G0"}
     log.info("cam_face_found", hits=check.hits, frames=check.frames, ms=check.elapsed_ms)
     return replace(job, layout=replace(layout, face_box=check.face_box)), result

@@ -299,3 +299,33 @@ def test_a_check_that_cannot_run_falls_back_to_g0(monkeypatch: pytest.MonkeyPatc
     monkeypatch.setattr(faces, "find_cam_face", broken)
     job, check = frame_cam(_job(LayoutG(Box(0, 0, 300, 200)), FakeFaceDetector()))
     assert job.layout == LayoutG0() and check is not None and check["fallback"] == "G0"
+
+
+def test_an_odd_cam_box_is_grabbed_on_even_pixels_and_mapped_back() -> None:
+    """Staging 2026-11-23: MissMikkaa's box (1402, 477, 518, 603) made ffmpeg return 602 rows, every frame
+    was dropped and the clip fell back to G0 without a face check."""
+    cam = Box(1402, 477, 518, 603)
+    assert faces.even_box(cam) == Box(1402, 478, 518, 602)
+    detector = FakeFaceDetector(faces=[Face(Box(188, 82, 150, 190), 0.9)])
+    check = faces.find_cam_face(
+        Path("x.mp4"),
+        ClipWindow(0, 10),
+        cam,
+        FaceDetectRules(),
+        detector=detector,
+        grab=_fake_grab(5, (518, 602)),
+    )
+    assert check.face_box == Box(1590, 560, 150, 190) and check.reason is None
+
+
+def test_a_check_without_readable_frames_says_so() -> None:
+    check = faces.find_cam_face(
+        Path("x.mp4"), ClipWindow(0, 10), Box(0, 0, 300, 200), FaceDetectRules(),
+        detector=FakeFaceDetector(), grab=_fake_grab(0, (300, 200)),
+    )  # fmt: skip
+    assert check.reason == "no_frames" and check.as_json()["reason"] == "no_frames"
+    seen = faces.find_cam_face(
+        Path("x.mp4"), ClipWindow(0, 10), Box(0, 0, 300, 200), FaceDetectRules(),
+        detector=FakeFaceDetector(), grab=_fake_grab(5, (300, 200)),
+    )  # fmt: skip
+    assert seen.reason == "no_face"
