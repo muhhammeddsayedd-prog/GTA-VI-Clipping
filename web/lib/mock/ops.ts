@@ -133,6 +133,7 @@ const CODE_WRITTEN = new Set(["discovery.apify_last_run", "discovery.rss_cursor"
 const S: [string, Json, string][] = [
   ["control.emergency_stop", false, "Stop all posting. Only a human clears it."],
   ["control.stop_reason", null, "Why posting was stopped."],
+  ["app.timezone", "Africa/Cairo", "IANA time zone for every time shown in the console, Telegram and the daily report, and for the daily report's day. Limits, caps, budgets and stored times stay UTC."],
   ["launch.dry_run", false, "Pick and log posts but never upload."],
   ["launch.launch_at", "2026-11-18T11:00:00Z", "No real posts before this time."],
   ["launch.summary_lead_s", 900, "Send the health summary this long before launch."],
@@ -226,7 +227,7 @@ function report(dayParam: string | null) {
   const rr = rng(Number(day.replace(/-/g, "")) % 9973);
   const k = 0.75 + rr() * 0.5;
   return {
-    day, timezone: "UTC", generated_at: new Date().toISOString(), env: "dev",
+    day, timezone: "Africa/Cairo", timezone_label: "Cairo", generated_at: new Date().toISOString(), env: "dev",
     accounts: accounts.map((a, i) => ({
       account_id: a.id, platform: a.platform, handle: a.handle, enabled: a.enabled, paused_until: a.paused_until,
       followers: a.enabled ? Math.round([2184, 906, 412, 0][i] * k) : null, followers_change: a.enabled ? Math.round([312, 88, 61, 0][i] * k) : null,

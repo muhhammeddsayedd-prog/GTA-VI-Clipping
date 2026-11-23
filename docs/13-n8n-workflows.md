@@ -55,8 +55,9 @@ Variables (n8n Variables or a Set node at the start of each workflow): `API_BASE
 ## WF06 — Daily Report
 | Node | Config |
 |---|---|
-| Schedule Trigger | daily 00:00 UTC (set the workflow timezone to UTC) |
-| HTTP Request | `GET {{API_BASE}}/v1/reports/daily?format=telegram` → `{ "text": "<markdown>" }` |
+| Schedule Trigger | every hour at minute 5 (workflow timezone stays UTC) |
+| HTTP Request | `GET {{API_BASE}}/v1/reports/daily?format=telegram&due=1` → `{ "due": false }`, or once per local day `{ "due": true, "text": "<html>" }` |
+| IF | `$json.due` is true; the false output is unconnected |
 | Telegram | Send message to `TELEGRAM_CHAT_ID`, parse mode MarkdownV2 or HTML (the API returns HTML-safe text when `format=telegram`) |
 
 ## WF07 — Notify Relay

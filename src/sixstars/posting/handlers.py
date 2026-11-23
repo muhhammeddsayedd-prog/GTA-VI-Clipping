@@ -16,7 +16,7 @@ from sixstars import jobs
 from sixstars.clients.upload_post import UploadPostClient
 from sixstars.logging import bind_context
 from sixstars.posting.hourly import HOURLY_JOB_TYPE, run_hourly_slot
-from sixstars.posting.publisher import Publisher
+from sixstars.posting.publisher import DeliverHooks, Publisher
 from sixstars.posting.spike import try_post_spike
 from sixstars.posting.store import RETRY_JOB_TYPE, DbStore
 
@@ -41,7 +41,7 @@ def make_handlers(client_factory: ClientFactory = UploadPostClient) -> dict[str,
         if clip_id is not None:
             bind_context(clip_id=str(clip_id))
         if kind == "publish":
-            Publisher(client(), DbStore()).publish(str(job.payload["post_id"]))
+            Publisher(client(), DbStore(), covers=DeliverHooks()).publish(str(job.payload["post_id"]))
         elif kind == "spike":
             try_post_spike(str(job.payload["clip_id"]), client(), job_id=job.id)
         else:

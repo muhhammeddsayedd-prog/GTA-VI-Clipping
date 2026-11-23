@@ -118,7 +118,8 @@ def test_only_the_newest_blocked_videos_are_kept_waiting() -> None:
 def test_the_note_of_the_pass_names_the_platform_and_the_numbers() -> None:
     note = blocked.vod_note("youtube", NOW - timedelta(hours=3), 5, 0, Queue(blocked=12))
     assert note == (
-        "youtube downloads are blocked since 2026-11-17 09:00 UTC: 5 video(s) not queued, "
+        "youtube downloads are blocked since 2026-11-17 11:00 Cairo (2026-11-17 09:00 UTC): "
+        "5 video(s) not queued, "
         "12 waiting for the VOD lane's retry"
     )
     assert "1 queued as a probe" in blocked.vod_note("youtube", NOW, 4, 1, Queue())

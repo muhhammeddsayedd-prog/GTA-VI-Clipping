@@ -1,0 +1,55 @@
+/* Cover engine templates (docs/29a section 6). Canvas 1080x1920; everything that matters sits inside the
+   safe band x 60-960, y 400-1520. Fonts come from assets/fonts (file URLs set by render.py). */
+
+
+html, body { margin: 0; padding: 0; background: #000; }
+#canvas { position: relative; width: 1080px; height: 1920px; overflow: hidden; background: #000; }
+img { display: block; position: absolute; }
+img:not([src]), img[src=""] { display: none; }
+
+.fill { left: 0; width: 1080px; object-fit: cover; }
+#fill-top { top: 0; height: 960px; }
+#fill-bottom { top: 960px; height: 960px; }
+
+/* Split: facecam panel y 380-1000, gameplay panel y 1000-1540. */
+body[data-layout="split"] #face, body[data-layout="tiktok_native"] #face { left: 0; top: 380px; width: 1080px; height: 620px; }
+body[data-layout="split"] #game, body[data-layout="tiktok_native"] #game { left: 0; top: 1000px; width: 1080px; height: 540px; }
+
+/* Face-led: the face crop fills the canvas. */
+body[data-layout="face_led"] #face { left: 0; top: 0; width: 1080px; height: 1920px; }
+body[data-layout="face_led"] #game, body[data-layout="face_led"] .fill { display: none; }
+
+/* Moment-led: gameplay fills the canvas, the streamer as a cut-out at the bottom left. */
+body[data-layout="moment_led"] #game { left: 0; top: 0; width: 1080px; height: 1920px; }
+body[data-layout="moment_led"] #face, body[data-layout="moment_led"] .fill { display: none; }
+#cutout {
+  left: 64px; bottom: 400px; height: 340px; width: auto;
+  filter: drop-shadow(6px 0 0 #fff) drop-shadow(-6px 0 0 #fff) drop-shadow(0 6px 0 #fff) drop-shadow(0 -6px 0 #fff)
+          drop-shadow(0 8px 18px rgba(0, 0, 0, 0.45));
+}
+
+/* The line (main style): white, one key word yellow, black outline, soft shadow. */
+#line {
+  position: absolute; left: 60px; width: 900px; text-align: center;
+  font-family: "CoverAnton", "Anton", Impact, sans-serif; color: #fff; text-transform: uppercase;
+  line-height: 1.0; letter-spacing: 0.5px; paint-order: stroke fill;
+  -webkit-text-stroke: var(--stroke, 24px) #000; text-shadow: 0 6px 18px rgba(0, 0, 0, 0.45);
+}
+#line .row { display: block; white-space: nowrap; }
+#line .key { color: #FFD400; }
+#line:empty, #shade.off { display: none; }
+
+#shade { position: absolute; left: 0; width: 1080px; background: linear-gradient(to bottom, rgba(0,0,0,0), rgba(0,0,0,0.4) 45%, rgba(0,0,0,0.4) 55%, rgba(0,0,0,0)); }
+
+/* TikTok native: sentence case, black text in a white rounded box. */
+#box { display: none; }
+body[data-layout="tiktok_native"] #box.on {
+  display: block; position: absolute; left: 50%; transform: translateX(-50%); max-width: 820px;
+  background: #fff; border-radius: 24px; padding: 28px 40px; box-sizing: border-box;
+}
+#box-text {
+  font-family: "CoverInter", "Inter", sans-serif; font-weight: 600; color: #000; text-align: center;
+  line-height: 1.15;
+}
+#box-mark { position: absolute; right: -18px; bottom: -22px; height: 48px; width: auto; opacity: 0.9; }
+#mark { left: 84px; top: 412px; height: 72px; width: auto; opacity: 0.9; }

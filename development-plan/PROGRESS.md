@@ -724,7 +724,7 @@ Read-only production analysis, 11-17 to 11-22:
   - Music uses the lowest ratio any cut of the padded window could have.
   - A spike-lane clip is rejected only when both the express and the hourly profile fail.
   - The daily cap is skipped in the last 30 minutes before 00:00 UTC.
-- **A5b** (migration 0039, `factory.pre_p2_throttle` = `"log"`, `factory.pre_p2_queue_min` = 40)
+- **A5b** (migration 0044, `factory.pre_p2_throttle` = `"log"`, `factory.pre_p2_queue_min` = 40)
   - `factory/throttle.py` logs `would_skip` / `keep` per hourly candidate to `scoring_log`; nothing is enforced.
   - **Effective queue:** approved hourly clips that the busiest hourly account (at its 24-hour pace) reaches before `posting.max_clip_age_h`.
   - **Candidate rank:** chat percentile × spike bonus × freshness, compared with the queue median.
@@ -1043,3 +1043,242 @@ Real footage (the owner's Kai Cenat reference Short, its cam region 720x460 as t
 ### M19 R2 fix — odd cam boxes (2026-11-23)
 
 First staging renders with `factory.layout_v2.enabled` on (staging only, from 16:49 UTC): two clips drawn as G with the face found in 5 of 5 frames (face check 1.4 and 1.8 s on the server), one MissMikkaa live clip drawn as G0 with **0 frames read**. Her cached cam box (1402, 477, 518, 603) has an odd y and height; ffmpeg rounds a crop of 4:2:0 video, so it returned 602 rows, every frame was shorter than expected and was dropped. Fix: the face check grabs `faces.even_box(cam_box)` (the largest even box inside the cam box) and maps the face back from it; `CamFaceCheck.reason` tells `no_frames` (no frame could be read) from `no_face`, in the log, `clip.rendered.cam_check` and `clip.cam_no_face`.
+
+## TZ — App time zone, default Cairo (built 2026-11-21, rebased onto develop 2026-11-23)
+
+Branch `app-timezone-v2` (rebuilt on develop 2026-11-23; the original 2026-11-21 work was never committed and sat 75 commits behind). Owner request: run the whole app on Cairo time with a time zone setting in the console; limits keep working in UTC. Decision D120 (D116 was taken on develop meanwhile).
+
+### What was built
+
+- Migration `0055_app_timezone.sql` (first written as 0034, which develop has since used): setting `app.timezone` = `"Africa/Cairo"`; `reports.timezone` removed.
+- `src/sixstars/clock.py`: `app_zone()` (cached 30 s; never raises; invalid name or no database means Cairo), `fmt_local()` ("14:32 Cairo (12:32 UTC)"), `zone_label()`, `is_valid_zone()`.
+- Telegram text in the app zone, with UTC in brackets:
+  - the pre-launch summary title and `/status` (launch time, pause times)
+  - discovery failing/recovered and blocked-downloads notes
+  - live-lane blocked/recovered
+  - the Upload-Post reconnect alert
+  - "Hourly queue empty"
+  - the proxy status line
+- The daily report day follows `app.timezone`, and its issue times now use that zone too (before, they were hard-coded UTC).
+- `POST /v1/control/settings` refuses an invalid zone (`422 invalid_timezone`).
+- `GET /v1/reports/daily?due=1`: claims the local day that just ended through a `report.daily_sent` event, so each day is sent once.
+- WF06 builder: every hour at :05, then fetch with `due=1`, then IF `due`, then Telegram.
+- Console (`web/`):
+  - `lib/format.ts` formats in the display zone (Intl, DST-safe). Hover titles show the UTC instant.
+  - `TimeZoneSync` keeps the display zone in line with the setting.
+  - `<main key={zone}>` re-renders every page once when the zone changes.
+  - Header clock (app zone plus UTC; popover with app, UTC and browser zones).
+  - Settings → Time zone card (searchable list, live preview, saves through the usual confirm step).
+  - "UTC" labels on shown times are replaced by the zone label.
+  - UTC-hour slot grids stay labelled UTC; each cell's tooltip shows the local hour.
+
+### Kept in UTC on purpose
+
+Storage, API payloads, caps and budgets (UTC day), `hourly_hours_utc`, `posting.reserve_release_hour_utc`, the YouTube quota day (LA), AI prompts, CLI output, stored decision reasons (`posting/precedence.py`, `posting/gate.py`, `gate/checks.py`, `posting/caps.py`, discovery gate details), containers `TZ=UTC`.
+
+### Deploy order (important)
+
+1. Apply 0055 and deploy the server.
+2. Only then re-apply WF06 (`build_workflows.py apply --env staging`).
+
+An old API ignores `due=1`, so the new WF06 would send the report every hour. The first run after deploy sends the report for the Cairo day that just ended. The `workflows/*.json` exports refresh on the next `export`.
+
+### Tests
+
+- Python unit: all pass (13 new in `test_clock.py`; status, discovery and blocked-platform text expectations updated).
+- Integration (throwaway postgres:17):
+  - new tests: zone validation, the `due` flow sending once, and the Cairo day boundary of the report
+  - updated: the stats and blocked-discovery tests
+  - full suite: 57 failures, the same 57 that fail on untouched develop (`test_gate_run`, `test_gate_visual_score`, `test_precheck_flow` and others), none from this change
+- Web: vitest 36 passed (Cairo, DST, midnight rollover, offsets, UTC hover); lint, typecheck and build clean.
+- Not checked in a browser (no browser tools in this session).
+
+### Rebase onto develop (2026-11-23)
+
+- Rebuilt as one commit on `origin/develop` (c776f27). Conflicts only in `scheduler.py` imports (kept the campaign watcher), `00-decisions.md` and this file.
+- Renumbered: migration 0034 → 0055 (develop runs to 0054; cover-engine holds 0044), decision D116 → D120.
+- `claim_due_day` now takes a transaction advisory lock per day, so a manual WF06 run overlapping the hourly one cannot send the report twice.
+- New develop code checked for human-facing UTC times: none added to the console; the one new UTC string (`posting/store.py` campaign refusal) is a stored decision reason and stays UTC by design.
+- Checks on the rebased branch: ruff, ruff format, `mypy --strict src/` clean; unit 4052 passed, 6 skipped; web lint, tsc, vitest 36, build clean; all 55 migrations apply on fresh postgres:17; integration 531 passed, 58 failed; untouched develop gives 528 passed and the identical 58 failures (`test_gate_run`, `test_gate_visual_score`, `test_precheck_flow`, `test_gate_cli`, `test_factory_pipeline`), so none come from this change.
+
+### Release checklist (for the merge to production)
+
+1. Merge this PR into `develop`; the staging deploy applies 0055 automatically (`supabase db push`).
+2. After the staging server is healthy: `uv run python n8n/build_workflows.py apply --env staging` (WF06). Never before the server deploy: an old API ignores `due=1`, so the report would go out every hour.
+3. Check on staging: `/status` in Telegram shows Cairo times with UTC in brackets; console header clock; Settings → Time zone card saves; `GET /v1/reports/daily?due=1` answers `due: true` once, then `due: false`.
+4. Merge `develop` → `main`; the production deploy applies 0055; then re-apply WF06 with `--env production` (same order: server first).
+5. The first WF06 run after the re-apply sends the report for the Cairo day that just ended, so one extra report around the switch is expected.
+
+## Cover engine C0 — verify and probe (2026-11-23)
+
+**Branch:** `covers-c0` (worktree `../6stars-wt-covers`, off `develop` b58de03). Spec: `docs/29-cover-engine.md` (copied from the owner's Claude Doc) + `docs/29a-cover-engine-prompt.md` (the build prompt, wins on conflicts).
+
+### What was built
+
+- `docs/29`, `docs/29a`; `docs/29b-cover-probe.md` (prompt §2 re-verified against the code, Upload-Post docs, live probe results); `docs/14` §1 "Cover fields" row.
+- `scripts/covers_probe.py`: a staging-only, private-only probe (`prepare`, `post`, `status`, `yt_thumb`); refuses Instagram, never touches `settings`, redacts the account email from its log.
+- Probe: TikTok `cover_timestamp` and `tiktok_cover_image_url` both accepted on `SELF_ONLY` posts with no capability warning (our TikTok connection has `cover_image` + `cover_timestamp`). YouTube `thumbnail_url` at upload → `thumbnail_pending: true` (still pending after 8 min); `POST /api/uploadposts/youtube/thumbnail` → **200**, and YouTube stored our image as the 1080×1920 Shorts thumbnail, although the channel is not in the Partner Program.
+
+### Deviations
+
+- No Instagram live probe: staging posts onto the production accounts (D101/D102), and Instagram can't post privately (owner decision, 23 Nov).
+- The probe calls the Upload-Post API with httpx directly, not through `clients/upload_post.py`, because the client's status parser drops `thumbnail_pending` / `warnings`. C7 adds those fields to the client.
+- The prompt says staging = GTA 5; staging runs GTA VI (`env.target_game`, read live) and stays that way.
+- Migration number: not 0028 (taken). 0037 is claimed by two in-flight branches, so covers takes the next free number at merge time.
+
+### Open issues / next (owner)
+
+- Check in YouTube Studio whether the custom thumbnail on private video `X0n4aCpzTVI` shows. If it does, YouTube custom covers can be tested on staging in C7 without waiting for the Partner Program. Then delete the video (`unpublish`).
+- C1 is a visible look change on every clip: facecam 672 → ≥ 768 px in layout C, and phrase captions in the first 2 s and around the peak. Needs the owner's yes before building.
+- YouTube traffic-source reward needs a YouTube OAuth refresh token (`sixstars youtube auth`).
+- OCR: RapidOCR (PP-OCR models on onnxruntime) proposed instead of the paddlepaddle install.
+
+## Cover engine C2 — migration, config, buckets (2026-11-23)
+
+**Branch:** `covers-c2` (on `covers-c1`). Owner, 23 Nov: merge everything at the end, once the other sessions are done. Staging verification of C1+ is batched after that merge.
+
+### What was built
+
+- `supabase/migrations/0044_cover_engine.sql`:
+  - the `covers` table from docs/29a §8, plus `render_id` (M18 renders several styles per clip), `account_id` (diversity and grid are per account) and `mode` (full / frame_only), with check constraints and RLS;
+  - the eleven `cover.*` keys, with `cover.enabled` off everywhere;
+  - buckets `covers-work` (private) and `covers-public` (public).
+- `covers/config.py` `CoverConfig`:
+  - `from_values` is pure; `load` reads `scoring_config` and records the version;
+  - helpers `mode_for`, `brand_mark_for`, `runs_for`, `deadline_for`, and `lane_key(lane, campaign_slug)`.
+- `covers/store.py`: insert, `set_status`, `recent_for_account`, `recent_lines`.
+- `storage.py`: `public_url`, `cover_work_key`, `cover_public_key`.
+- Tests: `tests/unit/covers/test_covers_config.py` and `tests/integration/test_cover_engine_migration.py`.
+
+### Deviations
+
+- Migration 0044 instead of 0028.
+- `cover.enabled` is seeded `false` (the prompt's staging default is `true`). One migration serves both environments, and production must start off, so staging is switched on by hand.
+- `cover.lane_modes` and `cover.brand_mark` include `spike` next to `normal`: our live lane is ours, like the normal lane. Campaign lanes (`campaign:<slug>`, from the unmerged `clipcamp-1`) fall to `*`, which is `frame_only` with no mark.
+
+## Cover engine — restructure after Render v2 (2026-11-23)
+
+The owner decided on 23 Nov:
+- Render v2 (M19, D119, another session) owns the framing. Its spec supersedes the cover prompt's "facecam ≥ 40%" rule (cam 720 px = 37.5%) and verifies and centres the face itself.
+- C1's renderer changes are therefore dropped: the 768 px facecam, the face crop, the phrase windows, the dark lift and migration 0038. The code stays on branch `covers-c1` for reference.
+- What survives from C1 moves into this stack: the clip's peak (`covers/peak.py`, stored as `clips.peak_s`), and caption OCR and judging (`covers/ocr.py`).
+- The cover-specific extras (whole caption phrase in the first 2 s and ±1 s around the peak, dark-opening lift, the `check-video` acceptance tool) are rebuilt on Render v2's text_v2 once its R1/R2 land.
+- Branches are rebuilt as one stack on develop (`cover-engine`). Migrations are renumbered to 0044+ (0038–0042 landed on develop and render-v2 holds 0043); check again before the final merge. PRs #74, #79 and #81 are replaced.
+- Merges into develop wait until all sessions are done (owner), so the staging checks of every C milestone are batched after that merge.
+- YouTube custom thumbnails: the owner saw the probe thumbnail in Studio on a non-Partner channel, so C7 tests them on staging. Production still waits for the owner's yes.
+
+## Cover engine C3 — frame miner and scorer (2026-11-23)
+
+### What was built
+
+- `covers/miner.py`:
+  - `capture` runs in the render job after the variants are prepared, for the short clip and the story cut (peak moved into the story's time). When `cover.enabled` is on, it keeps the clip's source span in `$DATA_DIR/covers/<clip_id>/source.mkv`. That is a hard link to `variants/<clip_id>/source.mkv` when one exists, so it costs nothing on most clips; otherwise it is the same frame-exact copy. It also writes `manifest.json`, stores `clips.peak_s/peak_source` and queues `cover.mine`.
+  - `mine` (the job): one ffmpeg pass at 4 fps for the facecam box (native pixels) and the gameplay region (≤ 1280 px wide). It scores 4 fps frames in peak ±2 s and 1 fps elsewhere, keeps the top 5 (≥ 0.5 s apart) in `top/` and `covers-work/<clip_id>/`, and writes `mine.json`. It OCRs the rendered file at the 12 best frames to pick `cover_timestamp_ms`, then deletes the source copy.
+- `covers/scorer.py`, pure maths plus OpenCV/MediaPipe:
+  - **Features:** expression (max of jawOpen / eyeWide / browInnerUp / smile, +0.15 when two are ≥ 0.4), eyes open, face area (height share), sharpness (percentile among frames with a face), exposure (90–190 ideal, clipped pixels), gameplay (brightness factor × mean of detail and change percentiles).
+  - **Hard rejects:** no face, eyes < 0.35, face cut by the edge, bottom 20% sharpness.
+  - **Layout proposal:** face-led if gameplay < 0.3 or moment_type "emotional"; moment-led if gameplay > 0.7 and face < 0.25; else split.
+- `covers/peak.py`: anchor, else payoff, else chat. `covers/ocr.py`: caption tokens across y 200–1760 and cut-word judging.
+- Pipeline: `Produced.peak_s/peak_source`, `_capture_cover`, `_story_peak`.
+- Worker: `cover.mine` is registered.
+- Dependencies: `mediapipe`, `rapidocr`, `onnxruntime` and `opencv-contrib-python-headless`, with uv overrides dropping the GUI OpenCV builds.
+- Dockerfile: the face landmarker is baked (sha256-pinned), `libegl1`/`libgles2` are added, and the landmarker and RapidOCR load at build time.
+- Tests: `tests/unit/covers/test_covers_mining.py` (17).
+
+### Local check on real staging clips
+
+Four layout C clips were run through the miner, with the rendered file standing in for the source:
+- 22–54 frames scored per clip, in 21–39 s with OCR;
+- the top picks show visible, expressive faces;
+- a death screen gave the face-led proposal;
+- OCR reads wordcap captions and title pills.
+
+### Deviations
+
+- The prompt's "save clean layers from the renderer" is met without touching the renderer: the facecam and gameplay boxes of the kept source span are the clean layers.
+- "Talking/quotable" has no tag; the writer's `moment_type = "emotional"` stands in.
+- Scorer thresholds (eyes 0.35, blur 20%, layout 0.3/0.7/0.25) are spec structure, kept as constants. The weights are the `cover.weights` setting.
+- OCR also reads the title pill, so a title that repeats transcript words counts as a phrase. To refine once Render v2's text layout is final.
+
+### Open issues / next
+
+- The C3 acceptance (blind top-vs-random pairs on 30 staging clips, `docs/reports/covers-c3.md`) needs the staging deploy, after the final merge.
+- A localised death screen ("МЕРТВА") can be a top gameplay frame: the C6 QA must reject non-English text.
+
+## Cover engine C4 and C5 — cover line and compositor (2026-11-23)
+
+### C4
+
+- Prompt P12 `ai/prompts/p12_cover_hookline.md` holds the owner's text. The JSON example is described in words, because the repo's prompt test forbids literal braces in a system prompt.
+- `ai.calls.write_cover_lines` (fast model, `ai.model.p12_cover_hookline` override) and the `CoverLines` schema.
+- `covers/hookline.py` checks in code: words, capitals, wrap, emoji, `?!`, banned words plus the title writer's outcome words, overlap with the title, source in the transcript (fuzzy ≥ 0.8), recent lines. Profanity is masked F*CK-style.
+- `sixstars covers eval-lines --limit 50` runs the C4 eval.
+- **Deviation:** the prompt's own example "OH MY GOD I DID IT" has 6 words, against its 1–5 rule. The rule (5) is kept.
+- **Open:** the eval did not run. Staging's `ai.daily_budget_usd` ($5) was used up on 23 Nov, and the budget guard stopped every call. It runs after 00:00 UTC; it was neither forced nor raised.
+
+### C5
+
+- `covers/compose/` (Python preparation plus Playwright) and the four templates. Details in docs/CHANGELOG-scoring.md and `docs/reports/covers-c5.md` (an early local sheet; the acceptance sheet comes after the staging deploy).
+- **Deviations:**
+  - The moment-led cut-out uses MediaPipe's selfie segmenter (already a dependency, 250 KB) instead of rembg/BiRefNet, which would bring numba, scikit-image and a 170 MB model for the same mask.
+  - The four template files share `cover.css`/`cover.js`.
+  - The Real-ESRGAN upscale (`cover.upscale_enabled`, off) is not built: face-led falls back to split for a facecam crop under 400 px. Building the upscaler is left for when the flag is wanted.
+
+## Cover engine C6 and C7 — QA gate, build and delivery (2026-11-23)
+
+### C6
+
+- QA gate (`covers/qa.py`, P13 `p13_cover_qa`); details in docs/CHANGELOG-scoring.md.
+- Deviations:
+  - **Face check:** done on the composed face picture before the type, else where the compositor placed the mined face. The detector misses a turned face on an upscaled panel that the miner found on the original frame.
+  - **Exposure:** measured on the pictures, not the type, because white type counts as clipped.
+  - **Added rules:** no non-Latin text on the cover (English-only audience; the localised "МЕРТВА" screen), and text inside the safe band (the compositor now clamps the line into it).
+
+### C7
+
+- `covers/engine.py`, `covers/deliver.py`, `covers/learn.py` (C7 form) and the publisher hooks.
+- Deviations:
+  - **YouTube** gets its thumbnail only through the follow-up job after publishing. C0 showed `thumbnail_url` at upload stays pending, while the endpoint answered 200.
+  - **No waiting at post time.** A cover not ready when the post goes out is logged `skipped_deadline` and the post goes out as before. Hourly posts go out long after the render, so they have their cover. Spike posts usually leave before mining ends (20–40 s), so spike covers mostly skip; `cover.deadline_s` is read but not used yet. Holding the express post up to 60 s for the cover is a design choice for the owner.
+  - **Alerts** fire once per kind per UTC day (events `cover.alert`). Further failures only go to the log and the events table.
+- Open: the TikTok custom-image test (10 `SELF_ONLY` posts plus screen recordings) needs the staging deploy and someone to watch playback in the app.
+
+## Cover engine C8 — learning, console, weekly report (2026-11-23)
+
+- **Bandit:** `learn.load_stats` and `learn.choose`, with Thompson sampling once rewards exist.
+- **Reward:** above the account median at **72 h**, the first learning-loop snapshot after 48 h. It counts covers made before the current week, so it updates weekly. The YouTube non-feed-traffic half of the reward waits for a YouTube OAuth refresh token.
+- **Console:** Covers page (`web/app/(console)/covers`) and `GET /v1/admin/covers`, with nav under Insights. The web app was checked by CI only: there are no node modules on this machine.
+- **Weekly report:** `sixstars covers report`.
+- **Arm storage:** the cover arm is a column of `covers`. `clip_features` (docs/28 L2) does not exist yet; the arm joins in when it lands.
+
+## Cover engine T — unit level done, staging level after the merge (2026-11-23)
+
+- Unit tests cover every pure function: fit and geometry, line validation, the QA rules, the bandit, the report and the fields.
+- Fault drills as unit tests (`tests/unit/covers/test_covers_drills.py`): a crash in fields or build never stops a post, and alerts once.
+- The 48 h end-to-end run, the staging drills, and every milestone acceptance that needs staging are listed in `docs/29c-cover-staging-runbook.md`, for after the final merge.
+- **Fix found by CI:** `Renderer()` left Playwright's event loop running when Chromium was missing, which broke a later asyncio test. It now stops Playwright on a failed launch.
+
+## Cover engine — owner follow-ups (2026-11-23)
+
+### 1. Posts wait for their cover
+
+- `deliver.wait_for_cover`, called from `cover_fields` for Instagram and TikTok. It waits up to `cover.deadline_s` (60 s live, 300 s normal) while the clip's `cover.mine` job is queued or running, polling every 3 s, and returns at once when no job exists.
+- Spike jobs: priority 10, and 4 OCR'd rendered frames.
+- **Trade-off:** the express worker is blocked up to 60 s per spike post. The spike cover still depends on a free normal-queue worker. If the normal queue is busy with renders or variants, the cover may miss the 60 s and the post goes out with `skipped_deadline`. Watch this in the staging run.
+
+### 2. C4 eval (local, staging data)
+
+`docs/reports/covers-c4.md`:
+- 50/50 clips have a valid line, none invented.
+- Haiku 5.5, $0.017 per 100 clips. With C6's vision call per cover, the total stays far under the 1.5× AI-spend limit.
+
+### 3. Exposure
+
+- **The data:** 172 clean staging frames (facecam above the captions and the text-free gameplay band, 13 clips). Median luma is 65, and only 43% are within 70–200; 62% have < 2% clipped pixels.
+- **The change:** setting `cover.exposure` holds luma 60–200, clipped < 10%, and a gamma lift (≤ 1.25) of dark pictures toward 75.
+- **The result:** the pass rate goes from 34% to 90%.
+- **Rollback:** SQL in docs/CHANGELOG-scoring.md.
+
+### 4. YouTube traffic-source reward
+
+Dropped (owner). The bandit learns from views only.

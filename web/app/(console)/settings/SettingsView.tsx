@@ -9,6 +9,7 @@ import { DataTable, EventFeed, type Col } from "@/components/kit/data";
 import { Drawer } from "@/components/kit/overlays";
 import { Badge, Btn, Card, CardHead, Chip, ErrorState, IconBtn, Mono, PageHead, SearchField, SkeletonTable, Toggle, When } from "@/components/kit/primitives";
 import { SettingEditModal, type EditRequest } from "@/components/domain/ops/SettingEditModal";
+import { TimeZoneCard } from "@/components/domain/ops/TimeZoneCard";
 import { useDrawerParam } from "@/components/domain/ops/useDrawerParam";
 import { POLL, useApi } from "@/lib/api/client";
 import type { Event, Json, Setting } from "@/lib/api/types";
@@ -92,6 +93,7 @@ export function SettingsView() {
           </nav>
 
           <div className="col">
+            <TimeZoneCard key={JSON.stringify(byKey.get("app.timezone")?.value ?? null)} setting={byKey.get("app.timezone")} onPropose={(s, v) => setEdit({ setting: s, proposed: v })} />
             <section aria-labelledby="sw-h">
               <div className="flabel" id="sw-h">Switches</div>
               <div className="g g3">

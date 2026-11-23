@@ -5,7 +5,7 @@ from collections.abc import Iterator
 
 import pytest
 
-from sixstars import config
+from sixstars import clock, config
 
 
 @pytest.fixture(autouse=True)
@@ -27,3 +27,11 @@ def sleeps(monkeypatch: pytest.MonkeyPatch) -> list[float]:
     delays: list[float] = []
     monkeypatch.setattr(_http, "sleep", delays.append)
     return delays
+
+
+@pytest.fixture(autouse=True)
+def fresh_clock() -> Iterator[None]:
+    """The display zone is cached in-process; every test starts without it."""
+    clock.reset_cache()
+    yield
+    clock.reset_cache()

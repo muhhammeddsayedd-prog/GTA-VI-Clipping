@@ -35,6 +35,7 @@ from typing import Any
 
 from sixstars import db, events, jobs, notify, settings
 from sixstars.campaigns import watcher as campaign_watcher
+from sixstars.clock import fmt_local
 from sixstars.guardian import config as guardian_config
 from sixstars.guardian import failover as guardian_failover
 from sixstars.guardian import health as guardian_health
@@ -288,7 +289,7 @@ def launch_summary(now: datetime | None = None) -> bool:
         data={"launch_at": launch_at.astimezone(UTC).isoformat()},
         service=SERVICE,
     )
-    notify.send("info", f"Health summary before launch ({launch_at.astimezone(UTC):%H:%M} UTC)", text)
+    notify.send("info", f"Health summary before launch ({fmt_local(launch_at)})", text)
     return True
 
 

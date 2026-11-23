@@ -99,7 +99,8 @@ Paid ads and boosting, admin dashboard, voice-over, additional languages, Kick, 
 
 ### FR-9 Reporting
 - FR-9.1 Collect account and per-post stats every 2 hours.
-- FR-9.2 Daily report at 00:00 UTC to Telegram with the KPIs in section 2.
+- FR-9.2 Daily report to Telegram with the KPIs in section 2, shortly after midnight in `app.timezone` (default Africa/Cairo); the report covers that local day.
+- FR-9.3 Every time shown to people (console, Telegram, report) is in `app.timezone`, set from the console's Settings → Time zone card. Storage, caps, budgets and hourly slots stay UTC and are labelled UTC where shown.
 - FR-9.3 Immediate Telegram alerts for errors, stops, takedowns and cap problems.
 
 ## 6. Non-functional requirements

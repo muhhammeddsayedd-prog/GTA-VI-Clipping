@@ -22,6 +22,7 @@ from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
 from enum import StrEnum
 from pathlib import Path
+from typing import Protocol
 
 from sixstars.clients._http import NotConfiguredError
 from sixstars.clients.upload_post import (
@@ -33,6 +34,7 @@ from sixstars.clients.upload_post import (
     UploadPostClient,
     UploadStatus,
 )
+from sixstars.clock import DATE_TIME, fmt_local
 from sixstars.logging import get_logger
 from sixstars.posting.caps import on_rate_limit
 from sixstars.posting.captions import UploadRequest, build_upload_request
@@ -108,8 +110,33 @@ def _key_in_use(exc: PostRejected) -> bool:
     return "http 409" in text or "idempotency" in text
 
 
+class CoverHooks(Protocol):
+    """The cover engine's part of a post (`covers.deliver`): extra upload fields, and what follows a
+    published post. Both never raise."""
+
+    def fields(
+        self, clip_id: str, account_id: str, platform: str, lane: str, post_id: str
+    ) -> dict[str, str]: ...
+    def published(self, post_id: str, platform: str, platform_post_id: str | None, user: str) -> None: ...
+
+
+class DeliverHooks:
+    """The real cover hooks (docs/29a stage 6)."""
+
+    def fields(self, clip_id: str, account_id: str, platform: str, lane: str, post_id: str) -> dict[str, str]:
+        from sixstars.covers import deliver
+
+        return deliver.cover_fields(clip_id, account_id, platform, lane, post_id)
+
+    def published(self, post_id: str, platform: str, platform_post_id: str | None, user: str) -> None:
+        from sixstars.covers import deliver
+
+        deliver.after_published(post_id, platform, platform_post_id, user)
+
+
 class Publisher:
-    """Sends pending posts. `client` is the Upload-Post client (a fake in every test)."""
+    """Sends pending posts. `client` is the Upload-Post client (a fake in every test). `covers` adds the
+    cover engine's fields (None: no covers, as in the unit tests)."""
 
     def __init__(
         self,
@@ -117,11 +144,13 @@ class Publisher:
         store: PublisherStore,
         clock: Callable[[], datetime] = utcnow,
         wait_s: float = INLINE_WAIT_S,
+        covers: CoverHooks | None = None,
     ) -> None:
         self._client = client
         self._store = store
         self._clock = clock
         self._wait_s = wait_s
+        self._covers = covers
         self._log = get_logger("posting")
 
     # ── entry points ─────────────────────────────────────────
@@ -209,6 +238,12 @@ class Publisher:
             request = build_upload_request(work.loaded.clip, work.account, work.params)
         except ValueError as exc:  # includes UnsafePostError
             return self._fail(post, f"upload fields refused: {exc}")
+        if self._covers is not None:
+            extra = self._covers.fields(
+                post.clip_id, post.account_id, post.platform.value, post.lane.value, post.id
+            )
+            if extra:
+                request = replace(request, fields={**request.fields, **extra})
         self._store.mark_sending(post.id, request.request_id, render_id)
         self._log.info("post_sending", clip_id=post.clip_id, post_id=post.id, account_id=post.account_id)
         try:
@@ -309,6 +344,10 @@ class Publisher:
             },
         )
         self._log.info("post_published", clip_id=post.clip_id, post_id=post.id, account_id=post.account_id)
+        if self._covers is not None:
+            self._covers.published(
+                post.id, post.platform.value, result.post_id, work.account.upload_post_user
+            )
         if post.lane is Lane.SPIKE:
             self._store.record_spike_to_post(post.clip_id, now)
         self._store.settle_clip(post.clip_id, now)
@@ -430,7 +469,7 @@ class Publisher:
         self._store.notify(
             "critical",
             f"Reconnect {account.id} in Upload-Post",
-            f"{reason}. The account is paused until {until.isoformat()}.",
+            f"{reason}. The account is paused until {fmt_local(until, DATE_TIME)}.",
         )
         return self._fail(work.post, f"auth: {message}", alert=False)
 

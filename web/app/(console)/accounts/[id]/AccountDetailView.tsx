@@ -9,7 +9,7 @@ import { accountState } from "@/components/domain/AccountCard";
 import { hourCells, pauseNote } from "@/components/domain/sources/AccountBig";
 import { POLL, useApi } from "@/lib/api/client";
 import type { AccountDetail, Post } from "@/lib/api/types";
-import { ageSeconds, fmtAgo, fmtCompact, fmtDay, fmtNum, fmtTime, series } from "@/lib/format";
+import { ageSeconds, fmtAgo, fmtCompact, fmtDay, fmtNum, fmtTime, series, zoneLabel, fmtDayShort } from "@/lib/format";
 import { accountLabel } from "@/lib/use-accounts";
 
 const POST_COLS: Col<Post>[] = [
@@ -46,7 +46,7 @@ export function AccountDetailView({ id }: { id: string }) {
         sub={<>{a.handle} · {PLAT_LABEL[a.platform] ?? a.platform} · <Badge status={st} /></>}
         actions={<Btn kind="p" href={`/events?entity_type=account&entity_id=${a.id}`} icon={<List size={15} />}>Account events</Btn>} />
 
-      {note && <Banner tone={paused ? "amber" : "blue"} icon={<Pause size={17} />}><b>{paused ? `Paused until ${fmtTime(a.paused_until)} UTC.` : "Disabled."}</b> {note.replace(/^(Paused until [^.]+\. |Disabled · )/, "")}</Banner>}
+      {note && <Banner tone={paused ? "amber" : "blue"} icon={<Pause size={17} />}><b>{paused ? `Paused until ${fmtTime(a.paused_until)} ${zoneLabel()}.` : "Disabled."}</b> {note.replace(/^(Paused until [^.]+\. |Disabled · )/, "")}</Banner>}
 
       <Grid cols={4}>
         <Kpi label={a.platform === "youtube" ? "Subscribers" : "Followers"} value={last} icon={<Users size={15} />}
@@ -80,7 +80,7 @@ export function AccountDetailView({ id }: { id: string }) {
       </div>
 
       <Card style={{ marginTop: 16 }}>
-        <CardHead title="Hourly hours (UTC)" hint="Hours this account takes an hourly-lane post" />
+        <CardHead title="Hourly hours (UTC)" hint={`Hours this account takes an hourly-lane post · slots are UTC hours; hover a cell for ${zoneLabel()} time`} />
         <Hours cells={hourCells(a)} />
       </Card>
 
@@ -103,7 +103,3 @@ function minutesSince(iso: string | null): number | null {
   return s === null ? null : Math.round(s / 60);
 }
 
-function fmtDayShort(iso: string): string {
-  const d = new Date(iso);
-  return `${d.getUTCDate()} ${["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"][d.getUTCMonth()]}`;
-}

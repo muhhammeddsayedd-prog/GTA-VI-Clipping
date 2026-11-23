@@ -8,7 +8,7 @@ from guardian_support import IG, TT, YT, UploadPost, YouTube, creator, now, publ
 from posting_support import add_clip
 from psycopg.types.json import Jsonb
 
-from sixstars import db, settings, usage
+from sixstars import clock, db, settings, usage
 from sixstars.clients.upload_post import RateLimited
 from sixstars.stats import collector, report
 
@@ -206,7 +206,8 @@ def snapshot(account: str, at: datetime, followers: int, views: int) -> None:
     )
 
 
-def test_the_report_counts_the_day_from_the_database(world: None) -> None:
+def test_the_report_counts_the_day_from_the_database(world: None, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(clock, "app_zone", lambda: UTC)  # the data below is laid out on the UTC day
     star = creator("Star")
     db.execute("update creators set discovered_at = %s", (NOON,))
     post_at(star, YT, "yt1", NOON, views=88000, title="He did NOT expect that <3 & more")
@@ -326,4 +327,15 @@ def test_an_empty_database_gives_a_report_of_zeros(world: None) -> None:
     assert data["posts"]["hourly_published"] == 0 and data["views"]["total"] is None
     assert data["top_clips"] == [] and data["guardian"]["manual_removals"] == []
     text = report.render_telegram(data)
-    assert "daily report (2026-11-19 UTC, production)" in text and "Posts  hourly 0" in text
+    assert "daily report (2026-11-19 Cairo, production)" in text and "Posts  hourly 0" in text
+    assert data["timezone"] == "Africa/Cairo"
+
+
+def test_the_report_day_runs_midnight_to_midnight_in_cairo(world: None) -> None:
+    star = creator("Star")
+    post_at(star, YT, "yt-in", datetime(2026, 11, 19, 21, 30, tzinfo=UTC))  # 23:30 Cairo, 19 Nov
+    post_at(star, YT, "yt-out", datetime(2026, 11, 19, 22, 30, tzinfo=UTC))  # 00:30 Cairo, 20 Nov
+    post_at(star, YT, "yt-early", datetime(2026, 11, 18, 22, 30, tzinfo=UTC))  # 00:30 Cairo, 19 Nov
+    data = report.build(now=datetime(2026, 11, 19, 22, 5, tzinfo=UTC))  # 00:05 Cairo: 19 Nov just ended
+    assert data["day"] == "2026-11-19"
+    assert {item["account_id"]: item["published"] for item in data["accounts"]}[YT] == 2

@@ -6,7 +6,7 @@ import { AlertTriangle, ArrowLeft, Info, RefreshCw } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { toneOf, type Tone } from "@/lib/status";
-import { fmtAgo, fmtTime, humanize, localTitle } from "@/lib/format";
+import { fmtAgo, fmtTime, humanize, utcTitle } from "@/lib/format";
 import type { PostPlatform, Platform } from "@/lib/api/types";
 
 /* ---------- badges & chips ---------- */
@@ -83,7 +83,7 @@ export function Two({ a, b }: { a: ReactNode; b?: ReactNode }) {
 /* ---------- time ---------- */
 export function When({ iso, mode = "time", seconds }: { iso: string | null | undefined; mode?: "time" | "ago"; seconds?: boolean }) {
   if (!iso) return <span className="muted">—</span>;
-  return <time dateTime={iso} title={localTitle(iso)} className="num">{mode === "ago" ? fmtAgo(iso) : fmtTime(iso, seconds)}</time>;
+  return <time dateTime={iso} title={utcTitle(iso)} className="num">{mode === "ago" ? fmtAgo(iso) : fmtTime(iso, seconds)}</time>;
 }
 
 /* ---------- layout ---------- */

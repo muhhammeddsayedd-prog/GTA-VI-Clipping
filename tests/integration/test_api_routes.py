@@ -401,6 +401,21 @@ def test_an_unknown_key_is_refused_and_no_setting_is_created(client: TestClient)
     assert count("events") == 0 and count("notify_outbox") == 0
 
 
+def test_the_app_timezone_is_seeded_and_accepts_only_real_zones(client: TestClient) -> None:
+    assert setting("app.timezone") == "Africa/Cairo"
+    assert db.fetch_one("select 1 from settings where key = 'reports.timezone'") is None
+    for bad in ("Mars/Base", "Cairo", ""):
+        response = client.post(
+            "/v1/control/settings", headers=AUTH, json={"key": "app.timezone", "value": bad}
+        )
+        assert response.status_code == 422 and response.json()["code"] == "invalid_timezone"
+    assert setting("app.timezone") == "Africa/Cairo" and count("events") == 0
+    ok = client.post(
+        "/v1/control/settings", headers=AUTH, json={"key": "app.timezone", "value": "Europe/London"}
+    )
+    assert ok.status_code == 200 and setting("app.timezone") == "Europe/London"
+
+
 @pytest.mark.parametrize(
     ("key", "value"),
     [

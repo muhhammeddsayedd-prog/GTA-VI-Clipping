@@ -271,3 +271,15 @@ export interface StylePerformance {
   styles: { id: string; enabled: boolean; weight: number; requires: string[] }[];
   accounts: { account_id: string; platform: PostPlatform; styles: StyleRow[] }[];
 }
+
+/* ---------- cover engine (docs/29a C8) ---------- */
+export interface CoverTile {
+  id: string; clip_id: string; platform: PostPlatform; layout: string | null; arm: string; status: string;
+  line_text: string | null; problems: string | null; qa_total: number | null; created_at: string | null;
+  preview_url: string | null; aspect: "3:4" | "9:16";
+}
+export interface CoverGrid {
+  account: string; filter: "all" | "fallbacks" | "failed";
+  accounts: { account_id: string; platform: PostPlatform }[];
+  covers: CoverTile[];
+}
