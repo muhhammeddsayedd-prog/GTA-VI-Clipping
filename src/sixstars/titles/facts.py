@@ -18,7 +18,6 @@ CHAT_WORDS_MAX = 6
 # A spoken line this close to the chat peak is what chat reacted to.
 PEAK_BEFORE_S = 6.0
 PEAK_AFTER_S = 3.0
-MIN_HOURS_INTO_STREAM = 1.0
 _CHAT_STOP = frozenset(
     {
         "the",
@@ -292,14 +291,6 @@ def spoken_numbers(text: str) -> dict[str, float]:
     return found
 
 
-def hours_into_stream(offset_s: float | None) -> float | None:
-    """Whole hours since the stream started, when it is at least an hour (a smaller number is no stake).
-    Whole hours because the model copied "8.9 Hours" into titles despite the rule to round."""
-    if offset_s is None or offset_s < MIN_HOURS_INTO_STREAM * 3600:
-        return None
-    return float(round(offset_s / 3600.0))
-
-
 def chat_words(messages: Iterable[str], limit: int = CHAT_WORDS_MAX) -> tuple[str, ...]:
     """The words most chat messages used (each message counts a word once), common words left out."""
     counts: Counter[str] = Counter()
@@ -315,7 +306,6 @@ def build(
     event: str,
     lines: Sequence[TimedLine],
     peak_s: float | None,
-    offset_s: float | None,
     chat: Iterable[str],
     gta_label: str,
     spoiler: bool,
@@ -325,10 +315,9 @@ def build(
     seen, besides the clip's own streamer."""
     spoken = " ".join(line.text for line in lines)
     others = [name for name in book.names_in(f"{spoken} {event}") if name != streamer]
-    numbers: dict[str, float] = {}
-    if (hours := hours_into_stream(offset_s)) is not None:
-        numbers["hours_into_stream"] = hours
-    numbers.update(spoken_numbers(spoken))
+    # Hours into the stream are not a fact on purpose (owner, 2026-11-23): "X Is 8 Hours Into GTA 6" filled
+    # a third of the staging titles and is no real stake.
+    numbers = spoken_numbers(spoken)
     return TitleFacts(
         streamer=streamer,
         streamer_tier=book.tier_of(streamer),
