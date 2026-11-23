@@ -177,8 +177,27 @@ def first_json(text: str) -> Any:
 
 
 def output_format(schema: type[BaseModel]) -> dict[str, Any]:
-    """The `output_config.format` value that makes the API answer in the shape of `schema`."""
-    return {"type": "json_schema", "schema": anthropic.transform_schema(schema)}
+    """The `output_config.format` value that makes the API answer in the shape of `schema`.
+
+    Every property is made required (`all_required`): each optional property roughly doubles part of the
+    compiled grammar, and the P2 clip-writer schema (20 optional properties) was refused with "Schema is too
+    complex" on every call, so P2 ran on the free-text fallback (AI cost plan A6, 2026-11-23). A field that
+    may be empty stays nullable; the Pydantic model still validates the reply and fills nothing in."""
+    return {"type": "json_schema", "schema": all_required(anthropic.transform_schema(schema))}
+
+
+def all_required(node: Any) -> Any:
+    """`node` with every object's `required` listing all its properties (in place; returned). Pure."""
+    if isinstance(node, dict):
+        properties = node.get("properties")
+        if isinstance(properties, dict):
+            node["required"] = list(properties)
+        for value in node.values():
+            all_required(value)
+    elif isinstance(node, list):
+        for value in node:
+            all_required(value)
+    return node
 
 
 def system_with_schema(system: str, schema: type[BaseModel]) -> str:
