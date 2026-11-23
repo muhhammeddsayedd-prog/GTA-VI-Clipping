@@ -40,6 +40,7 @@ from sixstars.factory import (
     montage,
     music,
     precheck,
+    throttle,
     thumbs,
     tools,
     variants,
@@ -112,7 +113,9 @@ SOURCE_TYPES = ("live", "vod")
 PLATFORMS = ("twitch", "youtube")
 
 
-BeforeWriter = Callable[[music.MusicAnalysis | None], str | None]
+# Gets a function that measures the music of the padded window (None: could not be measured) and returns
+# a reason to skip the clip before the writer, or None.
+BeforeWriter = Callable[[Callable[[], music.MusicAnalysis | None]], str | None]
 
 
 class ClipSkippedError(RuntimeError):
@@ -857,8 +860,8 @@ def produce(
     before the render starts. Raises `ClipSkippedError` when there is no speech or the writer rejects.
     `style` is the design style of this render (`style_id` its catalogue id); None means `cfg.style`.
     `choose_style`, when given, picks the style after the writer and the layout detection instead.
-    `before_writer`, when given, gets the music flags of the padded window (None when they could not be
-    measured) before the clip writer is asked, and returns a reason to skip the clip, or None.
+    `before_writer`, when given, is called before the clip writer with a function that measures the music
+    of the padded window, and returns a reason to skip the clip, or None.
     """
     style = style or cfg.style
     timings: dict[str, int] = {}
@@ -896,10 +899,12 @@ def produce(
         raise ClipSkippedError("no_speech")
     if before_writer is not None:
         started = time.monotonic()
-        window_music: music.MusicAnalysis | None = None
-        if not deps.skip_music:
+
+        def measure_window_music() -> music.MusicAnalysis | None:
+            if deps.skip_music:
+                return None
             try:
-                window_music = music.analyse(
+                return music.analyse(
                     item.source_path,
                     padded,
                     detector=deps.music_detector,
@@ -908,7 +913,9 @@ def produce(
                 )
             except music.MusicDetectorUnavailableError as exc:
                 get_logger("factory").warning("music_detector_unavailable", error=str(exc)[:200])
-        skip = before_writer(window_music)
+                return None
+
+        skip = before_writer(measure_window_music)
         timed("precheck", started)
         if skip is not None:
             raise ClipSkippedError(skip)
@@ -1511,9 +1518,29 @@ def upload_clip(clip_id: str, *, storage: clip_storage.ClipStorage | None = None
     return key
 
 
-def _pre_p2(item: RenderInput, clip_id: str, window_music: music.MusicAnalysis | None) -> str | None:
-    """`factory.precheck` for this clip (AI cost plan A5a): the reason the gate is certain to reject it,
-    or None. A failing check never costs the clip: it is logged and the clip goes on to the writer."""
+def _pre_p2(item: RenderInput, clip_id: str, measure: Callable[[], music.MusicAnalysis | None]) -> str | None:
+    """The checks before the clip writer: `factory.precheck` (AI cost plan A5a, when on) and the queue
+    throttle (`factory.throttle`, A5b). Returns the reason to skip the clip, or None. A failing check never
+    costs the clip: it is logged and the clip goes on to the writer."""
+    now = datetime.now(UTC)
+    if precheck.enabled():
+        reason = _gate_precheck(item, clip_id, measure(), now)
+        if reason is not None:
+            return reason
+    return throttle.assess(
+        clip_id=clip_id,
+        spike_id=item.spike_id,
+        creator_id=item.creator_id,
+        source_type=item.source_type,
+        lane=item.lane,
+        now=now,
+    )
+
+
+def _gate_precheck(
+    item: RenderInput, clip_id: str, window_music: music.MusicAnalysis | None, now: datetime
+) -> str | None:
+    """`factory.precheck` for this clip: the reason the gate is certain to reject it, or None."""
     profile = "express" if item.lane == "spike" else "hourly"
     try:
         reason = precheck.check(
@@ -1522,9 +1549,9 @@ def _pre_p2(item: RenderInput, clip_id: str, window_music: music.MusicAnalysis |
             clip_id,
             window_music.frames if window_music is not None else None,
             window_music.frame_s if window_music is not None else music.FRAME_S,
-            datetime.now(UTC),
+            now,
         )
-    except Exception as exc:  # noqa: BLE001 - see the docstring
+    except Exception as exc:  # noqa: BLE001 - see `_pre_p2`
         get_logger("factory").warning("pre_p2_check_failed", error=f"{type(exc).__name__}: {exc}"[:300])
         return None
     scoring_log.record(
@@ -1584,8 +1611,8 @@ def render_clip(item: RenderInput, *, deps: Deps | None = None, force: bool = Fa
         def choose_writing(writer_input: writer.WriterInput) -> ClipWriting:
             return writer.write(writer_input, lane=ai_lane, client=deps.ai_client)
 
-        def before_writer(window_music: music.MusicAnalysis | None) -> str | None:
-            return _pre_p2(item, row.id, window_music)
+        def before_writer(measure: Callable[[], music.MusicAnalysis | None]) -> str | None:
+            return _pre_p2(item, row.id, measure)
 
         def choose_layout(media: tools.MediaInfo, time_s: float) -> Layout:
             return facecam.get_layout(
@@ -1614,7 +1641,7 @@ def render_clip(item: RenderInput, *, deps: Deps | None = None, force: bool = Fa
                 on_writing=lambda writing, transcript: _store_writing(row.id, writing, transcript),
                 clip_id=row.id,
                 choose_style=choose_style,
-                before_writer=before_writer if precheck.enabled() else None,
+                before_writer=before_writer if precheck.enabled() or throttle.mode() != "off" else None,
             )
         except ClipSkippedError as skipped:
             log.info("clip_skipped", reason=skipped.reason)
