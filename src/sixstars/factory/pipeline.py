@@ -39,6 +39,7 @@ from sixstars.factory import (
     cards,
     effects,
     facecam,
+    faces,
     montage,
     music,
     precheck,
@@ -317,6 +318,9 @@ class RenderJob:
     scaler: str = DEFAULT_SCALER
     # Render v2 (`factory.layout_v2`, D119): with `enabled`, every clip is drawn as layout G or G0.
     layout_v2: LayoutV2Rules = field(default_factory=LayoutV2Rules)
+    # Render v2 R2: the face check of the cam panel (`facecam.detect`) and the detector (None: YuNet).
+    face_rules: faces.FaceDetectRules = field(default_factory=faces.FaceDetectRules)
+    face_detector: faces.FaceDetector | None = None
 
 
 def framed_layout(layout: Layout, style: StyleRules, v2: LayoutV2Rules | None = None) -> Layout:
@@ -395,6 +399,9 @@ class RenderOutcome:
     profanity_count: int
     sfx_times_s: tuple[float, ...]
     nvenc: bool
+    # The layout actually drawn (Render v2: G0 when the cam showed no face) and the face check.
+    layout: Layout | None = None
+    cam_check: dict[str, object] | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -597,6 +604,52 @@ def _move_into_place(finished: Path, destination: Path) -> None:
         finished.unlink(missing_ok=True)
 
 
+def frame_cam(job: RenderJob, *, ffmpeg: str = "ffmpeg") -> tuple[RenderJob, dict[str, object] | None]:
+    """Render v2 R2: find the face in the facecam of a layout-G job, so the cam panel is framed around it.
+    No face in any checked frame (or a check that cannot run) draws the clip as layout G0 instead, never a
+    cam panel without a face. Other layouts, or a G layout that already has its face, are returned as
+    they are (no check: None)."""
+    layout = job.layout
+    if not isinstance(layout, LayoutG) or layout.face_box is not None or not job.layout_v2.enabled:
+        return job, None
+    log = get_logger("factory")
+    try:
+        check = faces.find_cam_face(
+            job.source_path,
+            job.window,
+            layout.facecam_box,
+            job.face_rules,
+            detector=job.face_detector,
+            ffmpeg=ffmpeg,
+        )
+    except (OSError, ValueError, tools.FfmpegError) as exc:
+        log.warning("cam_face_check_failed", error=str(exc)[:200])
+        return replace(job, layout=LayoutG0(layout.overlay_boxes)), {
+            "error": str(exc)[:200],
+            "fallback": "G0",
+        }
+    result: dict[str, object] = check.as_json()
+    if check.face_box is None:
+        log.warning("cam_no_face", frames=check.frames, ms=check.elapsed_ms)
+        return replace(job, layout=LayoutG0(layout.overlay_boxes)), {**result, "fallback": "G0"}
+    log.info("cam_face_found", hits=check.hits, frames=check.frames, ms=check.elapsed_ms)
+    return replace(job, layout=replace(layout, face_box=check.face_box)), result
+
+
+def emit_cam_check(clip_id: str, outcome: RenderOutcome) -> None:
+    """The `clip.cam_no_face` event when a clip planned as layout G was drawn as G0 (Render v2 R2)."""
+    check = outcome.cam_check
+    if check is not None and check.get("fallback") == "G0":
+        events.emit(
+            "clip.cam_no_face",
+            level="warn",
+            entity_type="clip",
+            entity_id=clip_id,
+            message="no face in the facecam: drawn without a cam panel (layout G0)",
+            data=check,
+        )
+
+
 def render_file(job: RenderJob, *, ffmpeg: str = "ffmpeg", ffprobe: str = "ffprobe") -> RenderOutcome:
     """Write the subtitle file and render the clip with ffmpeg.
 
@@ -613,6 +666,7 @@ def render_file(job: RenderJob, *, ffmpeg: str = "ffmpeg", ffprobe: str = "ffpro
         layout=framed_layout(job.layout, style, job.layout_v2),
         hook=chosen_title(job.hook, job.texts, job.payoff_emoji, style) if style.show_title else None,
     )
+    job, cam_check = frame_cam(job, ffmpeg=ffmpeg)
     cam_top = job.layout.kind in ("C", "G")
     words = [word for line in job.lines for word in line.words]
     matcher = job.assets.profanity()
@@ -787,6 +841,8 @@ def render_file(job: RenderJob, *, ffmpeg: str = "ffmpeg", ffprobe: str = "ffpro
         profanity_count=len(profane),
         sfx_times_s=sfx_times,
         nvenc=uses_nvenc(params, job.mode, nvenc_available=nvenc),
+        layout=job.layout,
+        cam_check=cam_check,
     )
 
 
@@ -1069,6 +1125,7 @@ def produce(
         broll_from=padded,
         scaler=cfg.scaler,
         layout_v2=cfg.layout_v2,
+        face_rules=cfg.face_detect,
     )
     outcome = render_file(job, ffmpeg=deps.ffmpeg, ffprobe=deps.ffprobe)
     timed("render", started)
@@ -1077,7 +1134,7 @@ def produce(
         writing=writing,
         window=window,
         lines=tuple(clip_text),
-        layout=framed_layout(layout, style, cfg.layout_v2),
+        layout=outcome.layout or framed_layout(layout, style, cfg.layout_v2),
         music=analysis,
         outcome=outcome,
         timings_ms=timings,
@@ -1293,8 +1350,10 @@ def _finish(clip_id: str, item: RenderInput, cfg: FactoryConfig, produced: Produ
                 "bleeps": [[round(span.start_s, 3), round(span.end_s, 3)] for span in outcome.bleeps],
                 "sfx_times_s": list(outcome.sfx_times_s),
                 "nvenc": outcome.nvenc,
+                "cam_check": outcome.cam_check,
             },
         )
+        emit_cam_check(clip_id, outcome)
 
 
 def _prepare_variants(
@@ -1479,7 +1538,7 @@ def render_story(
             writing=writing,
             window=window,
             lines=tuple(clip_text),
-            layout=framed_layout(job.layout, story_job.style, job.layout_v2),
+            layout=outcome.layout or framed_layout(job.layout, story_job.style, job.layout_v2),
             music=analysis,
             outcome=outcome,
             timings_ms={"render": int((time.monotonic() - started) * 1000)},
@@ -1502,6 +1561,7 @@ def render_story(
             entity_id=parent_id,
             data={"story_clip_id": row.id, "duration_s": round(outcome.clip_duration_s, 3)},
         )
+        emit_cam_check(row.id, outcome)
         log.info("story_rendered", story_clip_id=row.id, duration_s=round(outcome.clip_duration_s, 2))
         return row.id
     except Exception as exc:  # noqa: BLE001 - see the docstring

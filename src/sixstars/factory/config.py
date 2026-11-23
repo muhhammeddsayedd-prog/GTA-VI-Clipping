@@ -10,6 +10,7 @@ from typing import Literal
 from sixstars import lengths, settings
 from sixstars.factory.anchor import CutRules
 from sixstars.factory.director import DEFAULT_DIRECTOR, DirectorRules
+from sixstars.factory.faces import FaceDetectRules
 from sixstars.factory.layout import DEFAULT_SCALER, LayoutV2Rules
 from sixstars.factory.params import FactoryParams
 from sixstars.factory.pauses import SnapRules
@@ -107,6 +108,7 @@ class FactoryConfig:
     story: StoryRules = StoryRules()  # development-plan/M18 Phase C
     scaler: str = DEFAULT_SCALER  # factory.layout_v2.scaler (D119)
     layout_v2: LayoutV2Rules = LayoutV2Rules()  # factory.layout_v2 (Render v2, D119)
+    face_detect: FaceDetectRules = FaceDetectRules()  # facecam.detect (Render v2 R2/R3)
 
     @classmethod
     def from_mapping(cls, values: Mapping[str, object], lane: str) -> "FactoryConfig":
@@ -146,6 +148,7 @@ class FactoryConfig:
             story=StoryRules.from_setting(values.get("factory.story")),
             scaler=layout_scaler(values.get("factory.layout_v2")),
             layout_v2=LayoutV2Rules.from_setting(values.get("factory.layout_v2")),
+            face_detect=FaceDetectRules.from_setting(values.get("facecam.detect")),
         )
 
     @classmethod
@@ -173,6 +176,7 @@ class FactoryConfig:
         values["factory.story"] = settings.get("factory.story", None)
         # Render v2 (D119); absent before its settings migration: ffmpeg's default scaler.
         values["factory.layout_v2"] = settings.get("factory.layout_v2", None)
+        values["facecam.detect"] = settings.get("facecam.detect", None)
         return with_cut_rules(cls.from_mapping(values, lane), scoring_config.flag("cut.adaptive"))
 
     @classmethod
