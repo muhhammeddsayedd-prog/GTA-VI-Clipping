@@ -273,8 +273,8 @@ def test_transcribe_window_translates_other_languages(
         ),
     )
     monkeypatch.setattr(transcripts.calls, "_guard", lambda prompt_id, lane: None)
-    monkeypatch.setattr(transcripts.calls, "_writer_model", lambda: "fake-model")
-    monkeypatch.setattr(transcripts.calls, "_system_values", lambda: {"game": "GTA", "watermark": "@x"})
+    monkeypatch.setattr(transcripts.calls, "model_for", lambda prompt_id: "fake-model")
+    monkeypatch.setattr(transcripts.calls, "system_values", lambda: {"game": "GTA", "watermark": "@x"})
     client = FakeAnthropicClient(
         {
             "p8_translate_lines": {

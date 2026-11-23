@@ -100,6 +100,20 @@ class _Reply:
     cost: float
 
 
+@dataclass(frozen=True, slots=True)
+class RawResult:
+    """The reply of `complete_raw_json`: the parsed JSON (None when unusable), the cost, why it failed."""
+
+    data: Any
+    cost: float
+    error: str | None
+    latency_ms: int
+
+
+def _ms(started: float) -> int:
+    return int((time.monotonic() - started) * 1000)
+
+
 class AnthropicError(ClientError):
     """The model call failed or its output could not be used."""
 
@@ -235,6 +249,7 @@ class AnthropicClient:
         ref_id: str | None,
         response_format: dict[str, Any] | None = None,
         attempt: int = 1,
+        service: str = SERVICE,
     ) -> _Reply:
         """One Messages request. Returns the reply text, stop reason and its token counts and cost.
 
@@ -267,12 +282,12 @@ class AnthropicClient:
                 status=exc.status_code,
                 message=str(exc.message)[:LOGGED_REASON_CHARS],
             )
-            self._record_failed_call(prompt_id, model, ref_id, attempt, f"HTTP {exc.status_code}")
+            self._record_failed_call(prompt_id, model, ref_id, attempt, f"HTTP {exc.status_code}", service)
             kind = AnthropicBadRequest if exc.status_code == 400 else AnthropicError
             raise kind(f"Anthropic API returned HTTP {exc.status_code}") from exc
         except anthropic.APIConnectionError as exc:
             self._log.warning("api_call_failed", prompt_id=prompt_id, error=type(exc).__name__)
-            self._record_failed_call(prompt_id, model, ref_id, attempt, type(exc).__name__)
+            self._record_failed_call(prompt_id, model, ref_id, attempt, type(exc).__name__, service)
             raise AnthropicError("Anthropic API could not be reached") from exc
 
         used = response.usage
@@ -307,7 +322,7 @@ class AnthropicClient:
         if response.stop_reason == "refusal":
             details = getattr(response, "stop_details", None)
             category = getattr(details, "category", None)
-            self._record_usage(prompt_id, reply, ref_id, attempt, "refusal", category)
+            self._record_usage(prompt_id, reply, ref_id, attempt, "refusal", category, service)
             raise AnthropicRefusal(category)
         return reply
 
@@ -319,10 +334,11 @@ class AnthropicClient:
         attempt: int,
         outcome: usage.Outcome,
         detail: str | None = None,
+        service: str = SERVICE,
     ) -> None:
         """One `api_usage` row for a request that got a response."""
         usage.record(
-            SERVICE,
+            service,
             prompt_id,
             model=reply.model,
             input_tokens=reply.input_tokens + reply.cache_write + reply.cache_read,
@@ -340,17 +356,68 @@ class AnthropicClient:
         )
 
     def _record_failed_call(
-        self, prompt_id: str, model: str, ref_id: str | None, attempt: int, detail: str
+        self,
+        prompt_id: str,
+        model: str,
+        ref_id: str | None,
+        attempt: int,
+        detail: str,
+        service: str = SERVICE,
     ) -> None:
         """One zero-cost `api_usage` row for a request that got no usable response."""
         usage.record(
-            SERVICE,
+            service,
             prompt_id,
             model=model,
             cost_usd=0.0,
             ref_id=ref_id,
             detail=usage.CallDetail(attempt=attempt, outcome="http_error", detail=detail),
         )
+
+    def complete_raw_json(
+        self,
+        prompt_id: str,
+        system: str,
+        user_text: str,
+        json_schema: dict[str, Any],
+        model: str,
+        max_tokens: int,
+        images: Sequence[bytes] | None = None,
+        effort: Effort | None = DEFAULT_EFFORT,
+        ref_id: str | None = None,
+        service: str = SERVICE,
+    ) -> RawResult:
+        """One structured-output request whose reply is parsed as JSON but not validated against a Pydantic
+        model (shadow runs, AI cost plan B1: the schema arrives as JSON). No repair retries. Usage is recorded
+        under `service`. Never raises for an API failure or a refusal: the result says what went wrong."""
+        content: list[dict[str, Any]] = [image_block(image) for image in images or ()]
+        content.append({"type": "text", "text": user_text})
+        started = time.monotonic()
+        try:
+            reply = self._call(
+                prompt_id,
+                model,
+                system,
+                content,
+                max(max_tokens, MIN_MAX_TOKENS),
+                True,
+                effort,
+                ref_id,
+                {"type": "json_schema", "schema": json_schema},
+                1,
+                service,
+            )
+        except AnthropicError as exc:
+            return RawResult(None, 0.0, f"{type(exc).__name__}: {exc}"[:LOGGED_REASON_CHARS], _ms(started))
+        try:
+            data = first_json(reply.text)
+        except ValueError as exc:
+            self._record_usage(
+                prompt_id, reply, ref_id, 1, "invalid", str(exc)[:LOGGED_REASON_CHARS], service
+            )
+            return RawResult(None, reply.cost, f"not valid JSON: {exc}"[:LOGGED_REASON_CHARS], _ms(started))
+        self._record_usage(prompt_id, reply, ref_id, 1, "ok", None, service)
+        return RawResult(data, reply.cost, None, _ms(started))
 
     def complete_json[T: BaseModel](
         self,
@@ -365,6 +432,7 @@ class AnthropicClient:
         effort: Effort | None = DEFAULT_EFFORT,
         ref_id: str | None = None,
         tag: str | None = None,
+        cache_content: bool = False,
     ) -> T:
         """Ask `model` for JSON matching `schema` and return the validated object.
 
@@ -384,12 +452,18 @@ class AnthropicClient:
         Every request is one `api_usage` row with its attempt number and outcome (`ok`, `invalid` with the
         failing check, `refusal`, `http_error`); `tag` marks a call made for a special reason (for example
         `title_retry`) in the row's `detail`.
+
+        `cache_content` also caches the user content (images and text; prompt-caching breakpoint on its last
+        block), for a prompt that is sent again unchanged soon (the samples of P9V): the next ask reads the
+        frames from the cache instead of paying for them again.
         """
         content: list[dict[str, Any]] = [image_block(image) for image in images or ()]
         if isinstance(user_content, str):
             content.append({"type": "text", "text": user_content})
         else:
             content.extend(user_content)
+        if cache_content and content:
+            content[-1] = {**content[-1], "cache_control": {"type": "ephemeral"}}
         limit = max(max_tokens, MIN_MAX_TOKENS)
         name = _schema_name(schema)
         response_format: dict[str, Any] | None

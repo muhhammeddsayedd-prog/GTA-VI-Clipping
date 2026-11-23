@@ -16,8 +16,8 @@ def test_schema_objects_exist() -> None:
     )
     # 18 from 0001 plus viewer_clips (0019), youtube_channel_cache (0024), scoring_config,
     # scoring_config_history, scoring_log (0026), clip_renders (0027), post_metrics_snapshots (0033) and
-    # clip_titles (0040)
-    assert len(tables) == 26
+    # clip_titles (0040), ai_shadow (0041)
+    assert len(tables) == 27
     assert db.fetch_one("select * from v_queue_depth") is None
     assert db.fetch_all("select * from v_posts_last_24h") == []
 

@@ -32,12 +32,12 @@ import statistics
 from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import Protocol
+from typing import Any, Protocol
 
 from pydantic import BaseModel
 
 from sixstars import settings
-from sixstars.ai import prompt_files, titles
+from sixstars.ai import prompt_files, shadow, titles
 from sixstars.ai.images import prepare_jpeg
 from sixstars.ai.schemas import (
     ClipScore,
@@ -293,11 +293,43 @@ def _writer_model() -> str:
     return settings.get_str("ai.model_writer")
 
 
+# The role each prompt takes its model from when `ai.model.<prompt_id>` is not set (docs/15).
+WRITER_PROMPTS = frozenset({P2, P3, P4, P8})
+MODEL_SETTING_PREFIX = "ai.model."
+PROVIDERS = frozenset({"anthropic"})
+
+
+def parse_model_setting(value: object) -> str | None:
+    """The model id of an `ai.model.<prompt_id>` value `"provider:model"` (a bare model id means
+    Anthropic), or None when the value is missing or names a provider this client cannot call. Pure."""
+    if not isinstance(value, str) or not value.strip():
+        return None
+    provider, _, model = value.strip().rpartition(":")
+    provider = provider or "anthropic"
+    if provider not in PROVIDERS or not model:
+        return None
+    return model
+
+
+def model_for(prompt_id: str) -> str:
+    """The model a prompt runs on (AI cost plan A3): `ai.model.<prompt_id>` when set, else its role's model
+    (`ai.model_writer`, `ai.model_fast`, or for P9V `ai.visual_score_model`)."""
+    raw = settings.get(MODEL_SETTING_PREFIX + prompt_id, None)
+    chosen = parse_model_setting(raw)
+    if raw is not None and chosen is None:
+        _log.warning("ai_model_setting_ignored", prompt_id=prompt_id, value=str(raw)[:80])
+    if chosen is not None:
+        return chosen
+    if prompt_id == P9V:
+        return _visual_role_model()
+    return _writer_model() if prompt_id in WRITER_PROMPTS else _fast_model()
+
+
 def _fast_model() -> str:
     return settings.get_str("ai.model_fast")
 
 
-def _system_values() -> dict[str, object]:
+def system_values() -> dict[str, object]:
     """Values every system prompt may use. They change only when a setting changes, so the cached
     prompt prefix stays stable."""
     return {
@@ -316,16 +348,19 @@ def _ask[T: BaseModel](
     ref_id: str | None = None,
     extra_note: str | None = None,
     tag: str | None = None,
+    cache_content: bool = False,
 ) -> T:
     """Render the prompt and ask the client. `tag` names a special call in `api_usage.detail`."""
     prompt = prompt_files.load(prompt_id)
     user = prompt.render_user(user_values)
     if extra_note:
         user = f"{user}\n\n{extra_note}"
-    tagged: dict[str, str] = {"tag": tag} if tag else {}
+    tagged: dict[str, Any] = {"tag": tag} if tag else {}
+    if cache_content:
+        tagged["cache_content"] = True
     return _client(client).complete_json(
         prompt_id,
-        prompt.render_system(_system_values()),
+        prompt.render_system(system_values()),
         user,
         schema,
         model,
@@ -385,7 +420,7 @@ def confirm_spikes(
     if len(set(ids)) != len(ids):
         raise ValueError("spike ids must be unique")
     _guard(P1, lane)
-    model = _fast_model()
+    model = model_for(P1)
     verdicts: list[SpikeVerdict] = []
     for start in range(0, len(spikes), SPIKE_BATCH_SIZE):
         batch = spikes[start : start + SPIKE_BATCH_SIZE]
@@ -458,7 +493,7 @@ def _title_retry[T: ClipWriting](
     try:
         _guard(P2, lane)
         retry = _ask(
-            P2, schema, _writer_model(), values, client, ref_id=clip_id, extra_note=note, tag="title_retry"
+            P2, schema, model_for(P2), values, client, ref_id=clip_id, extra_note=note, tag="title_retry"
         )
     except Exception as exc:  # noqa: BLE001 - the first reply is still usable
         _log.warning("title_retry_failed", clip_id=clip_id, error=str(exc)[:300])
@@ -531,7 +566,16 @@ def write_clip(
         ctx.story_min_s,
         ctx.story_max_s,
     )
-    reply = _ask(P2, schema, _writer_model(), values, client, ref_id=ctx.clip_id)
+    reply = _ask(P2, schema, model_for(P2), values, client, ref_id=ctx.clip_id)
+    shadow.maybe_enqueue(
+        P2,
+        lane=lane,
+        ref_id=ctx.clip_id,
+        values=values,
+        reply_model=schema,
+        primary_model=model_for(P2),
+        primary_output=reply,
+    )
     reply = _title_retry(reply, schema, values, lane, client, ctx.clip_id)
     writing = enforce_policy(reply, now, block_until)
     samples = settings.get_int("ai.score_samples", 1)
@@ -626,7 +670,7 @@ def score_clip(
             f"{_seconds(line.start_s - cut_s)}-{_seconds(line.end_s - cut_s)} | {line.text}" for line in kept
         ),
     }
-    model = _fast_model()
+    model = model_for(P9)
     scores = [_ask(P9, ClipScore, model, values, client, ref_id=ctx.clip_id) for _ in range(samples)]
     return median_score(scores)
 
@@ -730,13 +774,37 @@ def _reaction_block(chat: ChatReaction | None) -> str:
 
 
 def visual_score_model() -> str:
-    """The model id P9V runs on: the fast or the writer model, as `ai.visual_score_model` says."""
+    """The model id P9V runs on: `ai.model.p9_visual_score` when set, else the fast or the writer model, as
+    `ai.visual_score_model` says."""
+    return model_for(P9V)
+
+
+def _visual_role_model() -> str:
     role = settings.get_str("ai.visual_score_model", "writer")
     if role == "writer":
         return _writer_model()
     if role == "fast":
         return _fast_model()
     raise ValueError(f"ai.visual_score_model must be 'fast' or 'writer', not {role!r}")
+
+
+def visual_values(clip: RenderedClip, frame_times_s: Sequence[float]) -> dict[str, object]:
+    """The values of the P9V user prompt for `clip` with one frame at each of `frame_times_s`. Pure."""
+    lines = "\n".join(f"{_seconds(line.start_s)}-{_seconds(line.end_s)} | {line.text}" for line in clip.lines)
+    return {
+        "length_s": f"{clip.length_s:.0f}",
+        "hook": _one_line(clip.hook) or "(none)",
+        "commentary": _one_line(clip.commentary) if clip.commentary else "(none)",
+        "count": len(frame_times_s),
+        "frame_times": ", ".join(f"{time_s:.1f}" for time_s in frame_times_s),
+        "lines": lines or "(nobody speaks)",
+        "chat_summary": (
+            audience_summary(clip.audience)
+            if clip.chat is None and clip.audience is not None
+            else chat_summary(clip.chat)
+        ),
+        "chat": _reaction_block(clip.chat),
+    }
 
 
 def score_clip_visual(
@@ -755,6 +823,15 @@ def score_clip_visual(
     return scored
 
 
+def needs_more_samples(first: int, pass_line: float | None, margin: float) -> bool:
+    """Adaptive P9V (AI cost plan A2): ask again only when the first score is from `margin` below the pass
+    line up to the line itself, where the median of more asks can change pass or fail. Without a pass line
+    every sample is asked. Pure."""
+    if pass_line is None:
+        return True
+    return pass_line - margin <= first <= pass_line
+
+
 def score_clip_visual_samples(
     clip: RenderedClip,
     frames: Sequence[bytes],
@@ -763,6 +840,8 @@ def score_clip_visual_samples(
     samples: int = 1,
     lane: BudgetKind = "vod",
     client: AnthropicClient | None = None,
+    pass_line: float | None = None,
+    margin: float = 1.0,
 ) -> tuple[VisualClipScore, list[int]]:
     """P9V: score the rendered clip from `frames` (JPEG, in time order, taken at `frame_times_s` of clip
     time), its hook, its subtitle lines and the chat reaction, on the same scales as the clip writer.
@@ -773,7 +852,11 @@ def score_clip_visual_samples(
     family when a call fails (`BudgetExceededError` for a VOD clip over the daily budget); the caller
     keeps the clip writer's score then.
 
-    Also returns each ask's own (bounded) score, in the order asked, so the gate can store them."""
+    Also returns each ask's own (bounded) score, in the order asked, so the gate can store them.
+
+    With a `pass_line` (adaptive sampling) the further samples are asked only when the first score is within
+    `margin` below or at the line (`needs_more_samples`). When more than one sample may be asked, the frames
+    and text are cached with the first ask, so the others read them from the prompt cache."""
     if samples < 1:
         raise ValueError("samples must be at least 1")
     if not frames:
@@ -782,27 +865,25 @@ def score_clip_visual_samples(
         raise ValueError(f"score_clip_visual takes at most {VISUAL_FRAMES_MAX} frames")
     if len(frame_times_s) != len(frames):
         raise ValueError("one time is needed for each frame")
-    model = visual_score_model()
+    model = model_for(P9V)
     _guard(P9V, lane)
     images = [prepare_jpeg(frame, max_side=VISUAL_SCORE_MAX_SIDE_PX).data for frame in frames]
-    lines = "\n".join(f"{_seconds(line.start_s)}-{_seconds(line.end_s)} | {line.text}" for line in clip.lines)
-    values: dict[str, object] = {
-        "length_s": f"{clip.length_s:.0f}",
-        "hook": _one_line(clip.hook) or "(none)",
-        "commentary": _one_line(clip.commentary) if clip.commentary else "(none)",
-        "count": len(images),
-        "frame_times": ", ".join(f"{time_s:.1f}" for time_s in frame_times_s),
-        "lines": lines or "(nobody speaks)",
-        "chat_summary": (
-            audience_summary(clip.audience)
-            if clip.chat is None and clip.audience is not None
-            else chat_summary(clip.chat)
-        ),
-        "chat": _reaction_block(clip.chat),
-    }
+    values = visual_values(clip, frame_times_s)
     asked: list[VisualClipScore] = []
-    for _ in range(samples):
-        reply = _ask(P9V, VisualClipScore, model, values, client, images=images, ref_id=clip.clip_id)
+    cache = samples > 1
+    for index in range(samples):
+        if index == 1 and not needs_more_samples(asked[0].score, pass_line, margin):
+            break
+        reply = _ask(
+            P9V,
+            VisualClipScore,
+            model,
+            values,
+            client,
+            images=images,
+            ref_id=clip.clip_id,
+            cache_content=cache,
+        )
         asked.append(reply.model_copy(update={"score": bounded_score(reply)}))
     scored = median_visual_score(asked)
     _log.info(
@@ -849,7 +930,7 @@ def sentence_ends(
         "last": len(words) - 1,
         "words": " ".join(f"{index}:{_one_line(word)}" for index, word in enumerate(words)),
     }
-    reply = _ask(P10, sentence_ends_schema(len(words)), _fast_model(), values, client, ref_id=ref_id)
+    reply = _ask(P10, sentence_ends_schema(len(words)), model_for(P10), values, client, ref_id=ref_id)
     return list(reply.ends)
 
 
@@ -902,7 +983,7 @@ def pick_moments(
     if not chunks:
         return []
     _guard(P3, "vod")
-    model = _writer_model()
+    model = model_for(P3)
     slices = slice_chunks(chunks)
     found: list[Moment] = []
     failed: list[AnthropicError] = []
@@ -966,7 +1047,7 @@ def detect_layout(
     seen = _ask(
         P4,
         layout_schema(image.width, image.height),
-        _writer_model(),
+        model_for(P4),
         values,
         client,
         images=[image.data],
@@ -999,7 +1080,7 @@ def visual_check(
     _guard(P5, lane)
     images = [prepare_jpeg(frame).data for frame in frames]
     values: dict[str, object] = {"count": len(images)}
-    return _ask(P5, VisualVerdict, _fast_model(), values, client, images=images, ref_id=ref_id)
+    return _ask(P5, VisualVerdict, model_for(P5), values, client, images=images, ref_id=ref_id)
 
 
 # ── P6 permission_read ───────────────────────────────────────
@@ -1021,7 +1102,7 @@ def read_permission(
         "description": description.strip() or "(empty)",
         "titles": "\n".join(shown) if shown else "(none)",
     }
-    return _ask(P6, PermissionVerdict, _fast_model(), values, client, ref_id=ref_id)
+    return _ask(P6, PermissionVerdict, model_for(P6), values, client, ref_id=ref_id)
 
 
 # ── P7 takedown_classify ─────────────────────────────────────
@@ -1041,7 +1122,7 @@ def classify_takedown(
         "subject": _one_line(subject) or "(no subject)",
         "body": body.strip()[:TAKEDOWN_BODY_MAX_CHARS] or "(empty)",
     }
-    return _ask(P7, TakedownVerdict, _fast_model(), values, client, ref_id=ref_id)
+    return _ask(P7, TakedownVerdict, model_for(P7), values, client, ref_id=ref_id)
 
 
 # ── P8 translate_lines ───────────────────────────────────────
@@ -1059,7 +1140,7 @@ def translate_segments(
     if not segments:
         return []
     _guard(P8, lane)
-    model = _writer_model()
+    model = model_for(P8)
     translated: list[TranslatedSegment] = []
     for start in range(0, len(segments), TRANSLATE_BATCH_SIZE):
         batch = segments[start : start + TRANSLATE_BATCH_SIZE]

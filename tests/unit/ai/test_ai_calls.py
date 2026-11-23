@@ -779,3 +779,78 @@ def test_audience_evidence_replaces_the_chat_summary_only_without_a_chat_spike()
     calls.score_clip_visual(rendered(audience=evidence), [frame(64, 64)], [1.0], client=fake)
     user = only_call(fake)["user_content"]
     assert "20 messages from 18 chatters" in user and "No chat spike" not in user
+
+
+# ── AI cost plan A2: adaptive P9V samples ────────────────────
+
+
+@pytest.mark.parametrize(
+    ("first", "expected_calls"),
+    [
+        (seen_score(8, payoff=8, clarity=8), 1),  # clearly over the line: one ask
+        (seen_score(7), 3),  # on the line: the median decides
+        (seen_score(6, payoff=6, clarity=6), 3),  # one below: the median may still pass it
+        (seen_score(5, payoff=5, clarity=5), 1),  # clearly under: one ask
+    ],
+)
+def test_adaptive_sampling_asks_again_only_near_the_pass_line(
+    first: dict[str, Any], expected_calls: int
+) -> None:
+    fake = FakeAnthropicClient({calls.P9V: [first, seen_score(7), seen_score(7)]})
+    scored_clip, asked = calls.score_clip_visual_samples(
+        rendered(), [frame(64, 64)], [1.0], samples=3, client=fake, pass_line=7, margin=1
+    )
+    assert len(fake.calls) == expected_calls == len(asked)
+    assert scored_clip.score == (asked[0] if expected_calls == 1 else 7)
+
+
+def test_without_a_pass_line_every_sample_is_asked() -> None:
+    fake = FakeAnthropicClient({calls.P9V: seen_score(8, payoff=8, clarity=8)})
+    calls.score_clip_visual_samples(rendered(), [frame(64, 64)], [1.0], samples=3, client=fake)
+    assert len(fake.calls) == 3
+    assert calls.needs_more_samples(9, None, 1.0)
+    assert not calls.needs_more_samples(9, 7.0, 1.0) and calls.needs_more_samples(6, 7.0, 1.0)
+
+
+def test_cache_content_marks_the_last_user_block(scripted: Any) -> None:
+    client, sdk = scripted('{"tier": "auto", "evidence": null}')
+    client.complete_json(
+        "p9_visual_score",
+        "system",
+        "user",
+        calls.PermissionVerdict,
+        "claude-sonnet-5-5",
+        1024,
+        images=[frame(64, 64)],
+        cache_content=True,
+    )
+    content = sdk.requests[0]["messages"][0]["content"]
+    assert content[0]["type"] == "image" and "cache_control" not in content[0]
+    assert content[-1] == {"type": "text", "text": "user", "cache_control": {"type": "ephemeral"}}
+
+
+# ── AI cost plan A3: a model per prompt ──────────────────────
+
+
+def test_each_prompt_takes_its_roles_model_by_default(ai_settings: dict[str, Any]) -> None:
+    assert calls.model_for(calls.P2) == calls.model_for(calls.P3) == "claude-sonnet-5-5"
+    assert calls.model_for(calls.P1) == calls.model_for(calls.P7) == "claude-haiku-5-5"
+    assert calls.model_for(calls.P9V) == "claude-sonnet-5-5"  # ai.visual_score_model defaults to writer
+
+
+def test_a_prompt_setting_moves_only_that_prompt(ai_settings: dict[str, Any]) -> None:
+    ai_settings["ai.model.p3_vod_moment_picker"] = "anthropic:claude-haiku-5-5"
+    ai_settings["ai.model.p9_visual_score"] = "claude-haiku-5-5"
+    assert calls.model_for(calls.P3) == "claude-haiku-5-5"
+    assert calls.model_for(calls.P9V) == calls.visual_score_model() == "claude-haiku-5-5"
+    assert calls.model_for(calls.P2) == "claude-sonnet-5-5"
+    fake = FakeAnthropicClient({calls.P3: {"moments": []}})
+    calls.pick_moments([TranscriptChunk(0, 30, "hello")], 0, 8, 20, 60, client=fake)
+    assert only_call(fake)["model"] == "claude-haiku-5-5"
+
+
+def test_a_provider_this_client_cannot_call_is_ignored(ai_settings: dict[str, Any]) -> None:
+    ai_settings["ai.model.p2_clip_writer"] = "openrouter:deepseek/deepseek-v4-flash"
+    assert calls.model_for(calls.P2) == "claude-sonnet-5-5"
+    assert calls.parse_model_setting("") is None and calls.parse_model_setting(None) is None
+    assert calls.parse_model_setting("anthropic:claude-opus-5-5") == "claude-opus-5-5"

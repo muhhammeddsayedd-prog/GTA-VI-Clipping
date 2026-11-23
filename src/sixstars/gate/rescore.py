@@ -27,7 +27,7 @@ from pathlib import Path
 from typing import Any
 
 from sixstars import events, settings
-from sixstars.ai import calls
+from sixstars.ai import calls, shadow
 from sixstars.ai.schemas import ScoreParts, VisualClipScore
 from sixstars.clients.anthropic_client import AnthropicClient, BudgetKind
 from sixstars.factory import lines as subtitle_lines
@@ -212,6 +212,7 @@ def run(
     *,
     client: AnthropicClient | None = None,
     ffmpeg: str = "ffmpeg",
+    pass_line: float | None = None,
 ) -> tuple[store.ClipRow, Shots | None]:
     """Score the rendered clip and store the score. Returns the row the gate should judge (reloaded when
     the score was stored) and the extracted frames for P5 (None when they could not be extracted).
@@ -230,6 +231,7 @@ def run(
         peak = chat.peak_s if chat is not None else None
         audience = None if chat is not None else viewer_audience(row)
         shots = visuals.sample_score_frames(Path(row.local_path), row.duration_s, count, peak, ffmpeg)
+        adaptive = settings.get_bool("ai.visual_score_adaptive", False)
         scored, asked = calls.score_clip_visual_samples(
             rendered_clip(row, chat, audience),
             [jpeg for _, jpeg in shots],
@@ -237,14 +239,17 @@ def run(
             samples=samples,
             lane=lane,
             client=client,
+            pass_line=pass_line if adaptive else None,
+            margin=settings.get_float("ai.visual_score_margin", 1.0),
         )
-        document = score_document(row, scored, calls.visual_score_model(), len(shots), samples, asked)
+        document = score_document(row, scored, calls.visual_score_model(), len(shots), len(asked), asked)
         stored = store.store_visual_score(row.id, scored.score, document)
     except calls.BudgetExceededError:
         raise
     except Exception as exc:  # noqa: BLE001 - whatever went wrong, the writer's score stands
         _failed(row, exc)
         return row, shots
+    _shadow(row, lane, rendered_clip(row, chat, audience), shots, scored, asked)
     get_logger("gate").info(
         "gate_visual_score",
         writer_score=_score(row),
@@ -256,6 +261,31 @@ def run(
     )
     fresh = store.get_clip(row.id) if stored else None
     return (fresh or row), shots
+
+
+def _shadow(
+    row: store.ClipRow,
+    lane: BudgetKind,
+    clip: calls.RenderedClip,
+    shots: Shots,
+    scored: VisualClipScore,
+    asked: Sequence[int],
+) -> None:
+    """Queue the shadow run of this P9V call when it is in the sample (AI cost plan B1). Never raises."""
+    try:
+        times = [time_s for time_s, _ in shots]
+        shadow.maybe_enqueue(
+            calls.P9V,
+            lane=lane,
+            ref_id=row.id,
+            values=calls.visual_values(clip, times),
+            reply_model=VisualClipScore,
+            primary_model=calls.visual_score_model(),
+            primary_output={**scored.model_dump(mode="json"), "asked": list(asked)},
+            frames={"path": row.local_path, "times": times},
+        )
+    except Exception as exc:  # noqa: BLE001 - a shadow run must never cost the clip
+        get_logger("gate").warning("shadow_failed", error=f"{type(exc).__name__}: {exc}"[:300])
 
 
 def p5_frames(shots: Sequence[tuple[float, bytes]] | None, duration_s: float) -> list[bytes] | None:

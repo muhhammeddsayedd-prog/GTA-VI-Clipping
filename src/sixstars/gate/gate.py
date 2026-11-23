@@ -345,7 +345,9 @@ def run_gate(clip_id: str, *, deps: GateDeps | None = None) -> GateOutcome:
         if rescore.wanted(row):
             best = _decide(rescore.with_top_score(row), file, _NOTHING_SEEN, state, settings, now, frames)
             if best.verdict is not Verdict.REJECT:
-                row, shots = rescore.run(row, client=deps.ai_client, ffmpeg=deps.ffmpeg)
+                row, shots = rescore.run(
+                    row, client=deps.ai_client, ffmpeg=deps.ffmpeg, pass_line=settings.hourly.min_score
+                )
         row = overhaul.boost_row(row, notes)
         optimistic = _decide(row, file, _NOTHING_SEEN, state, settings, now, frames)
         if optimistic.verdict is Verdict.REJECT:
