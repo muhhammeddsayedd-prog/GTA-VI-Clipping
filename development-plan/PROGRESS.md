@@ -724,7 +724,7 @@ Read-only production analysis, 11-17 to 11-22:
   - Music uses the lowest ratio any cut of the padded window could have.
   - A spike-lane clip is rejected only when both the express and the hourly profile fail.
   - The daily cap is skipped in the last 30 minutes before 00:00 UTC.
-- **A5b** (migration 0039, `factory.pre_p2_throttle` = `"log"`, `factory.pre_p2_queue_min` = 40)
+- **A5b** (migration 0044, `factory.pre_p2_throttle` = `"log"`, `factory.pre_p2_queue_min` = 40)
   - `factory/throttle.py` logs `would_skip` / `keep` per hourly candidate to `scoring_log`; nothing is enforced.
   - **Effective queue:** approved hourly clips that the busiest hourly account (at its 24-hour pace) reaches before `posting.max_clip_age_h`.
   - **Candidate rank:** chat percentile × spike bonus × freshness, compared with the queue median.
@@ -887,3 +887,26 @@ Read-only production analysis, 11-17 to 11-22:
 - C1 is a visible look change on every clip: facecam 672 → ≥ 768 px in layout C, and phrase captions in the first 2 s and around the peak. Needs the owner's yes before building.
 - YouTube traffic-source reward needs a YouTube OAuth refresh token (`sixstars youtube auth`).
 - OCR: RapidOCR (PP-OCR models on onnxruntime) proposed instead of the paddlepaddle install.
+
+## Cover engine C2 — migration, config, buckets (2026-11-23)
+
+**Branch:** `covers-c2` (on `covers-c1`). Owner, 23 Nov: merge everything at the end, once the other sessions are done. Staging verification of C1+ is batched after that merge.
+
+### What was built
+
+- `supabase/migrations/0044_cover_engine.sql`:
+  - the `covers` table from docs/29a §8, plus `render_id` (M18 renders several styles per clip), `account_id` (diversity and grid are per account) and `mode` (full / frame_only), with check constraints and RLS;
+  - the eleven `cover.*` keys, with `cover.enabled` off everywhere;
+  - buckets `covers-work` (private) and `covers-public` (public).
+- `covers/config.py` `CoverConfig`:
+  - `from_values` is pure; `load` reads `scoring_config` and records the version;
+  - helpers `mode_for`, `brand_mark_for`, `runs_for`, `deadline_for`, and `lane_key(lane, campaign_slug)`.
+- `covers/store.py`: insert, `set_status`, `recent_for_account`, `recent_lines`.
+- `storage.py`: `public_url`, `cover_work_key`, `cover_public_key`.
+- Tests: `tests/unit/covers/test_covers_config.py` and `tests/integration/test_cover_engine_migration.py`.
+
+### Deviations
+
+- Migration 0044 instead of 0028.
+- `cover.enabled` is seeded `false` (the prompt's staging default is `true`). One migration serves both environments, and production must start off, so staging is switched on by hand.
+- `cover.lane_modes` and `cover.brand_mark` include `spike` next to `normal`: our live lane is ours, like the normal lane. Campaign lanes (`campaign:<slug>`, from the unmerged `clipcamp-1`) fall to `*`, which is `frame_only` with no mark.
