@@ -19,7 +19,10 @@ from sixstars.factory.layout import (
     Geometry,
     Layout,
     LayoutA,
+    LayoutG,
+    LayoutG0,
     LayoutMontage,
+    LayoutV2Rules,
     layout_filters,
 )
 from sixstars.factory.overlays import (
@@ -109,6 +112,8 @@ class RenderSpec:
     fade_top: int = 0
     # The ffmpeg scaler of every crop (`factory.layout_v2.scaler`, D119).
     scaler: str = DEFAULT_SCALER
+    # Render v2 (`factory.layout_v2`): the geometry of layouts G and G0.
+    layout_v2: LayoutV2Rules = field(default_factory=LayoutV2Rules)
 
     @property
     def _active_tracks(self) -> tuple[SfxTrack, ...]:
@@ -151,9 +156,10 @@ def broll_cuts(spec: RenderSpec) -> tuple[BrollCut, ...]:
 
 
 def build_video_filters(spec: RenderSpec) -> list[str]:
-    """Video chains: layout, seam, progress bar, subtitles and overlays, then the end card."""
+    """Video chains: layout, seam, progress bar, subtitles and overlays, then the end card. Layouts G and G0
+    (Render v2) have no seam and no progress bar."""
     params = spec.params
-    geometry = Geometry.for_canvas(params.width, params.height)
+    geometry = Geometry.for_canvas(params.width, params.height, spec.layout_v2)
     duration = spec.clip_duration_s
     chains = layout_filters(
         spec.layout,
@@ -164,6 +170,7 @@ def build_video_filters(spec: RenderSpec) -> list[str]:
         out="v_layout",
         broll=broll_cuts(spec) if isinstance(spec.layout, LayoutMontage) else (),
         scaler=spec.scaler,
+        max_slide=spec.layout_v2.max_slide,
     )
     if spec.fade_png is not None:
         fade = render_filter("movie", [("filename", normalize_filter_path(str(spec.fade_png)))])
@@ -185,18 +192,21 @@ def build_video_filters(spec: RenderSpec) -> list[str]:
         chains.append(f"[{bar_source}]{seam}[v_seam]")
         bar_source = "v_seam"
         bar_y = seam_y - max(0, (geometry.progress_h - geometry.a_seam_h) // 2)
-    chains += progress_filters(
-        geometry=geometry,
-        accent_color=params.accent_color,
-        fps=params.fps,
-        duration_s=duration,
-        source=bar_source,
-        out="v_progress",
-        y=bar_y,
-    )
-    text_source = "v_progress"
+    if isinstance(spec.layout, LayoutG | LayoutG0):
+        text_source = bar_source
+    else:
+        chains += progress_filters(
+            geometry=geometry,
+            accent_color=params.accent_color,
+            fps=params.fps,
+            duration_s=duration,
+            source=bar_source,
+            out="v_progress",
+            y=bar_y,
+        )
+        text_source = "v_progress"
     if spec.title_png is not None and (params.hook_seconds > 0 or spec.title_whole_clip):
-        chains += title_filters(spec, geometry, source="v_progress", out="v_titled")
+        chains += title_filters(spec, geometry, source=text_source, out="v_titled")
         text_source = "v_titled"
     if spec.campaign_logo is not None and spec.campaign_logo_pos:
         chains += campaign_logo_filters(spec, geometry, source=text_source, out="v_logo")

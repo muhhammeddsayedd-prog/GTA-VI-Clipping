@@ -10,20 +10,28 @@ top and the gameplay below (decision D112, docs/27 section 5, the look of the ow
 no facecam. A and C are both `LayoutA` (a facecam was found); the style decides which one is drawn.
 Two frames come from the style alone (development-plan/M18 Phase B): "H" the news card (`LayoutCard`) and
 "P" the POV crop (`LayoutPov`).
+
+Render v2 (D119, development-plan/M19) adds the two frames that replace all of these when
+`factory.layout_v2.enabled` is on: "G" (`LayoutG`, a verified facecam: the cam panel 1080x`cam_h` on top,
+the gameplay below) and "G0" (`LayoutG0`, no verified cam: 4:5 gameplay over the blurred copy). Their
+gameplay crop slides clear of the facecam and the streamer's overlays (`gameplay_crop_v2`). The old frames
+stay until R7.
 """
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Literal
 
 from sixstars.factory.escape import render_filter
 
-LayoutKind = Literal["A", "B", "C", "H", "P", "M"]
+LayoutKind = Literal["A", "B", "C", "H", "P", "M", "G", "G0"]
 
 # ffmpeg scaler names allowed in `factory.layout_v2.scaler` (Render v2, D119). Without the setting the
 # renders keep ffmpeg's own default, bicubic.
 SCALERS = ("bicubic", "bilinear", "lanczos", "spline", "area")
 DEFAULT_SCALER = "bicubic"
+# Render v2: no panel of layout G or G0 is shorter than this (reference pixels).
+MIN_PANEL_H = 200
 
 REF_WIDTH = 1080
 REF_HEIGHT = 1920
@@ -81,6 +89,10 @@ C_TITLE_OVERLAP = 20
 C_QUESTION_GAP = 40
 C_BAND_TOP = 960
 C_BAND_BOTTOM = 1240
+# Render v2 gate band: the G band ends this far above the caption centre and is never thinner than
+# V2_BAND_MIN (reference pixels).
+V2_BAND_CAPTION_CLEAR = 160
+V2_BAND_MIN = 100
 # Overlays.
 HOOK_TOP = 260
 HOOK_BOTTOM = 420
@@ -176,7 +188,114 @@ class BrollCut:
     duration_s: float
 
 
-Layout = LayoutA | LayoutB | LayoutCard | LayoutPov | LayoutMontage
+@dataclass(frozen=True, slots=True)
+class LayoutV2Rules:
+    """The setting `factory.layout_v2` (Render v2, D119; docs/16). Pixel values are on the 1080x1920
+    reference canvas; `Geometry` scales them to the output.
+
+    * `enabled`: the master switch. Off, the frames of `factory.styles` are drawn as before.
+    * `cam_h`: height of the cam panel of layout G (the gameplay takes the rest of the frame).
+    * `g0_game_h` / `g0_game_y`: the gameplay of layout G0 and its top.
+    * `max_slide`: how far (share of the source width) the gameplay crop may move from the centre to stay
+      clear of the facecam and the overlays.
+    * `seam_y`, `safe_right_x`, `safe_bottom_y`: where text goes (R4).
+    * `cam_face_*`, `cam_fill_*`, `cam_unsharp`: the face-aware cam panel (R2).
+    * `scaler`: the ffmpeg scaler of every crop (also used while `enabled` is off).
+    """
+
+    enabled: bool = False
+    cam_h: int = 720
+    g0_game_h: int = 1350
+    g0_game_y: int = 285
+    max_slide: float = 0.25
+    seam_y: int = 720
+    safe_right_x: int = 920
+    safe_bottom_y: int = 1540
+    cam_face_center_y: float = 0.45
+    cam_face_h_min: float = 0.40
+    cam_face_h_max: float = 0.60
+    cam_fill_blur: int = 30
+    cam_fill_darken: float = 0.30
+    cam_unsharp: float = 0.5
+    scaler: str = DEFAULT_SCALER
+
+    def __post_init__(self) -> None:
+        if not MIN_PANEL_H <= self.cam_h <= REF_HEIGHT - MIN_PANEL_H:
+            raise ValueError("cam_h leaves no room for the cam or the gameplay")
+        if self.g0_game_h < MIN_PANEL_H or self.g0_game_y < 0 or self.g0_game_y + self.g0_game_h > REF_HEIGHT:
+            raise ValueError("the G0 gameplay must fit the frame")
+        if not 0 <= self.max_slide <= 0.5:
+            raise ValueError("max_slide must be within 0..0.5")
+        if not 0 < self.seam_y < REF_HEIGHT or not 0 < self.safe_right_x <= REF_WIDTH:
+            raise ValueError("seam_y and safe_right_x must be inside the frame")
+        if not 0 < self.safe_bottom_y <= REF_HEIGHT:
+            raise ValueError("safe_bottom_y must be inside the frame")
+        if not 0 < self.cam_face_h_min <= self.cam_face_h_max < 1 or not 0 < self.cam_face_center_y < 1:
+            raise ValueError("the cam face shares must satisfy 0 < min <= max < 1")
+        if self.cam_fill_blur < 0 or not 0 <= self.cam_fill_darken < 1 or not 0 <= self.cam_unsharp <= 3:
+            raise ValueError("cam fill blur, darken or unsharp out of range")
+        if self.scaler not in SCALERS:
+            raise ValueError(f"scaler must be one of {SCALERS}")
+
+    @classmethod
+    def from_setting(cls, raw: object) -> "LayoutV2Rules":
+        """The rules from the JSON object of the setting. A missing key keeps its default; a missing,
+        malformed or invalid setting gives the defaults, which have the switch off. Pure."""
+        if not isinstance(raw, Mapping):
+            return cls()
+        base = cls()
+        values: dict[str, object] = {}
+        for name in cls.__dataclass_fields__:
+            fallback = getattr(base, name)
+            value = raw.get(name, fallback)
+            if isinstance(fallback, bool):
+                values[name] = value if isinstance(value, bool) else fallback
+            elif isinstance(fallback, int):
+                ok = (
+                    isinstance(value, int | float)
+                    and not isinstance(value, bool)
+                    and float(value).is_integer()
+                )
+                values[name] = int(value) if ok else fallback
+            elif isinstance(fallback, float):
+                ok = isinstance(value, int | float) and not isinstance(value, bool)
+                values[name] = float(value) if ok else fallback
+            else:
+                values[name] = value if isinstance(value, str) else fallback
+        try:
+            return cls(**values)  # type: ignore[arg-type]
+        except ValueError:
+            return base
+
+
+@dataclass(frozen=True, slots=True)
+class LayoutG:
+    """Render v2 frame G: a verified facecam. The cam panel shows `facecam_box` (framed around `face_box`
+    from R2 on), the gameplay below slides clear of the facecam and `overlay_boxes` (the streamer's chat,
+    alerts and panels, from R3 on)."""
+
+    facecam_box: Box
+    face_box: Box | None = None
+    overlay_boxes: tuple[Box, ...] = ()
+
+    @property
+    def kind(self) -> LayoutKind:
+        return "G"
+
+
+@dataclass(frozen=True, slots=True)
+class LayoutG0:
+    """Render v2 frame G0: no verified facecam. 4:5 gameplay over a blurred, darkened copy of the frame,
+    sliding clear of `overlay_boxes`."""
+
+    overlay_boxes: tuple[Box, ...] = ()
+
+    @property
+    def kind(self) -> LayoutKind:
+        return "G0"
+
+
+Layout = LayoutA | LayoutB | LayoutCard | LayoutPov | LayoutMontage | LayoutG | LayoutG0
 
 
 def _even(value: float) -> int:
@@ -210,10 +329,20 @@ class Geometry:
     progress_h: int
     watermark_right: int
     watermark_y: int
+    # Render v2 (`LayoutV2Rules`).
+    g_cam_h: int = 0
+    g_game_h: int = 0
+    g0_game_h: int = 0
+    g0_game_y: int = 0
 
     @classmethod
-    def for_canvas(cls, width: int, height: int) -> "Geometry":
+    def for_canvas(cls, width: int, height: int, v2: "LayoutV2Rules | None" = None) -> "Geometry":
+        """The positions for a `width`x`height` output; layouts G and G0 from `v2` (its defaults when
+        None)."""
+        v2 = v2 or LayoutV2Rules()
         sx, sy = width / REF_WIDTH, height / REF_HEIGHT
+        g_cam_h = _even(v2.cam_h * sy)
+        g0_game_h = min(_even(v2.g0_game_h * sy), height)
         a_gameplay_h = _even(A_GAMEPLAY_H * sy)
         b_gameplay_h = min(_even(B_GAMEPLAY_H * sy), height)
         c_facecam_h = _even(C_FACECAM_H * sy)
@@ -241,20 +370,37 @@ class Geometry:
             progress_h=max(2, round(PROGRESS_H * sy)),
             watermark_right=round(WATERMARK_RIGHT * sx),
             watermark_y=round(WATERMARK_Y * sy),
+            g_cam_h=g_cam_h,
+            g_game_h=height - g_cam_h,
+            g0_game_h=g0_game_h,
+            g0_game_y=min(round(v2.g0_game_y * sy), height - g0_game_h),
         )
 
     def seam_y(self, kind: LayoutKind) -> int:
-        """Top row of the seam between gameplay and facecam (layouts A and C)."""
+        """Top row of the seam between gameplay and facecam (layouts A, C and G)."""
+        if kind == "G":
+            return self.g_cam_h
         return self.c_seam_y if kind == "C" else self.a_seam_y
 
 
-def gameplay_band(kind: LayoutKind | None) -> tuple[float, float]:
+def gameplay_band(kind: LayoutKind | None, v2: LayoutV2Rules | None = None) -> tuple[float, float]:
     """The part of the frame (fractions of its height, top and bottom) that shows nothing but moving
     gameplay: the gate looks there for a frozen or black source (`gate.visual`). Below the hook or title
     and above the captions and the credit line of the layout. None (a clip rendered before layout C
     existed) gives the band of layouts A and B."""
     if kind == "C":
         return C_BAND_TOP / REF_HEIGHT, C_BAND_BOTTOM / REF_HEIGHT
+    if kind in ("G", "G0"):
+        v2 = v2 or LayoutV2Rules()
+        if kind == "G":
+            # Below the title on the seam (and a question title under it), above the captions.
+            top = v2.cam_h + (C_BAND_TOP - C_FACECAM_H)
+            bottom = max(CAPTION_Y_C - V2_BAND_CAPTION_CLEAR, top + V2_BAND_MIN)
+        else:
+            top = max(HOOK_BOTTOM + 60, v2.g0_game_y + 60)
+            bottom = min(CAPTION_Y_B - 150, v2.g0_game_y + v2.g0_game_h - 60)
+            bottom = max(bottom, top + V2_BAND_MIN)
+        return top / REF_HEIGHT, min(bottom, REF_HEIGHT) / REF_HEIGHT
     if kind == "H":
         return (H_VIDEO_Y + 40) / REF_HEIGHT, (H_VIDEO_Y + H_VIDEO_H - 40) / REF_HEIGHT
     if kind == "P":
@@ -323,6 +469,42 @@ def gameplay_crop(layout: LayoutA, aspect_w: int, aspect_h: int, source_w: int, 
     return Box(int(best // 2) * 2, crop.y, crop.w, crop.h)
 
 
+def overlap_area(a: Box, b: Box) -> int:
+    """Area shared by two boxes (0 when they do not overlap). Pure."""
+    w = min(a.x + a.w, b.x + b.w) - max(a.x, b.x)
+    h = min(a.y + a.h, b.y + b.h) - max(a.y, b.y)
+    return w * h if w > 0 and h > 0 else 0
+
+
+def gameplay_crop_v2(
+    avoid: Sequence[Box], aspect_w: int, aspect_h: int, source_w: int, source_h: int, max_slide: float
+) -> Box:
+    """Render v2 gameplay crop (layouts G and G0): the largest crop of the aspect at full source height,
+    centred, then slid sideways to the nearest position that overlaps none of `avoid` (the facecam and the
+    overlays), at most `max_slide` x the source width from the centre. With no clear position, the one
+    with the least overlapping area (the nearest of equals). Even offsets; one crop for the whole clip.
+    Pure."""
+    crop = fit_crop(Box(0, 0, source_w, source_h), aspect_w, aspect_h, source_w, source_h)
+    centre = crop.x
+    reach = int(max_slide * source_w)
+    low, high = max(0, centre - reach), min(source_w - crop.w, centre + reach)
+    # The overlap is piecewise linear in x, so its minimum lies at a range end or where an edge of the
+    # crop meets an edge of a box.
+    raw = {low, high, centre}
+    for box in avoid:
+        raw |= {box.x + box.w, box.x - crop.w, box.x, box.x + box.w - crop.w}
+    candidates = {even for x in raw for even in (x // 2 * 2, x // 2 * 2 + 2) if low <= even <= high}
+    if not candidates:
+        return crop
+
+    def cost(x: int) -> tuple[int, int]:
+        moved = Box(x, crop.y, crop.w, crop.h)
+        return sum(overlap_area(moved, box) for box in avoid), abs(x - centre)
+
+    best = min(sorted(candidates), key=cost)
+    return Box(best, crop.y, crop.w, crop.h)
+
+
 def _number(value: float) -> str:
     return f"{value:.4f}".rstrip("0").rstrip(".") or "0"
 
@@ -350,10 +532,24 @@ def layout_filters(
     out: str = "v_layout",
     broll: Sequence[BrollCut] = (),
     scaler: str = DEFAULT_SCALER,
+    max_slide: float | None = None,
 ) -> list[str]:
     """Filter chains from the source video link to a `geometry.width`x`geometry.height` frame. Every crop
-    and scale is fixed for the whole clip (D119)."""
+    and scale is fixed for the whole clip (D119). `max_slide` bounds the gameplay slide of layouts G and
+    G0."""
     g = geometry
+    if isinstance(layout, LayoutG | LayoutG0):
+        return _v2_filters(
+            layout,
+            source_w=source_w,
+            source_h=source_h,
+            geometry=g,
+            fps=fps,
+            source=source,
+            out=out,
+            scaler=scaler,
+            max_slide=LayoutV2Rules().max_slide if max_slide is None else max_slide,
+        )
     if isinstance(layout, LayoutMontage):
         return _montage_filters(
             layout,
@@ -393,8 +589,23 @@ def layout_filters(
             f"{stack}vstack=inputs=2[{out}]",
         ]
     game = fit_crop(Box(0, 0, source_w, source_h), g.width, g.b_gameplay_h, source_w, source_h)
+    background = blur_background(g)
+    game_chain = [_crop(game), *scale_filters(g.width, g.b_gameplay_h, scaler=scaler)]
+    overlay = render_filter("overlay", [("x", "0"), ("y", str(g.b_gameplay_y))])
+    return [
+        f"{head}[v_bg_in][v_game_in]",
+        f"[v_bg_in]{','.join(background)}[v_bg]",
+        f"[v_game_in]{','.join(game_chain)}[v_game]",
+        f"[v_bg][v_game]{overlay}[{out}]",
+    ]
+
+
+def blur_background(geometry: Geometry) -> list[str]:
+    """The cover background of layouts B and G0: the frame scaled to cover the canvas, blurred and darkened
+    on a smaller copy, scaled back up."""
+    g = geometry
     small_w, small_h = _even(g.width / B_BLUR_DOWNSCALE), _even(g.height / B_BLUR_DOWNSCALE)
-    background = [
+    return [
         render_filter(
             "scale",
             [("w", str(small_w)), ("h", str(small_h)), ("force_original_aspect_ratio", "increase")],
@@ -413,11 +624,51 @@ def layout_filters(
         render_filter("scale", [("w", str(g.width)), ("h", str(g.height)), ("flags", "bilinear")]),
         "setsar=1",
     ]
-    game_chain = [_crop(game), *scale_filters(g.width, g.b_gameplay_h, scaler=scaler)]
-    overlay = render_filter("overlay", [("x", "0"), ("y", str(g.b_gameplay_y))])
+
+
+def v2_gameplay_crop(layout: "LayoutG | LayoutG0", geometry: Geometry, source_w: int, source_h: int,
+                     max_slide: float) -> Box:  # fmt: skip
+    """The source crop of the gameplay panel of layout G or G0. Pure."""
+    g = geometry
+    if isinstance(layout, LayoutG):
+        avoid = (layout.facecam_box, *layout.overlay_boxes)
+        return gameplay_crop_v2(avoid, g.width, g.g_game_h, source_w, source_h, max_slide)
+    return gameplay_crop_v2(layout.overlay_boxes, g.width, g.g0_game_h, source_w, source_h, max_slide)
+
+
+def _v2_filters(
+    layout: "LayoutG | LayoutG0",
+    *,
+    source_w: int,
+    source_h: int,
+    geometry: Geometry,
+    fps: int,
+    source: str,
+    out: str,
+    scaler: str,
+    max_slide: float,
+) -> list[str]:
+    """Layouts G and G0 (Render v2). G: the cam panel stacked over the gameplay, no seam. G0: the 4:5
+    gameplay over the blurred background. Both still for the whole clip."""
+    g = geometry
+    head = f"[{source}]{render_filter('fps', [('fps', str(fps))])},split=2"
+    game = v2_gameplay_crop(layout, g, source_w, source_h, max_slide)
+    if isinstance(layout, LayoutG):
+        # Until R2 frames the panel around the face: the largest centred crop of the cam box.
+        cam = fit_crop(layout.facecam_box, g.width, g.g_cam_h, source_w, source_h)
+        cam_chain = [_crop(cam), *scale_filters(g.width, g.g_cam_h, scaler=scaler)]
+        game_chain = [_crop(game), *scale_filters(g.width, g.g_game_h, scaler=scaler)]
+        return [
+            f"{head}[v_face_in][v_game_in]",
+            f"[v_face_in]{','.join(cam_chain)}[v_face]",
+            f"[v_game_in]{','.join(game_chain)}[v_game]",
+            f"[v_face][v_game]vstack=inputs=2[{out}]",
+        ]
+    game_chain = [_crop(game), *scale_filters(g.width, g.g0_game_h, scaler=scaler)]
+    overlay = render_filter("overlay", [("x", "0"), ("y", str(g.g0_game_y))])
     return [
         f"{head}[v_bg_in][v_game_in]",
-        f"[v_bg_in]{','.join(background)}[v_bg]",
+        f"[v_bg_in]{','.join(blur_background(g))}[v_bg]",
         f"[v_game_in]{','.join(game_chain)}[v_game]",
         f"[v_bg][v_game]{overlay}[{out}]",
     ]

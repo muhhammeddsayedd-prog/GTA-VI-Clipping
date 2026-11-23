@@ -124,9 +124,11 @@ def measure_file(
     ffmpeg: str = "ffmpeg",
     ffprobe: str = "ffprobe",
     layout_kind: layout.LayoutKind | None = None,
+    layout_v2: layout.LayoutV2Rules | None = None,
 ) -> FileFacts | None:
     """Everything the gate needs to know about the file; None when it does not exist or is empty.
-    `layout_kind` places the gameplay band (None: the band of layouts A and B).
+    `layout_kind` places the gameplay band (None: the band of layouts A and B); `layout_v2` sizes the
+    band of layouts G and G0 (`factory.layout_v2`).
 
     Raises `tools.FfmpegError` when the tools cannot read it (the caller decides between a retry and a
     rejection). Black and freeze detection run on the clip part; without a clip length, on the whole file.
@@ -139,7 +141,11 @@ def measure_file(
     analysed = clip_duration_s if clip_duration_s and clip_duration_s > 0 else media.duration_s
     if media.has_video and analysed > 0:
         black, frozen = detect_black_and_freeze(
-            path, min(analysed, media.duration_s), settings, ffmpeg, layout.gameplay_band(layout_kind)
+            path,
+            min(analysed, media.duration_s),
+            settings,
+            ffmpeg,
+            layout.gameplay_band(layout_kind, layout_v2),
         )
     return FileFacts(
         width=media.width,

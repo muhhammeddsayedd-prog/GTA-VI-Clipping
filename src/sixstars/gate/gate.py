@@ -31,6 +31,7 @@ from sixstars.clients.anthropic_client import AnthropicClient, BudgetKind
 from sixstars.clients.upload_post import UploadPostClient
 from sixstars.clients.youtube import YouTubeClient
 from sixstars.factory import pipeline, tools
+from sixstars.factory.layout import LayoutV2Rules
 from sixstars.factory.story import StoryRules
 from sixstars.gate import overhaul, profiles, rescore, store
 from sixstars.gate import visual as visuals
@@ -130,6 +131,9 @@ def _measure(row: store.ClipRow, settings: GateSettings, deps: GateDeps) -> File
             ffmpeg=deps.ffmpeg,
             ffprobe=deps.ffprobe,
             layout_kind=row.layout_kind,
+            layout_v2=LayoutV2Rules.from_setting(app_settings.get("factory.layout_v2", None))
+            if row.layout_kind in ("G", "G0")
+            else None,
         )
     except tools.FfmpegError as exc:
         get_logger("gate").warning("gate_file_unreadable", error=str(exc)[:300])

@@ -153,6 +153,9 @@ def caption_bottom(layout: LayoutKind, params: FactoryParams, style: SubtitleSty
             "H": CAPTION_Y_B,
             "P": CAPTION_Y_B,
             "M": M_SEAM_Y,
+            # Render v2 until R4 brings its own text system: G places text like C, G0 like B.
+            "G": CAPTION_Y_C,
+            "G0": CAPTION_Y_B,
         }[layout]
     )
     bottom = min(centre + style.size / 2, zone.bottom - style.outline - style.shadow)
@@ -384,6 +387,8 @@ def payoff_events(emoji: str, *, payoff_s: float, duration_s: float, layout: Lay
         "H": H_VIDEO_Y + H_VIDEO_H // 2,
         "P": P_VIDEO_Y + P_VIDEO_H // 2,
         "M": M_TOP + M_GAME_H // 2,
+        "G": PAYOFF_Y_C,
+        "G0": B_GAMEPLAY_Y + B_GAMEPLAY_H // 2,
     }[layout]
     end = min(payoff_s + PAYOFF_EMOJI_S, duration_s)
     tags = f"{{\\an5\\pos({REF_WIDTH // 2},{centre_y})\\fs{PAYOFF_EMOJI_SIZE}{PAYOFF_POP}}}"

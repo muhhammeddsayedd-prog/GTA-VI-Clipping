@@ -368,3 +368,74 @@ def test_framing_is_static_for_the_whole_clip(
         for other in frames[1:]:
             diff = np.abs(_gray(other, box) - first).mean()
             assert diff < min(2.0, shifted / 4), f"framing changed in {box}: mean diff {diff:.2f}"
+
+
+@pytest.fixture(scope="module")
+def boxes_source(ffmpeg_tools: tuple[str, str], tmp_path_factory: pytest.TempPathFactory) -> Path:
+    """A 3-second 1920x1080 source: blue gameplay, a red facecam at (1440, 720, 480, 360) and a green
+    chat box at (0, 0, 400, 400)."""
+    path = tmp_path_factory.mktemp("boxes source") / "boxes.mp4"
+    video = (
+        "color=c=0x0000FF:s=1920x1080:r=30:d=3,"
+        "drawbox=x=1440:y=720:w=480:h=360:color=0xFF0000:t=fill,"
+        "drawbox=x=0:y=0:w=400:h=400:color=0x00FF00:t=fill"
+    )
+    run([ffmpeg_tools[0], "-hide_banner", "-loglevel", "error", "-nostdin", "-y",
+         "-f", "lavfi", "-i", video, "-f", "lavfi", "-i", "sine=frequency=440:sample_rate=48000:duration=3",
+         "-c:v", "libx264", "-preset", "ultrafast", "-crf", "10", "-pix_fmt", "yuv420p",
+         "-c:a", "aac", "-shortest", str(path)])  # fmt: skip
+    return path
+
+
+def _share(region: "np.ndarray[tuple[int, ...], np.dtype[np.uint8]]", rgb: tuple[int, int, int]) -> float:
+    """Share of the pixels of an (h, w, 3) region close to a colour."""
+    close = np.all(np.abs(region.astype(int) - np.array(rgb)) <= 60, axis=2)
+    return float(close.mean())
+
+
+@pytest.mark.parametrize("kind", ["G", "G0"])
+def test_render_v2_frames_have_the_spec_sizes_and_avoid_cam_and_chat(
+    kind: str,
+    ffmpeg_tools: tuple[str, str],
+    boxes_source: Path,
+    params_factory: Callable[..., FactoryParams],
+    tmp_path: Path,
+) -> None:
+    """Render v2 R1: G puts the cam panel (1080x720) over 1080x1200 of gameplay that slid clear of the cam
+    and the chat; G0 puts 1080x1350 of gameplay at y=285 over a dark blur. No seam, no progress bar."""
+    from sixstars.factory.layout import Box as LBox
+    from sixstars.factory.layout import LayoutG, LayoutG0, LayoutV2Rules
+
+    ffmpeg, ffprobe = ffmpeg_tools
+    params = params_factory(watermark="", end_card_s=0)
+    chat = LBox(0, 0, 400, 400)
+    layout = LayoutG(LBox(1440, 720, 480, 360), overlay_boxes=(chat,)) if kind == "G" else LayoutG0((chat,))
+    ass_path = tmp_path / "empty.ass"
+    ass_path.write_text(build_ass([], layout=layout.kind, params=params, duration_s=3.0), encoding="utf-8")
+    output = tmp_path / f"{kind}.mp4"
+    spec = RenderSpec(
+        source=SourceInfo(boxes_source, 1920, 1080),
+        window=ClipWindow(0.0, 3.0),
+        layout=layout,
+        ass_path=ass_path,
+        output_path=output,
+        series_no=1,
+        params=params,
+        mode="express",
+        scaler="lanczos",
+        layout_v2=LayoutV2Rules(enabled=True, scaler="lanczos"),
+    )
+    run(build_render_command(spec, ffmpeg=ffmpeg))
+    assert_streams(probe(ffprobe, output), expected_duration=3.0)
+    image = frame_at(ffmpeg, output, 1.5, tmp_path / f"{kind}.png")
+    blue, red, green = (0, 0, 255), (255, 0, 0), (0, 255, 0)
+    if kind == "G":
+        assert _share(pixels(image, (0, 0, 1080, 716)), red) > 0.95, "cam panel is the facecam"
+        game = pixels(image, (0, 724, 1080, 1920))
+        assert _share(game, blue) > 0.97, "gameplay panel holds gameplay only"
+        assert _share(game, red) < 0.001 and _share(game, green) < 0.001, "cam or chat leaked in"
+    else:
+        game = pixels(image, (0, 289, 1080, 1631))
+        assert _share(game, blue) > 0.97 and _share(game, green) < 0.001
+        top = pixels(image, (0, 0, 1080, 270))
+        assert top.max() < 230 and _share(top, blue) < 0.5, "blurred, darkened band above"

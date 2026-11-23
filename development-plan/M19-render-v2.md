@@ -5,7 +5,8 @@ Owner's master prompt of 2026-11-23, copied as given. Numbering notes for this r
 - The decision is **D119** (D117 = AI cost plan and D118 = paid clipping campaigns were taken first).
 - Migration numbers: 0038-0040 landed on develop meanwhile (AI cost A5a/A5b, titles v2) and 0041/0042 are
   held by the in-flight `ai-cost-b1` branch, so R0's migration is **0043_render_v2_no_zoom.sql**; later
-  milestones take the next free number when they land.
+  milestones take the next free number when they land. R1's settings migration is **0054** (0053 is held
+  by the campaign-posting work).
 - The code facts below were read at main 874d640; this work branches from develop (73347db and later).
   Differences are recorded in `PROGRESS.md`.
 
