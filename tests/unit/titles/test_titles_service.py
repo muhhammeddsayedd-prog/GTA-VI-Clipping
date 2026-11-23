@@ -53,8 +53,8 @@ GOOD = {
     "candidates": [
         {"pattern": "fail", "title": "Kai Cenat's Cyclist Chase Falls Apart in GTA 6 💀",
          "facts_used": ["event"]},
-        {"pattern": "stakes", "title": "Kai Cenat Chases a Cyclist After 6 Hours in GTA 6 😭",
-         "facts_used": ["numbers.hours_into_stream"]},
+        {"pattern": "stakes", "title": "Kai Cenat Chases Down a Cyclist Who Hit His Car in GTA 6 😭",
+         "facts_used": ["event"]},
     ],
     "caption_short": "kai chased a cyclist down the whole street 😭",
 }  # fmt: skip
@@ -103,14 +103,14 @@ def world(monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
 def test_applies_the_best_surviving_candidate(world: dict[str, Any]) -> None:
     client = FakeAnthropicClient({"p11_title_writer": GOOD})
     outcome = service.retitle(CLIP, apply=True, client=client)
-    assert outcome.title == "Kai Cenat Chases a Cyclist After 6 Hours in GTA 6 😭"
+    assert outcome.title == "Kai Cenat Chases Down a Cyclist Who Hit His Car in GTA 6 😭"
     assert outcome.pattern == "stakes" and outcome.source == "v2" and outcome.applied
     assert world["applied"] == [
         (1, outcome.title, "kai chased a cyclist down the whole street 😭", ["kaicenat", "streamerclips"])
     ]
     run = world["runs"][0]
     assert run["prior_title"] == ROW["title"]
-    assert run["facts"]["numbers"] == {"hours_into_stream": 6.0}  # 20000 s into a Twitch VOD
+    assert run["facts"]["numbers"] == {}  # hours into the stream are not a fact
     assert run["facts"]["event"].startswith("A cyclist rams")
     assert run["features"]["title_pattern"] == "stakes"
     assert world["log"][0][0] == "title"
@@ -167,12 +167,7 @@ def test_gate_hook_applies_with_the_flag_on(world: dict[str, Any]) -> None:
     assert outcome is not None and outcome.applied
 
 
-def test_stream_offset() -> None:
-    assert service.stream_offset_s({"spike_mode": "replay", "spike_offset_s": 7200}) == 7200
-    assert service.stream_offset_s({"live_offset_s": 3600.5}) == 3600.5
-    assert (
-        service.stream_offset_s({"source_type": "vod", "source_platform": "youtube", "start_s": 9000}) is None
-    )
+def test_peak_in_clip() -> None:
     assert service.peak_in_clip({"spike_mode": "replay", "spike_offset_s": 110, "start_s": 100}) == 10
 
 

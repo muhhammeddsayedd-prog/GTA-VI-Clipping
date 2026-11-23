@@ -105,20 +105,6 @@ def _number(value: object) -> float | None:
         return None
 
 
-def stream_offset_s(row: Mapping[str, Any]) -> float | None:
-    """How far into the stream the moment is: the replay spike's VOD offset, the live spike's time since the
-    stream started, or the start of a Twitch VOD clip (a Twitch VOD is a whole stream). Pure."""
-    offset = _number(row.get("spike_offset_s"))
-    if offset is not None and row.get("spike_mode") == "replay":
-        return offset
-    live = _number(row.get("live_offset_s"))
-    if live is not None:
-        return live
-    if row.get("source_type") == "vod" and row.get("source_platform") == "twitch":
-        return _number(row.get("start_s"))
-    return None
-
-
 def peak_in_clip(row: Mapping[str, Any]) -> float | None:
     offset, start = _number(row.get("spike_offset_s")), _number(row.get("start_s"))
     if offset is None or start is None or row.get("spike_mode") != "replay":
@@ -145,7 +131,6 @@ def build_facts(row: Mapping[str, Any], book: facts.NameBook, options: Options) 
         event=_event(row),
         lines=_lines(row),
         peak_s=peak_in_clip(row),
-        offset_s=stream_offset_s(row),
         chat=_chat(row),
         gta_label=options.gta_label,
         spoiler=bool(row.get("spoiler")),

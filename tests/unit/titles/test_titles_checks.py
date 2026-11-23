@@ -19,7 +19,7 @@ FACTS = TitleFacts(
     streamer_tier="S",
     event="Kai argues with a cyclist who crashes into his car, then chases him down the street.",
     peak_line="bro you hit MY car",
-    numbers={"hours_into_stream": 5.6},
+    numbers={"hours_played": 5.6},
     chat_words=("kekw", "cyclist"),
 )
 

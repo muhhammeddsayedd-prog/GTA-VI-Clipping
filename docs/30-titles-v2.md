@@ -19,7 +19,7 @@ the gate approves a clip, when the visual judge (P9V) has already said what happ
 ```
 gate approves a clip ──▶ titles.service.after_approval (flag titles.v2 on?)
    facts  (titles.facts)   streamer name + tier, other streamers, event (P9V `seen`), peak line,
-                           numbers (hours into stream, hours played, %, money), chat words, spoiler
+                           numbers said (hours played, %, money), chat words, spoiler
    P11    (ai.calls.write_titles, prompt p11_title_writer.md, fast model)   5 candidates + caption_short
    checks (titles.checks)  pure code checks; nothing passes → one retry with the failures; still nothing
                            → fallback "<Streamer>'s <Topic> in GTA 6 😭" (event clip.title_fallback, warn)
@@ -117,8 +117,9 @@ sixstars titles queue [--limit 200] [--apply]   re-title approved clips without 
 - **Ranking boost** for big names (research item 7) is not part of this change.
 - **"this happens"** is banned too (the model wrote "X Is 8 Hours Into GTA 6 When This Happens", the same
   emptiness as "this moment").
-- **Hours into the stream** are given as whole hours, and the prompt calls them a weak stake: in the first
-  staging run the model copied "8.9 Hours" and used them in 13 of 27 titles.
+- **Hours into the stream are not a fact** (owner, 2026-11-23): in the staging runs the model used them in 13
+  of 27, then 8 of 30 titles ("X Is 8 Hours Into GTA 6 ..."), which is no real stake. Hours played, percent
+  and money said in the transcript are still facts.
 
 ## Staging comparison (2026-11-23)
 
