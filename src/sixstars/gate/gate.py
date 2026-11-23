@@ -48,6 +48,7 @@ from sixstars.gate.models import (
 from sixstars.logging import get_logger
 from sixstars.posting.spike import SpikeRun, try_post_spike
 from sixstars.precheck import state as precheck_state
+from sixstars.titles import service as title_v2
 
 JOB_GATE = "clip.gate"
 JOB_PRECHECK = "clip.precheck"
@@ -235,6 +236,9 @@ def _finish(
     if decision.verdict is Verdict.HOLD:
         return GateOutcome(row.id, store.STATUS_PRECHECK, decision, precheck_job_id=precheck_job)
     storage_path = _upload(row.id, deps)
+    # Title writer v2 (scoring_config titles.v2): before the spike handoff, so the post carries the new
+    # title. Never raises; the clip keeps the clip writer's title when it fails.
+    title_v2.after_approval(row.id, client=deps.ai_client)
     spike_run: SpikeRun | None = None
     handoff_error: str | None = None
     if decision.lane == LANE_SPIKE and deps.hand_off:

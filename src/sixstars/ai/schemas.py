@@ -657,3 +657,22 @@ def translated_segments_schema(count: int) -> type[TranslatedSegments]:
             return self
 
     return Bound
+
+
+# ── P11 title_writer ─────────────────────────────────────────
+
+
+class TitleCandidate(Reply):
+    """One candidate title. The title rules are checked by code (`titles.checks`), not here, so a weak
+    candidate is dropped instead of costing a repair call."""
+
+    pattern: str = Field(description="stakes, emotion, hot_take, streamer_on_streamer, discovery or fail.")
+    title: str = Field(min_length=1)
+    facts_used: list[str] = Field(default_factory=list)
+
+
+class TitleSet(Reply):
+    """P11: five candidate titles and the short caption for TikTok and Instagram."""
+
+    candidates: list[TitleCandidate] = Field(min_length=1, max_length=8)
+    caption_short: str = Field(default="", description="Under 80 characters, no hashtags.")

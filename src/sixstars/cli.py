@@ -747,3 +747,48 @@ def live_cut(
     from sixstars.live import commands
 
     raise typer.Exit(code=commands.cut(session, start, end, output))
+
+
+# Title writer v2 (docs/30-titles-v2.md). Kept as one block so other edits to this file do not collide.
+titles_app = typer.Typer(help="Title writer v2: facts in, checked titles out.", no_args_is_help=True)
+app.add_typer(titles_app, name="titles")
+
+
+@titles_app.command("retitle")
+def titles_retitle(
+    clip_id: str = typer.Argument(..., help="Any clip with a transcript."),
+    apply: bool = typer.Option(False, "--apply", help="Write the title on the clip (only while not posted)."),
+) -> None:
+    """Write v2 titles for one clip and show every candidate with the checks it failed (one AI call)."""
+    from sixstars.titles import commands
+
+    with _database():
+        code = commands.retitle(clip_id, apply)
+    raise typer.Exit(code=code)
+
+
+@titles_app.command("compare")
+def titles_compare(
+    limit: int = typer.Option(30, "--limit", help="How many of the most recent clips."),
+    status: list[str] = typer.Option(["posted"], "--status", help="Clip statuses to take (repeatable)."),
+    out: str = typer.Option("", "--out", help="Also write the side-by-side table to this Markdown file."),
+) -> None:
+    """Dry run: old and new title side by side for recent clips. Changes no clip (one AI call per clip)."""
+    from sixstars.titles import commands
+
+    with _database():
+        code = commands.compare(limit, status, out or None)
+    raise typer.Exit(code=code)
+
+
+@titles_app.command("queue")
+def titles_queue(
+    limit: int = typer.Option(200, "--limit", help="At most this many waiting clips, best ranked first."),
+    apply: bool = typer.Option(False, "--apply", help="Write the titles (without it: dry run)."),
+) -> None:
+    """Re-title approved clips waiting to post that have no v2 title yet (one AI call per clip)."""
+    from sixstars.titles import commands
+
+    with _database():
+        code = commands.queue(limit, apply)
+    raise typer.Exit(code=code)
