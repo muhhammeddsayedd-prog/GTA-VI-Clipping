@@ -19,7 +19,7 @@ import time
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime, timedelta
-from pathlib import Path
+from pathlib import Path, PurePath
 from typing import Any
 
 import structlog
@@ -29,6 +29,7 @@ from sixstars import db, events, jobs, notify
 from sixstars import storage as clip_storage
 from sixstars.ai.calls import BudgetExceededError, ChatLine
 from sixstars.ai.schemas import ClipWriting, SpikeVerdict
+from sixstars.campaigns import look as campaign_look
 from sixstars.campaigns import tagging
 from sixstars.clients.anthropic_client import AnthropicClient, BudgetKind
 from sixstars.clients.transcribe import Mode, Transcriber
@@ -689,6 +690,10 @@ def render_file(job: RenderJob, *, ffmpeg: str = "ffmpeg", ffprobe: str = "ffpro
         title_whole_clip=style.title_whole_clip,
         follow_text=style.follow_overlay_text,
         follow_s=min(style.follow_overlay_s, duration),
+        disclosure_text=style.disclosure_text,
+        disclosure_s=min(style.disclosure_s, duration),
+        campaign_logo=PurePath(style.campaign_logo) if style.campaign_logo else None,
+        campaign_logo_pos=style.campaign_logo_pos,
         broll=broll,
         **_seam_fade(job),
     )
@@ -1414,7 +1419,12 @@ def render_story(
             series_no=row.series_no,
             lane="hourly",
             duck=music.duck_spans(analysis, cfg.max_music_ratio, window.duration_s),
-            style=cfg.catalog.rules_for(plan.reference_style),
+            style=campaign_look.rules_for(
+                row.id,
+                cfg.catalog.rules_for(plan.reference_style),
+                has_facecam=isinstance(job.layout, LayoutA),
+                duration_s=window.duration_s,
+            ),
             style_id=plan.reference_style,
             payoff_s=None if payoff is None else payoff - window_w.start_s,
         )
@@ -1517,7 +1527,14 @@ def render_clip(item: RenderInput, *, deps: Deps | None = None, force: bool = Fa
                 moment_type=writing.moment_type,
                 facts=sorted(facts),
             )
-            return cfg.catalog.rules_for(plan.reference_style), plan.reference_style
+            # D118: brief_match and the campaign look (a failed brief makes it a Normal clip, not a drop).
+            rules = campaign_look.rules_for(
+                row.id,
+                cfg.catalog.rules_for(plan.reference_style),
+                has_facecam=isinstance(layout, LayoutA),
+                duration_s=max(0.0, writing.end_s - writing.start_s),
+            )
+            return rules, plan.reference_style
 
         def choose_writing(writer_input: writer.WriterInput) -> ClipWriting:
             return writer.write(writer_input, lane=ai_lane, client=deps.ai_client)

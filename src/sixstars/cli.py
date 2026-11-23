@@ -967,3 +967,31 @@ def campaign_quotas(account: str | None = typer.Option(None, "--account")) -> No
     with _database():
         code = commands.quotas(account)
     raise typer.Exit(code=code)
+
+
+@campaign_app.command("profile-add")
+def campaign_profile_add(
+    profile_id: str = typer.Argument(..., help="New profile id, e.g. partner-logo-gtaclipper."),
+    base: str = typer.Option("partner-logo", "--from", help="Profile to copy."),
+    logo: str | None = typer.Option(None, "--logo", help="Campaign logo PNG file."),
+    pos: str | None = typer.Option(None, "--pos", help="bottom_right, bottom_left, top_right or top_left."),
+    watermark: bool | None = typer.Option(None, "--watermark/--no-watermark"),
+    disclosure: str | None = typer.Option(None, "--disclosure", help='e.g. "Paid partnership".'),
+    disclosure_s: float | None = typer.Option(None, "--disclosure-s"),
+) -> None:
+    """Make a render profile for a campaign (a copy of another, with its own logo)."""
+    from sixstars.campaigns import commands
+
+    with _database():
+        code = commands.profile_add(profile_id, base, logo, pos, watermark, disclosure, disclosure_s)
+    raise typer.Exit(code=code)
+
+
+@campaign_app.command("profiles")
+def campaign_profiles() -> None:
+    """List render profiles."""
+    from sixstars.campaigns import commands
+
+    with _database():
+        code = commands.profile_list()
+    raise typer.Exit(code=code)

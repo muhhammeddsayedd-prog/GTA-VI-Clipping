@@ -6,6 +6,7 @@ express renders. Arguments are lists, never shell strings.
 
 from dataclasses import dataclass, field
 from pathlib import PurePath
+from typing import Final
 
 from sixstars.factory.audio import SFX_GAIN_DB, LoudnormMeasurement, SfxPlan, SfxTrack, build_audio_filters
 from sixstars.factory.bleep import Span
@@ -25,6 +26,7 @@ from sixstars.factory.layout import (
 from sixstars.factory.overlays import (
     SEAM_TRACK_COLOR,
     ass_filter,
+    disclosure_filter,
     end_card_filters,
     follow_filter,
     progress_filters,
@@ -100,6 +102,12 @@ class RenderSpec:
     watermark: bool = True
     # Layout M (Phase E): the B-roll inserts as (source start in file time, clip time, length), read as
     # extra inputs after the sound effects, and the seam fade PNG laid over the frame at `fade_top`.
+    # D118 campaign look: a disclosure line ("Paid partnership") over the first `disclosure_s` seconds,
+    # and the campaign's logo PNG in a corner (`campaign_logo_pos`) for the whole clip.
+    disclosure_text: str = ""
+    disclosure_s: float = 0.0
+    campaign_logo: PurePath | None = None
+    campaign_logo_pos: str = ""
     broll: tuple[tuple[float, float, float], ...] = ()
     fade_png: PurePath | None = None
     fade_top: int = 0
@@ -200,6 +208,9 @@ def build_video_filters(spec: RenderSpec) -> list[str]:
     if spec.title_png is not None and (params.hook_seconds > 0 or spec.title_whole_clip):
         chains += title_filters(spec, geometry, source="v_progress", out="v_titled")
         text_source = "v_titled"
+    if spec.campaign_logo is not None and spec.campaign_logo_pos:
+        chains += campaign_logo_filters(spec, geometry, source=text_source, out="v_logo")
+        text_source = "v_logo"
     text_chain = [ass_filter(spec.ass_path, spec.fonts.fonts_dir)]
     watermark = (
         None
@@ -228,6 +239,17 @@ def build_video_filters(spec: RenderSpec) -> list[str]:
     )
     if follow is not None:
         text_chain.append(follow)
+    disclosure = disclosure_filter(
+        spec.disclosure_text,
+        geometry=geometry,
+        font_name=params.font,
+        fonts=spec.fonts,
+        clip_s=duration,
+        show_s=spec.disclosure_s,
+        safe_top_px=params.safe_top_px,
+    )
+    if disclosure is not None:
+        text_chain.append(disclosure)
     finish = f"trim=duration={_seconds(duration)},setpts=PTS-STARTPTS,setsar=1,format=yuv420p"
     text_chain.append(finish)
     if spec.end_card_s <= 0:
@@ -248,6 +270,38 @@ def build_video_filters(spec: RenderSpec) -> list[str]:
     )
     chains.append(f"[v_main][v_end]concat=n=2:v=1:a=0[{VIDEO_OUT}]")
     return chains
+
+
+LOGO_WIDTH_REF: Final = 200  # campaign logo width on the 1080x1920 reference canvas
+LOGO_MARGIN_REF: Final = 48
+
+
+def logo_position(pos: str, geometry: Geometry, safe_top_px: int, safe_bottom_px: int) -> tuple[str, str]:
+    """`overlay` x/y expressions for a corner inside the safe zone (pure)."""
+    scale = geometry.height / REF_HEIGHT
+    margin = round(LOGO_MARGIN_REF * scale)
+    top = round(safe_top_px * scale) + margin
+    bottom = round(safe_bottom_px * scale) + margin
+    x = f"W-w-{margin}" if pos.endswith("right") else str(margin)
+    y = str(top) if pos.startswith("top") else f"H-h-{bottom}"
+    return x, y
+
+
+def campaign_logo_filters(spec: RenderSpec, geometry: Geometry, *, source: str, out: str) -> list[str]:
+    """D118: the campaign's logo PNG, scaled to `LOGO_WIDTH_REF`, laid over `source` in its corner for the
+    whole clip."""
+    assert spec.campaign_logo is not None
+    width = max(2, round(LOGO_WIDTH_REF * geometry.width / REF_WIDTH) // 2 * 2)
+    image = [
+        render_filter("movie", [("filename", normalize_filter_path(str(spec.campaign_logo)))]),
+        "format=rgba",
+        render_filter("scale", [("w", str(width)), ("h", "-2")]),
+    ]
+    x, y = logo_position(
+        spec.campaign_logo_pos, geometry, spec.params.safe_top_px, spec.params.safe_bottom_px
+    )
+    overlay = render_filter("overlay", [("x", x), ("y", y)])
+    return [f"{','.join(image)}[{out}_img]", f"[{source}][{out}_img]{overlay}[{out}]"]
 
 
 def title_filters(spec: RenderSpec, geometry: Geometry, *, source: str, out: str) -> list[str]:
