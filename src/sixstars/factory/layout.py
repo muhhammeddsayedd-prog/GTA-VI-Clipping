@@ -17,9 +17,13 @@ from dataclasses import dataclass
 from typing import Literal
 
 from sixstars.factory.escape import render_filter
-from sixstars.factory.window import ZOOM_MAX, zoom_start_s
 
 LayoutKind = Literal["A", "B", "C", "H", "P", "M"]
+
+# ffmpeg scaler names allowed in `factory.layout_v2.scaler` (Render v2, D119). Without the setting the
+# renders keep ffmpeg's own default, bicubic.
+SCALERS = ("bicubic", "bilinear", "lanczos", "spline", "area")
+DEFAULT_SCALER = "bicubic"
 
 REF_WIDTH = 1080
 REF_HEIGHT = 1920
@@ -327,71 +331,12 @@ def _crop(box: Box) -> str:
     return render_filter("crop", [("w", str(box.w)), ("h", str(box.h)), ("x", str(box.x)), ("y", str(box.y))])
 
 
-@dataclass(frozen=True, slots=True)
-class ZoomCut:
-    """docs/27 step zoom: the frame alternates between 100% and `scale` every `every_s` seconds."""
-
-    every_s: float
-    scale: float
-
-    def __post_init__(self) -> None:
-        if self.every_s <= 0 or self.scale < 1:
-            raise ValueError("a zoom cut needs every_s > 0 and scale >= 1")
-
-
-@dataclass(frozen=True, slots=True)
-class PunchIns:
-    """docs/27 punch-ins: hard cuts to a full-frame close-up during `spans` (clip time, seconds).
-
-    The close-up is the facecam in layout A and the centre of the source in layout B, cropped to the frame's
-    aspect and enlarged by `zoom`.
-    """
-
-    spans: tuple[tuple[float, float], ...]
-    zoom: float = 1.0
-
-    def __post_init__(self) -> None:
-        if self.zoom < 1:
-            raise ValueError("punch-in zoom must be at least 1")
-        if any(end <= start for start, end in self.spans):
-            raise ValueError("punch-in spans must have end > start")
-
-    def expression(self) -> str:
-        """An ffmpeg expression that is non-zero during any punch-in."""
-        return "+".join(f"between(t,{_number(start)},{_number(end)})" for start, end in self.spans)
-
-
-def scale_filters(
-    width: int, height: int, duration_s: float, *, zoom: bool, zoom_cut: ZoomCut | None = None
-) -> list[str]:
-    """Scale to `width`x`height`. With `zoom`, grow from 100% to 108% over the last 40% of the clip, or
-    with `zoom_cut`, step between 100% and its scale every `every_s` seconds.
-
-    The zoom scales each frame slightly larger and crops the centre back to the target size.
-    """
-    if not zoom:
-        return [render_filter("scale", [("w", str(width)), ("h", str(height))]), "setsar=1"]
-    if zoom_cut is not None:
-        step = _number(zoom_cut.scale - 1)
-        factor = f"(1+{step}*mod(floor(t/{_number(zoom_cut.every_s)}),2))"
-    else:
-        start = zoom_start_s(duration_s)
-        span = max(duration_s - start, 0.001)
-        factor = f"(1+{_number(ZOOM_MAX - 1)}*clip((t-{_number(start)})/{_number(span)},0,1))"
-    zoomed_w, zoomed_h = f"2*trunc({width}*{factor}/2)", f"2*trunc({height}*{factor}/2)"
-    return [
-        render_filter("scale", [("w", zoomed_w), ("h", zoomed_h), ("eval", "frame")]),
-        render_filter(
-            "crop",
-            [
-                ("w", str(width)),
-                ("h", str(height)),
-                ("x", f"max(0,({zoomed_w}-{width})/2)"),
-                ("y", f"max(0,({zoomed_h}-{height})/2)"),
-            ],
-        ),
-        "setsar=1",
-    ]
+def scale_filters(width: int, height: int, *, scaler: str = DEFAULT_SCALER) -> list[str]:
+    """Scale to `width`x`height` with the named ffmpeg scaler. Static: nothing changes over time (Render v2,
+    D119: no zoom of any kind)."""
+    if scaler not in SCALERS:
+        raise ValueError(f"unknown scaler {scaler!r}")
+    return [render_filter("scale", [("w", str(width)), ("h", str(height)), ("flags", scaler)]), "setsar=1"]
 
 
 def layout_filters(
@@ -401,18 +346,13 @@ def layout_filters(
     source_h: int,
     geometry: Geometry,
     fps: int,
-    duration_s: float,
-    zoom: bool = True,
     source: str = "0:v",
     out: str = "v_layout",
-    zoom_cut: ZoomCut | None = None,
-    punch_ins: PunchIns | None = None,
     broll: Sequence[BrollCut] = (),
+    scaler: str = DEFAULT_SCALER,
 ) -> list[str]:
-    """Filter chains from the source video link to a `geometry.width`x`geometry.height` frame.
-
-    With `punch_ins`, a full-frame close-up is cut in over the layout during each span.
-    """
+    """Filter chains from the source video link to a `geometry.width`x`geometry.height` frame. Every crop
+    and scale is fixed for the whole clip (D119)."""
     g = geometry
     if isinstance(layout, LayoutMontage):
         return _montage_filters(
@@ -421,11 +361,10 @@ def layout_filters(
             source_h=source_h,
             geometry=g,
             fps=fps,
-            duration_s=duration_s,
-            zoom=zoom,
             source=source,
             out=out,
             broll=broll,
+            scaler=scaler,
         )
     if isinstance(layout, LayoutCard | LayoutPov):
         return _framed_filters(
@@ -434,37 +373,25 @@ def layout_filters(
             source_h=source_h,
             geometry=g,
             fps=fps,
-            duration_s=duration_s,
-            zoom=zoom,
             source=source,
             out=out,
-            zoom_cut=zoom_cut,
+            scaler=scaler,
         )
-    punch = punch_ins if punch_ins is not None and punch_ins.spans else None
-    branches = 3 if punch is not None else 2
-    head = f"[{source}]{render_filter('fps', [('fps', str(fps))])},split={branches}"
-    base_out = f"{out}_base" if punch is not None else out
+    head = f"[{source}]{render_filter('fps', [('fps', str(fps))])},split=2"
     if isinstance(layout, LayoutA):
         game_h = g.c_gameplay_h if layout.cam_top else g.a_gameplay_h
         face_h = g.c_facecam_h if layout.cam_top else g.a_facecam_h
         game = gameplay_crop(layout, g.width, game_h, source_w, source_h)
         face = fit_crop(layout.facecam_box, g.width, face_h, source_w, source_h)
-        game_chain = [
-            _crop(game),
-            *scale_filters(g.width, game_h, duration_s, zoom=zoom, zoom_cut=zoom_cut),
-        ]
-        face_chain = [_crop(face), *scale_filters(g.width, face_h, duration_s, zoom=False)]
+        game_chain = [_crop(game), *scale_filters(g.width, game_h, scaler=scaler)]
+        face_chain = [_crop(face), *scale_filters(g.width, face_h, scaler=scaler)]
         stack = "[v_face][v_game]" if layout.cam_top else "[v_game][v_face]"
-        chains = [
-            f"{head}[v_game_in][v_face_in]" + ("[v_punch_in]" if punch else ""),
+        return [
+            f"{head}[v_game_in][v_face_in]",
             f"[v_game_in]{','.join(game_chain)}[v_game]",
             f"[v_face_in]{','.join(face_chain)}[v_face]",
-            f"{stack}vstack=inputs=2[{base_out}]",
+            f"{stack}vstack=inputs=2[{out}]",
         ]
-        if punch is not None:
-            close_up = fit_crop(layout.facecam_box, g.width, g.height, source_w, source_h)
-            chains += _punch_filters(close_up, punch, g, base_out, out)
-        return chains
     game = fit_crop(Box(0, 0, source_w, source_h), g.width, g.b_gameplay_h, source_w, source_h)
     small_w, small_h = _even(g.width / B_BLUR_DOWNSCALE), _even(g.height / B_BLUR_DOWNSCALE)
     background = [
@@ -486,21 +413,14 @@ def layout_filters(
         render_filter("scale", [("w", str(g.width)), ("h", str(g.height)), ("flags", "bilinear")]),
         "setsar=1",
     ]
-    game_chain = [
-        _crop(game),
-        *scale_filters(g.width, g.b_gameplay_h, duration_s, zoom=zoom, zoom_cut=zoom_cut),
-    ]
+    game_chain = [_crop(game), *scale_filters(g.width, g.b_gameplay_h, scaler=scaler)]
     overlay = render_filter("overlay", [("x", "0"), ("y", str(g.b_gameplay_y))])
-    chains = [
-        f"{head}[v_bg_in][v_game_in]" + ("[v_punch_in]" if punch else ""),
+    return [
+        f"{head}[v_bg_in][v_game_in]",
         f"[v_bg_in]{','.join(background)}[v_bg]",
         f"[v_game_in]{','.join(game_chain)}[v_game]",
-        f"[v_bg][v_game]{overlay}[{base_out}]",
+        f"[v_bg][v_game]{overlay}[{out}]",
     ]
-    if punch is not None:
-        close_up = fit_crop(Box(0, 0, source_w, source_h), g.width, g.height, source_w, source_h)
-        chains += _punch_filters(close_up, punch, g, base_out, out)
-    return chains
 
 
 def _framed_filters(
@@ -510,11 +430,9 @@ def _framed_filters(
     source_h: int,
     geometry: Geometry,
     fps: int,
-    duration_s: float,
-    zoom: bool,
     source: str,
     out: str,
-    zoom_cut: ZoomCut | None,
+    scaler: str,
 ) -> list[str]:
     """Layouts H and P: one crop of the source scaled to its band of the frame, black around it."""
     g = geometry
@@ -530,7 +448,7 @@ def _framed_filters(
     chain = [
         render_filter("fps", [("fps", str(fps))]),
         _crop(crop),
-        *scale_filters(g.width, height, duration_s, zoom=zoom, zoom_cut=zoom_cut),
+        *scale_filters(g.width, height, scaler=scaler),
         render_filter(
             "pad",
             [("w", str(g.width)), ("h", str(g.height)), ("x", "0"), ("y", str(top)), ("color", "black")],
@@ -547,11 +465,10 @@ def _montage_filters(
     source_h: int,
     geometry: Geometry,
     fps: int,
-    duration_s: float,
-    zoom: bool,
     source: str,
     out: str,
     broll: Sequence[BrollCut],
+    scaler: str,
 ) -> list[str]:
     """Layout M: the gameplay panel (with each B-roll cut laid over it for its span) stacked over the
     facecam panel, padded into the frame with black above and below."""
@@ -559,8 +476,8 @@ def _montage_filters(
     game_crop = gameplay_crop(LayoutA(layout.facecam_box), g.width, g.m_game_h, source_w, source_h)
     face_crop = fit_crop(layout.facecam_box, g.width, g.m_face_h, source_w, source_h)
     head = f"[{source}]{render_filter('fps', [('fps', str(fps))])},split=2[m_game_in][m_face_in]"
-    game_chain = [_crop(game_crop), *scale_filters(g.width, g.m_game_h, duration_s, zoom=zoom)]
-    face_chain = [_crop(face_crop), *scale_filters(g.width, g.m_face_h, duration_s, zoom=False)]
+    game_chain = [_crop(game_crop), *scale_filters(g.width, g.m_game_h, scaler=scaler)]
+    face_chain = [_crop(face_crop), *scale_filters(g.width, g.m_face_h, scaler=scaler)]
     chains = [
         head,
         f"[m_game_in]{','.join(game_chain)}[m_game_0]",
@@ -573,7 +490,7 @@ def _montage_filters(
             f"setpts=PTS-STARTPTS+{_number(cut.at_s)}/TB",
             render_filter("fps", [("fps", str(fps))]),
             _crop(game_crop),
-            *scale_filters(g.width, g.m_game_h, cut.duration_s, zoom=False),
+            *scale_filters(g.width, g.m_game_h, scaler=scaler),
         ]
         until = _number(cut.at_s + cut.duration_s)
         overlay = render_filter(
@@ -594,20 +511,3 @@ def _montage_filters(
     )
     chains.append(f"[{current}][m_face]vstack=inputs=2,{pad},setsar=1[{out}]")
     return chains
-
-
-def _punch_filters(close_up: Box, punch: PunchIns, geometry: Geometry, base: str, out: str) -> list[str]:
-    """The close-up branch, cropped and enlarged to fill the frame, laid over `base` during the punch-ins."""
-    w, h = geometry.width, geometry.height
-    big_w, big_h = _even(w * punch.zoom), _even(h * punch.zoom)
-    chain = [
-        _crop(close_up),
-        render_filter("scale", [("w", str(big_w)), ("h", str(big_h))]),
-        render_filter("crop", [("w", str(w)), ("h", str(h))]),
-        "setsar=1",
-    ]
-    overlay = render_filter("overlay", [("x", "0"), ("y", "0"), ("enable", punch.expression())])
-    return [
-        f"[v_punch_in]{','.join(chain)}[v_punch]",
-        f"[{base}][v_punch]{overlay}[{out}]",
-    ]

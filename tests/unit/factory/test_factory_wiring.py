@@ -24,6 +24,7 @@ from sixstars.factory.escape import ass_text_emoji
 from sixstars.factory.layout import Box, LayoutA, LayoutB
 from sixstars.factory.lines import Line, Word
 from sixstars.factory.params import FactoryParams
+from sixstars.factory.style import RETIRED_KEYS
 from sixstars.factory.window import ClipWindow
 from sixstars.factory.writer import WriterInput
 
@@ -75,6 +76,13 @@ def test_config_rejects_bad_values() -> None:
 MIGRATIONS = REPO / "supabase" / "migrations"
 
 
+def without_zoom(rules: dict[str, Any]) -> dict[str, Any]:
+    """Migration 0043 (Render v2 R0, D119): the zoom and punch-in rules are dropped from every style."""
+    migration = (MIGRATIONS / "0043_render_v2_no_zoom.sql").read_text(encoding="utf-8")
+    assert all(f"'{key}'" in migration for key in RETIRED_KEYS)
+    return {key: value for key, value in rules.items() if key not in RETIRED_KEYS}
+
+
 def migrated_style_settings(first: str, second: str, third: str) -> dict[str, object]:
     """`factory.styles` and `factory.style_director` after migrations 0027 (`first`), 0028 (`second`) and
     0029 (`third`): 0028 sets cam_top_title's title_source, adds three styles and the director's affinity;
@@ -93,7 +101,12 @@ def migrated_style_settings(first: str, second: str, third: str) -> dict[str, ob
     wordcap.update(json.loads(montage.split("set value = value || '", 1)[1].split("'::jsonb", 1)[0]))
     merged_director["affinity"]["discovery"]["hype_montage"] = 3
     merged_director["affinity"]["reaction"]["hype_montage"] = 2
-    return {"factory.styles": {**added, **styles, **wordcap}, "factory.style_director": merged_director}
+    styles = {**added, **styles, **wordcap}
+    for style_id, entry in styles.items():
+        entry["rules"] = without_zoom(entry["rules"])
+        if style_id in ("cam_top_viral", "cam_top_viral_follow"):
+            entry["enabled"] = False  # migration 0043
+    return {"factory.styles": styles, "factory.style_director": merged_director}
 
 
 def test_offline_defaults_follow_the_seed_migration() -> None:
@@ -115,7 +128,7 @@ def test_offline_defaults_follow_the_seed_migration() -> None:
             continue
         if key == "factory.style":
             raw = style.split("('factory.style',", 1)[1].split("'", 2)[1]
-            assert json.loads(raw) == value
+            assert without_zoom(json.loads(raw)) == value
             continue
         if key in ("factory.styles", "factory.style_director"):
             # Added by migration 0027 and extended by 0028 (development-plan/M18).

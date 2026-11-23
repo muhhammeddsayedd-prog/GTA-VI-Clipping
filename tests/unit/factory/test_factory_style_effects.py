@@ -1,4 +1,4 @@
-"""The docs/27 editing style: the `factory.style` setting, caption chunks, punch-ins, sound effects and the
+"""The docs/27 editing style: the `factory.style` setting, caption chunks, sound effects and the
 filter-graph pieces they add. Pure: no ffmpeg, no network."""
 
 from collections.abc import Callable
@@ -11,12 +11,12 @@ from sixstars.ai.schemas import ClipWriting
 from sixstars.factory.assets import load_assets
 from sixstars.factory.audio import SfxPlan, build_audio_filters
 from sixstars.factory.bleep import ProfanityMatcher, Span
-from sixstars.factory.effects import SfxCue, parse_momentary, plan_sfx, select_punchins
-from sixstars.factory.layout import Box, Geometry, LayoutA, LayoutB, PunchIns, ZoomCut, layout_filters
+from sixstars.factory.effects import SfxCue, parse_momentary, plan_sfx
+from sixstars.factory.layout import Geometry, LayoutB
 from sixstars.factory.lines import Line, Word, chunk_line, collapse_repeats
 from sixstars.factory.params import FactoryParams
-from sixstars.factory.render import RenderSpec, SourceInfo, build_envelope_command, build_render_command
-from sixstars.factory.style import VIRAL_STYLE, StyleRules
+from sixstars.factory.render import RenderSpec, SourceInfo, build_render_command
+from sixstars.factory.style import RETIRED_KEYS, VIRAL_STYLE, StyleRules
 from sixstars.factory.subtitles import SubtitleStyle, build_ass
 from sixstars.factory.window import ClipWindow
 
@@ -39,15 +39,14 @@ def test_missing_or_bad_setting_gives_the_classic_look() -> None:
     assert StyleRules.from_setting(None) == classic
     assert StyleRules.from_setting("nope") == classic
     assert StyleRules.from_setting({"caption_size": 5000}) == classic  # fails validation as a whole
-    assert not classic.chunked and not classic.punchins and not classic.zoomcuts
-    assert not classic.cut_sfx and not classic.payoff_fx and not classic.compress
+    assert not classic.chunked and not classic.payoff_fx and not classic.compress
 
 
 def test_viral_setting_is_read_and_bad_fields_fall_back() -> None:
     rules = _viral()
     assert rules.chunked and rules.caption_words == 2 and rules.caption_caps
     assert rules.caption_font == "Anton" and rules.hook_mode == "title_bar"
-    assert rules.punchins and rules.zoomcuts and rules.cut_sfx and rules.payoff_fx and rules.compress
+    assert rules.payoff_fx and rules.compress
     odd = StyleRules.from_setting({**VIRAL_STYLE, "hook_mode": "banner", "caption_words": 1.5, "compress": 1})
     assert odd.hook_mode == "box" and odd.caption_words == 0 and odd.compress is False
 
@@ -127,7 +126,28 @@ def test_classic_style_is_unchanged_by_default(params: FactoryParams, clip_lines
     )
 
 
-# ── punch-ins and sound effects ──────────────────────────────
+def test_retired_zoom_keys_are_ignored_not_fatal() -> None:
+    """Render v2 (D119): a setting that still carries the zoom and punch-in rules reads exactly like one
+    without them, and is not rejected (which would fall back to the classic look)."""
+    old = {
+        **VIRAL_STYLE,
+        "punchin_max": 4,
+        "punchin_zoom": 1.25,
+        "punchin_len_s": 1.2,
+        "punchin_min_gap_s": 2.5,
+        "punchin_db": 5,
+        "zoomcut_every_s": 2.5,
+        "zoomcut_scale": 1.08,
+        "cut_sfx": True,
+    }
+    assert set(RETIRED_KEYS) <= set(old)
+    assert StyleRules.from_setting(old) == _viral() != StyleRules.classic()
+    assert not set(RETIRED_KEYS) & set(VIRAL_STYLE)
+    # Out-of-range values of the old rules no longer matter.
+    assert StyleRules.from_setting({**VIRAL_STYLE, "punchin_zoom": 99, "zoomcut_scale": -1}) == _viral()
+
+
+# ── sound effects ────────────────────────────────────────────
 
 
 def test_parse_momentary_reads_ebur128_lines() -> None:
@@ -139,22 +159,11 @@ def test_parse_momentary_reads_ebur128_lines() -> None:
     assert parse_momentary(stderr) == [(pytest.approx(0.3), -20.1), (pytest.approx(0.4), -120.7)]
 
 
-def test_select_punchins_picks_loud_spaced_moments() -> None:
-    envelope = [(i / 10, -25.0) for i in range(200)]
-    for t, m in ((3.0, -12.0), (3.3, -11.0), (8.0, -14.0), (12.0, -13.0), (19.8, -5.0), (0.2, -5.0)):
-        envelope[round(t * 10)] = (t, m)
-    rules = _viral()
-    spans = select_punchins(envelope, 20.0, rules, avoid_s=(12.5,))
-    assert spans == (Span(3.15, 4.35), Span(7.85, 9.05))  # 0.2 too early, 19.8 too late, 12 at payoff
-    assert select_punchins(envelope, 20.0, StyleRules.classic()) == ()
-    assert select_punchins([(0.0, -120.0)] * 50, 20.0, rules) == ()
-
-
 def test_plan_sfx_orders_cues_and_clears_pops() -> None:
     cues = plan_sfx(
         duration_s=10.0,
         keyword_times=(1.0, 3.05, 5.0, 9.9, 12.0),
-        punchins=(Span(3.0, 4.2),),
+        cuts=(Span(3.0, 4.2),),
         payoff_s=7.0,
         rules=_viral(),
     )
@@ -169,39 +178,13 @@ def test_plan_sfx_orders_cues_and_clears_pops() -> None:
     classic = plan_sfx(
         duration_s=10.0,
         keyword_times=(1.0, 3.05),
-        punchins=(Span(3, 4),),
         payoff_s=7.0,
         rules=StyleRules.classic(),
     )
     assert classic == (SfxCue("pop", 1.0), SfxCue("pop", 3.05))
 
 
-# ── filter graph ─────────────────────────────────────────────
-
-
-def test_zoom_cut_and_punch_ins_in_layout_filters() -> None:
-    geometry = Geometry.for_canvas(1080, 1920)
-    punch = PunchIns(((2.0, 3.2),), zoom=1.25)
-    chains = layout_filters(
-        LayoutA(facecam_box=Box(1500, 760, 400, 300)),
-        source_w=1920,
-        source_h=1080,
-        geometry=geometry,
-        fps=30,
-        duration_s=10.0,
-        zoom_cut=ZoomCut(2.5, 1.08),
-        punch_ins=punch,
-    )
-    graph = ";".join(chains)
-    assert "split=3" in graph and "mod(floor(t/2.5)\\,2)" in graph
-    assert "[v_layout_base][v_punch]overlay" in graph and graph.endswith("[v_layout]")
-    assert "enable=between(t\\,2\\,3.2)" in graph
-    plain = ";".join(
-        layout_filters(LayoutB(), source_w=1920, source_h=1080, geometry=geometry, fps=30, duration_s=10.0)
-    )
-    assert "split=2" in plain and "v_punch" not in plain
-    with pytest.raises(ValueError):
-        PunchIns(((3.0, 2.0),))
+# ── audio graph ──────────────────────────────────────────────
 
 
 def test_audio_graph_mixes_extra_effects_and_compresses() -> None:
@@ -222,7 +205,7 @@ def test_audio_graph_mixes_extra_effects_and_compresses() -> None:
     )
 
 
-def test_render_command_adds_effect_inputs_and_envelope(params_factory: Callable[..., FactoryParams]) -> None:
+def test_render_command_adds_effect_inputs(params_factory: Callable[..., FactoryParams]) -> None:
     from sixstars.factory.audio import SfxTrack
 
     spec = RenderSpec(
@@ -236,7 +219,6 @@ def test_render_command_adds_effect_inputs_and_envelope(params_factory: Callable
         sfx_path=PurePath("pop.wav"),
         sfx_times_s=(1.0,),
         sfx_tracks=(SfxTrack(PurePath("boom.wav"), (7.0,)), SfxTrack(PurePath("whoosh.wav"), ())),
-        punch_ins=PunchIns(((2.0, 3.0),), 1.25),
         compress=True,
         watermark_y=450,
     )
@@ -244,9 +226,7 @@ def test_render_command_adds_effect_inputs_and_envelope(params_factory: Callable
     inputs = [command[i + 1] for i, arg in enumerate(command) if arg == "-i"]
     assert inputs == ["src.mp4", "pop.wav", "boom.wav"]
     graph = command[command.index("-filter_complex") + 1]
-    assert "enable=not(between(t\\,2\\,3))" in graph and "y=450" in graph and "concat" not in graph
-    envelope = build_envelope_command(spec)
-    assert envelope[envelope.index("-af") + 1] == "ebur128" and envelope[envelope.index("-ss") + 1] == "5"
+    assert "between(" not in graph and "y=450" in graph and "concat" not in graph
 
 
 # ── title bar ────────────────────────────────────────────────

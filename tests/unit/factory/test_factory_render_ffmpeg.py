@@ -298,3 +298,73 @@ def test_two_pass_loudness_hits_the_target(render_clip: RenderClip, ffmpeg_tools
     )
     assert spec.loudnorm is not None
     assert integrated_loudness(ffmpeg_tools[0], output, 10.0) == pytest.approx(-14.0, abs=1.0)
+
+
+@pytest.fixture(scope="module")
+def static_source(ffmpeg_tools: tuple[str, str], tmp_path_factory: pytest.TempPathFactory) -> Path:
+    """A 6-second 1920x1080 still test pattern (SMPTE bars under a fine grid) with a tone: every frame of the
+    source is the same picture, so any change between rendered frames comes from the render."""
+    path = tmp_path_factory.mktemp("static source") / "static 6s.mp4"
+    run([ffmpeg_tools[0], "-hide_banner", "-loglevel", "error", "-nostdin", "-y",
+         "-f", "lavfi", "-i", "smptehdbars=size=1920x1080:rate=30:duration=6,drawgrid=w=37:h=29:t=2:c=white",
+         "-f", "lavfi", "-i", "sine=frequency=440:sample_rate=48000:duration=6",
+         "-c:v", "libx264", "-preset", "ultrafast", "-crf", "12", "-pix_fmt", "yuv420p",
+         "-c:a", "aac", "-shortest", str(path)])  # fmt: skip
+    return path
+
+
+def _gray(
+    image: Image.Image, box: tuple[int, int, int, int]
+) -> "np.ndarray[tuple[int, ...], np.dtype[np.float64]]":
+    return np.asarray(image.convert("L").crop(box), dtype=np.float64)
+
+
+@pytest.mark.parametrize(
+    ("layout", "regions"),
+    [
+        # Layout C: the facecam panel (above the seam at y=669) and the gameplay panel (below it), clear of
+        # the progress bar that runs along the seam.
+        pytest.param(
+            LayoutA(Box(1440, 720, 480, 360), cam_top=True), [(0, 0, 1080, 640), (0, 700, 1080, 1480)], id="C"
+        ),
+        # Layout B: the 4:5 gameplay from y=285, above the progress bar at y=1500.
+        pytest.param(LayoutB(), [(0, 300, 1080, 1480)], id="B"),
+    ],
+)
+def test_framing_is_static_for_the_whole_clip(
+    layout: Layout,
+    regions: list[tuple[int, int, int, int]],
+    ffmpeg_tools: tuple[str, str],
+    static_source: Path,
+    params_factory: Callable[..., FactoryParams],
+    tmp_path: Path,
+) -> None:
+    """Render v2 (D119, M19 R0): the frames at 0.5 s, 3 s and 5.5 s of a still source are the same picture,
+    pixel-aligned within 1 px. Before R0 the gameplay grew to 108% over the last 40% of the clip."""
+    ffmpeg = ffmpeg_tools[0]
+    params = params_factory(watermark="", end_card_s=0)
+    ass_path = tmp_path / "empty.ass"
+    ass_path.write_text(build_ass([], layout=layout.kind, params=params, duration_s=6.0), encoding="utf-8")
+    output = tmp_path / "static.mp4"
+    spec = RenderSpec(
+        source=SourceInfo(static_source, 1920, 1080),
+        window=ClipWindow(0.0, 6.0),
+        layout=layout,
+        ass_path=ass_path,
+        output_path=output,
+        series_no=1,
+        params=params,
+        mode="express",
+        scaler="lanczos",
+    )
+    run(build_render_command(spec, ffmpeg=ffmpeg))
+    frames = [frame_at(ffmpeg, output, t, tmp_path / f"f{t}.png") for t in (0.5, 3.0, 5.5)]
+    for box in regions:
+        first = _gray(frames[0], box)
+        assert first.std() > 20, "the region has no detail to compare"
+        # Sensitivity: the same picture shifted by 2 px differs clearly, so a 1 px drift would show.
+        shifted = np.abs(first[:, 2:] - first[:, :-2]).mean()
+        assert shifted > 8, f"pattern too flat to detect a shift ({shifted:.1f})"
+        for other in frames[1:]:
+            diff = np.abs(_gray(other, box) - first).mean()
+            assert diff < min(2.0, shifted / 4), f"framing changed in {box}: mean diff {diff:.2f}"

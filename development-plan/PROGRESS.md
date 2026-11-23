@@ -908,3 +908,32 @@ Read-only production analysis, 11-17 to 11-22:
 - PR 4: allocation, captions, paid labels, base hashtags, TikTok re-enable (ask).
 - Staging: renders are deferred until 00:02 UTC because `ai.daily_budget_usd` ($5) was used up on 23 Nov. The first campaign-look clip on staging will appear after that.
 
+## M19 R0 — Render v2: no zoom, no punch-ins (D119) (2026-11-23)
+
+**Branch:** `render-v2` (worktree `../6stars-wt-render`) · **Plan:** `development-plan/M19-render-v2.md` · **Migration:** 0043
+
+### What was built
+
+- Deleted every effect that changed the framing over time: the tail zoom (100→108% over the last 40%), the step zoom cuts (`ZoomCut`), the full-frame punch-ins (`PunchIns`, `_punch_filters`, `effects.select_punchins`, `pipeline._punch_spans`, `render.build_envelope_command`) and the whoosh/impact on punch-ins. `window.ZOOM_MAX`, `ZOOM_TAIL_FRACTION`, `zoom_start_s` and `RenderSpec.zoom/zoom_cut/punch_ins` are gone; `layout_filters`, `_framed_filters` and `_montage_filters` lost their `zoom`/`duration_s` parameters. The seam and progress bar lost the `enable` that hid them during a punch-in.
+- `scale_filters(width, height, *, scaler)` is a plain scale that names its ffmpeg scaler (`layout.SCALERS`). The scaler comes from `factory.layout_v2.scaler` through `FactoryConfig.scaler` → `RenderJob.scaler` → `RenderSpec.scaler`; without the setting (until R1 seeds it) ffmpeg's default `bicubic`, so R0 alone changes nothing but the motion.
+- `StyleRules` lost `punchin_max`, `punchin_zoom`, `punchin_len_s`, `punchin_min_gap_s`, `punchin_db`, `zoomcut_every_s`, `zoomcut_scale`, `cut_sfx` and the `punchins`/`zoomcuts` properties. `from_setting` ignores these keys (`style.RETIRED_KEYS`, warning `style_retired_keys_ignored` once per process), so code and migration can ship in either order.
+- `effects.plan_sfx(cuts=...)`: whoosh + impact only on the montage's B-roll cuts (montage is retired in R1).
+- Migration `0043_render_v2_no_zoom.sql` (idempotent): strips the retired keys from `factory.style` and every `factory.styles` entry; `enabled: false` on `cam_top_viral` and `cam_top_viral_follow` (kept in the catalogue so planned clips still render, now still). `DEFAULT_STYLES` mirrors it.
+- Tests: `tests/unit/factory/test_no_zoom.py` (every catalogue style × every layout kind: no `eval=frame`, no `zoompan`, no time variable in a scale/crop argument, no timed overlay except the montage's B-roll; plus a check that the guard catches the old expressions); real-ffmpeg `test_framing_is_static_for_the_whole_clip` (still SMPTE+grid source through layouts C and B, frames at 0.5/3/5.5 s identical, sensitivity to a 2 px shift asserted). Zoom/punch-in tests removed or rewritten; filter snapshots regenerated (only the zoom expression → plain scale changed).
+- Docs: D119 in `docs/00-decisions.md`; removed effects marked in docs/09, 16, 27 (full rewrite in R7).
+
+### Results
+
+ruff, `ruff format --check`, `mypy --strict src/` clean. Unit: 3789 passed, 6 skipped. All migrations apply to Postgres 17; 0043 re-run is a no-op. Integration (local Postgres 17, ffmpeg 9.0.2): 59 failures, of which 57 also fail on unchanged develop 73347db in the same environment (gate `file_duration` rejects: the rendered files lack the 1.5 s end card locally; precheck, visual score, gate CLI, design styles) — pre-existing, environment-specific, not R0. The 2 R0-caused failures (0036 twin test expecting `cam_top_viral_follow` usable; config test asserting `punchins`) are fixed.
+
+### Deviations
+
+- Decision number D119 (D117 = AI cost plan, D118 = paid clipping campaigns, both landed first). Migration 0043 (0038–0040 landed on develop meanwhile, 0041/0042 held by `ai-cost-b1`).
+- Lanczos is not active until R1's settings migration adds `factory.layout_v2` (the prompt adds every new key in R1).
+- **Staging check not done:** "5 staging renders show identical framing" is open. SSH from the dev machine to staging times out (port 22), staging's `clip.render` queue had 6 jobs stuck since 07:19 UTC with nothing rendered since, and another session was changing staging settings; R0 was not deployed there. Owner to choose: deploy `render-v2` alone to staging (workflow_dispatch), merge to develop (then it rides the next develop→main release), or wait.
+
+### Open issues / next
+
+- Clips rendered before R0 keep their zoomed files and still post until R7 re-renders the queue.
+- Render time before/after not measured yet (no per-frame scale any more, so it can only drop).
+- Next: R1 (G/G0 geometry, settings migration with `factory.layout_v2`, `factory.text_v2`, `facecam.detect`, `gate.render_v2`).

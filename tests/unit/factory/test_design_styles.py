@@ -37,7 +37,11 @@ ACCOUNTS = [
     AccountSlot("youtube_main", "youtube", ("hourly", "spike")),
 ]
 # The Phase A tests use the two styles that need nothing of the clip; Phase B has its own tests.
-CATALOG = StyleCatalog.from_setting({key: DEFAULT_STYLES[key] for key in ("cam_top_viral", "cam_top_title")})
+# cam_top_viral is off since Render v2 R0 (D119); the planner tests switch it on as a second style.
+CATALOG = StyleCatalog.from_setting(
+    {"cam_top_viral": {**DEFAULT_STYLES["cam_top_viral"], "enabled": True}}  # type: ignore[dict-item]
+    | {"cam_top_title": DEFAULT_STYLES["cam_top_title"]}
+)
 CAM = Box(0, 300, 260, 166)
 
 
@@ -48,9 +52,9 @@ def test_the_default_catalogue_has_the_two_phase_a_styles_with_the_facecam_on_to
     assert CATALOG.ids == ("cam_top_title", "cam_top_viral"), "sorted by id"
     viral, title = CATALOG.rules_for("cam_top_viral"), CATALOG.rules_for("cam_top_title")
     assert viral.facecam_top and title.facecam_top
-    assert viral == StyleRules.from_setting(CAM_TOP_VIRAL) and viral.punchins and viral.captions
+    assert viral == StyleRules.from_setting(CAM_TOP_VIRAL) and viral.captions
     assert title == StyleRules.from_setting(CAM_TOP_TITLE)
-    assert not title.captions and title.title_whole_clip and not title.punchins and not title.zoomcuts
+    assert not title.captions and title.title_whole_clip
 
 
 def test_without_the_setting_the_catalogue_is_the_single_legacy_style() -> None:
@@ -156,13 +160,11 @@ def test_layout_c_puts_the_facecam_on_top() -> None:
     assert g.seam_y("C") == 669 and g.seam_y("A") == g.a_seam_y
     layout = LayoutA(facecam_box=CAM, cam_top=True)
     assert layout.kind == "C" and LayoutA(facecam_box=CAM).kind == "A"
-    chains = layout_filters(layout, source_w=1920, source_h=1080, geometry=g, fps=30, duration_s=10.0)
+    chains = layout_filters(layout, source_w=1920, source_h=1080, geometry=g, fps=30)
     assert chains[-1] == "[v_face][v_game]vstack=inputs=2[v_layout]"
     assert any("h=672" in chain for chain in chains if chain.startswith("[v_face_in]"))
     assert any("h=1248" in chain for chain in chains if chain.startswith("[v_game_in]"))
-    plain = layout_filters(
-        LayoutA(facecam_box=CAM), source_w=1920, source_h=1080, geometry=g, fps=30, duration_s=10.0
-    )
+    plain = layout_filters(LayoutA(facecam_box=CAM), source_w=1920, source_h=1080, geometry=g, fps=30)
     assert plain[-1] == "[v_game][v_face]vstack=inputs=2[v_layout]"
 
 

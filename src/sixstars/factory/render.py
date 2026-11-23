@@ -12,6 +12,7 @@ from sixstars.factory.audio import SFX_GAIN_DB, LoudnormMeasurement, SfxPlan, Sf
 from sixstars.factory.bleep import Span
 from sixstars.factory.escape import normalize_filter_path, render_filter
 from sixstars.factory.layout import (
+    DEFAULT_SCALER,
     REF_HEIGHT,
     REF_WIDTH,
     BrollCut,
@@ -19,8 +20,6 @@ from sixstars.factory.layout import (
     Layout,
     LayoutA,
     LayoutMontage,
-    PunchIns,
-    ZoomCut,
     layout_filters,
 )
 from sixstars.factory.overlays import (
@@ -79,12 +78,9 @@ class RenderSpec:
     sfx_times_s: tuple[float, ...] = ()
     logo_path: PurePath | None = None
     hook_shown: bool = True
-    zoom: bool = True
     loudnorm: LoudnormMeasurement | None = None
     nvenc_available: bool = False
-    # docs/27 edit effects (all off by default: the classic look).
-    zoom_cut: ZoomCut | None = None
-    punch_ins: PunchIns | None = None
+    # docs/27 sound effects and compression (off by default: the classic look).
     sfx_tracks: tuple[SfxTrack, ...] = ()
     sfx_gain_db: float = SFX_GAIN_DB
     compress: bool = False
@@ -111,6 +107,8 @@ class RenderSpec:
     broll: tuple[tuple[float, float, float], ...] = ()
     fade_png: PurePath | None = None
     fade_top: int = 0
+    # The ffmpeg scaler of every crop (`factory.layout_v2.scaler`, D119).
+    scaler: str = DEFAULT_SCALER
 
     @property
     def _active_tracks(self) -> tuple[SfxTrack, ...]:
@@ -163,12 +161,9 @@ def build_video_filters(spec: RenderSpec) -> list[str]:
         source_h=spec.source.height,
         geometry=geometry,
         fps=params.fps,
-        duration_s=duration,
-        zoom=spec.zoom,
         out="v_layout",
-        zoom_cut=spec.zoom_cut,
-        punch_ins=spec.punch_ins,
         broll=broll_cuts(spec) if isinstance(spec.layout, LayoutMontage) else (),
+        scaler=spec.scaler,
     )
     if spec.fade_png is not None:
         fade = render_filter("movie", [("filename", normalize_filter_path(str(spec.fade_png)))])
@@ -178,10 +173,6 @@ def build_video_filters(spec: RenderSpec) -> list[str]:
         chains.append(f"{fade},format=rgba[v_fade_img]")
         overlay = render_filter("overlay", [("x", "0"), ("y", str(y))])
         chains.append(f"[v_layout][v_fade_img]{overlay}[v_layout_f]")
-    # The seam and the progress bar belong to the split frame: they are hidden while a punch-in fills it.
-    shown = None
-    if spec.punch_ins is not None and spec.punch_ins.spans:
-        shown = f"not({spec.punch_ins.expression()})"
     # The progress bar goes under the text. In layout A it runs along the seam (the seam is its track), so
     # it never crosses the streamer's face; in layout B it sits at the bottom of the safe zone.
     bar_source, bar_y = ("v_layout_f" if spec.fade_png is not None else "v_layout"), None
@@ -190,7 +181,7 @@ def build_video_filters(spec: RenderSpec) -> list[str]:
         bar_y = geometry.m_top + geometry.m_game_h + geometry.m_face_h - geometry.progress_h
     if isinstance(spec.layout, LayoutA):
         seam_y = geometry.seam_y(spec.layout.kind)
-        seam = seam_filter(geometry, SEAM_TRACK_COLOR, enable=shown, y=seam_y)
+        seam = seam_filter(geometry, SEAM_TRACK_COLOR, y=seam_y)
         chains.append(f"[{bar_source}]{seam}[v_seam]")
         bar_source = "v_seam"
         bar_y = seam_y - max(0, (geometry.progress_h - geometry.a_seam_h) // 2)
@@ -202,7 +193,6 @@ def build_video_filters(spec: RenderSpec) -> list[str]:
         source=bar_source,
         out="v_progress",
         y=bar_y,
-        enable=shown,
     )
     text_source = "v_progress"
     if spec.title_png is not None and (params.hook_seconds > 0 or spec.title_whole_clip):
@@ -425,29 +415,6 @@ def build_loudnorm_measure_command(spec: RenderSpec, *, ffmpeg: str = "ffmpeg") 
         "-map",
         f"[{AUDIO_OUT}]",
         "-vn",
-        "-f",
-        "null",
-        "-",
-    ]
-
-
-def build_envelope_command(spec: RenderSpec, *, ffmpeg: str = "ffmpeg") -> list[str]:
-    """Measures the momentary loudness of the clip's source audio every 100 ms (`ebur128`), for placing the
-    punch-ins; read the readings from stderr with `effects.parse_momentary`. Needs a source with audio."""
-    return [
-        ffmpeg,
-        "-hide_banner",
-        "-nostdin",
-        "-nostats",
-        "-ss",
-        _seconds(spec.window.start_s),
-        "-t",
-        _seconds(spec.clip_duration_s),
-        "-i",
-        _path_arg(spec.source.path),
-        "-vn",
-        "-af",
-        "ebur128",
         "-f",
         "null",
         "-",

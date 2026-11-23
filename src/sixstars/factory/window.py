@@ -1,13 +1,9 @@
 """Pure timing maths for the factory: context padding, the writer's trim rules, frame snapping and the
-end-card and zoom timings. Every time is in seconds relative to the source file.
+end-card timing. Every time is in seconds relative to the source file.
 """
 
 import math
 from dataclasses import dataclass
-
-# docs/09 section 5: the punchline zoom covers the last 40% of the clip and goes from 100% to 108%.
-ZOOM_TAIL_FRACTION = 0.4
-ZOOM_MAX = 1.08
 
 
 @dataclass(frozen=True, slots=True)
@@ -88,8 +84,3 @@ def total_duration_s(clip_duration_s: float, end_card_s: float, fps: int) -> flo
     """Length of the finished file: the clip plus the end card, both frame-snapped."""
     end_card = snap_duration(end_card_s, fps) if end_card_s > 0 else 0.0
     return snap_duration(clip_duration_s, fps) + end_card
-
-
-def zoom_start_s(clip_duration_s: float) -> float:
-    """When the punchline zoom begins: the start of the last 40% of the clip."""
-    return clip_duration_s * (1.0 - ZOOM_TAIL_FRACTION)
