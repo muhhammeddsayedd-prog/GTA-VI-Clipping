@@ -407,7 +407,7 @@ Clip thumbnails and creator profile pictures for the admin console (docs/26, mig
 
 ## Clipping campaigns (lanes)
 
-Campaign lanes, decision D118 (migration 0040). The campaigns themselves live in `clip_campaigns`, not in settings.
+Campaign lanes, decision D118 (migration 0050). The campaigns themselves live in `clip_campaigns`, not in settings.
 
 | Key | Default | Meaning |
 |---|---|---|

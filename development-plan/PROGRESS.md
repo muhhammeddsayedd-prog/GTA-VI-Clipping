@@ -626,7 +626,7 @@ Production audit 2026-11-21: `youtube_main` had been lowered to the learned-cap 
 
 ### What was built
 
-- Migration `0040_clip_campaigns.sql` (additive, idempotent):
+- Migration `0050_clip_campaigns.sql` (additive, idempotent):
   - Tables `clip_campaigns`, `clip_campaign_creators`, `clip_campaign_posts`, `render_profiles` (five seeded looks: `brand`, `clean-disclose`, `partner-logo`, `overlay-keep`, `brand-disclose`), `lane_quotas`, `creator_live_status`.
   - Tier `campaign` in `creators_tier_check`, plus `creators.tier_before_campaign`.
   - Nullable `campaign_id` on `live_sessions`, `videos`, `viewer_clips`, `spikes`, `clips`, `posts`, and `clips.render_profile`.
@@ -653,7 +653,7 @@ Production audit 2026-11-21: `youtube_main` had been lowered to the learned-cap 
 
 ### Deviations
 
-- Numbering: `develop` took D117 and migration 0037 for the AI-cost work while this was built, so this is **D118** and migrations start at **0040** (0038/0039 left free for the AI-cost branch; gaps are fine for `supabase db push --include-all`).
+- Numbering: `develop` took D117 and migrations 0037-0040 (AI cost, titles v2) while this was built, so this is **D118** and the campaign migrations are **0050** (PR 1) and **0051** (PR 2), with room in between for other branches. Gaps are fine for `supabase db push --include-all`.
 
 - Naming (owner, 23 Nov): `clip_campaigns` / `clip_campaign_posts` / `lane_quotas`, and Telegram `/clipcamp …` later. This avoids the docs/28 `ad_campaigns` and `/campaign` and the existing `/resume`.
 - A campaign is a tag (`campaign_id`), not a new lane value: `clips.lane` / `posts.lane` stay `spike|hourly`.
