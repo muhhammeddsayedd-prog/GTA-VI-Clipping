@@ -10,7 +10,7 @@ import {
 import CountUp from "@/components/reactbits/CountUp";
 import { cn } from "@/lib/utils";
 import { LEVEL_TONE } from "@/lib/status";
-import { fmtTime, humanize, localTitle } from "@/lib/format";
+import { fmtTime, humanize, utcTitle } from "@/lib/format";
 import type { Event, Json, Trace as TraceT } from "@/lib/api/types";
 import { Badge, Card } from "./primitives";
 
@@ -236,7 +236,7 @@ export function EventFeed({ events, onOpen, empty = "No events yet." }: { events
               <div className="t1">{e.message || humanize(e.type)}</div>
               <div className="t2"><span className="mono">{e.type}</span>{e.service ? ` · ${e.service}` : ""}</div>
             </div>
-            <time className="time" dateTime={e.created_at} title={localTitle(e.created_at)}>{fmtTime(e.created_at)}</time>
+            <time className="time" dateTime={e.created_at} title={utcTitle(e.created_at)}>{fmtTime(e.created_at)}</time>
           </>
         );
         return (

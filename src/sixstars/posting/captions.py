@@ -12,7 +12,7 @@ YouTube also gets a title and its extra hashtags (`#Shorts`) in the description.
 from collections.abc import Iterable
 from dataclasses import dataclass
 
-from sixstars.posting.gate import privacy_problem, staging_problem
+from sixstars.posting.gate import PRIVATE_PRIVACY, privacy_problem, staging_problem
 from sixstars.posting.models import Account, Clip, Platform
 from sixstars.posting.params import PostingParams
 
@@ -66,8 +66,9 @@ def normalise_hashtags(tags: Iterable[str]) -> tuple[str, ...]:
 
 
 def hashtags_for(clip: Clip, params: PostingParams, platform: Platform) -> tuple[str, ...]:
-    """Base hashtags, then at most `MAX_CLIP_HASHTAGS` clip hashtags, then the YouTube extras."""
-    base = normalise_hashtags(params.base_hashtags)
+    """Base hashtags, then at most `MAX_CLIP_HASHTAGS` clip hashtags, then the YouTube extras. A campaign
+    clip (D118) puts its brief's required hashtags first."""
+    base = normalise_hashtags((*clip.campaign_tags, *params.base_hashtags))
     known = {tag.lower() for tag in base}
     own = tuple(tag for tag in normalise_hashtags(clip.hashtags) if tag.lower() not in known)
     extra = params.youtube_extra_hashtags if platform is Platform.YOUTUBE else ()
@@ -101,8 +102,12 @@ def credit_line(clip: Clip) -> str:
 
 
 def build_caption(clip: Clip, params: PostingParams, platform: Platform, limit: int = CAPTION_MAX) -> str:
-    """The full caption. Only the caption line is shortened to fit `limit`; credit and hashtags stay whole."""
+    """The full caption. Only the caption line is shortened to fit `limit`; credit and hashtags stay whole.
+    D118: a campaign clip's required line (call to action, mention) follows the credit and is never cut."""
     tail = credit_line(clip)
+    if clip.campaign_line.strip():
+        required = " ".join(clip.campaign_line.split())
+        tail = f"{tail}\n{required}"
     tags = " ".join(hashtags_for(clip, params, platform))
     if tags:
         tail = f"{tail}\n{tags}"
@@ -160,10 +165,28 @@ def build_fields(clip: Clip, account: Account, params: PostingParams) -> dict[st
             "title": build_caption(clip, params, Platform.INSTAGRAM),
             "media_type": INSTAGRAM_MEDIA_TYPE,
         }
-    comment = first_comment_for(account, params)
-    if comment:
-        fields["first_comment"] = comment
+    if clip.campaign_id is not None:
+        fields.update(paid_label_fields(account))
+    else:
+        # D118: the first comment stays on Normal posts only (it keeps a campaign caption clean).
+        comment = first_comment_for(account, params)
+        if comment:
+            fields["first_comment"] = comment
     return fields
+
+
+def paid_label_fields(account: Account) -> dict[str, FieldValue]:
+    """D118: Upload-Post's paid-partnership fields for a campaign post (docs checked 2026-11-23).
+
+    YouTube: `hasPaidProductPlacement` ("Includes paid promotion"; Upload-Post warns when YouTube does not
+    keep it, then it is ticked in Studio). TikTok: `brand_content_toggle` ("Paid partnership"), which
+    Upload-Post refuses on `SELF_ONLY` posts, so a private (staging) post goes without it. Instagram: no API
+    field with Instagram Login; the label is turned on in the app (the submission alert says so)."""
+    if account.platform is Platform.YOUTUBE:
+        return {"hasPaidProductPlacement": True}
+    if account.platform is Platform.TIKTOK and (account.privacy or "") != PRIVATE_PRIVACY[Platform.TIKTOK]:
+        return {"brand_content_toggle": True}
+    return {}
 
 
 def build_upload_request(

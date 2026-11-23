@@ -11,7 +11,7 @@ import { Badge, Btn, Card, CardHead, ErrorState, PageHead, Plat, Prog, RefreshBt
 import { POLL, useApi } from "@/lib/api/client";
 import type { CapRow, Event, QueueView as Q } from "@/lib/api/types";
 import { useNow } from "@/components/domain/clips/useNow";
-import { fmtAgo, fmtDuration, fmtTime, series, humanize } from "@/lib/format";
+import { fmtAgo, fmtDuration, fmtTime, series, humanize, zoneLabel, utcHourInZone } from "@/lib/format";
 import { AccountName } from "@/components/domain/AccountName";
 
 const SLOT_CLS: Record<string, string> = { posted: "done", planned: "on", skipped: "skip", failed: "fail", not_allowed: "off", empty: "skip" };
@@ -52,7 +52,7 @@ export function QueueView() {
   return (
     <>
       <PageHead title="Posting queue"
-        sub={<>What will post next, where, and why slots were skipped{d.next_slot_at ? <> · next hourly slot <b className="ink2">{fmtTime(d.next_slot_at)} UTC</b>{nextIn !== null && nextIn > 0 ? ` in ${fmtDuration(nextIn)}` : ""}</> : null}</>}
+        sub={<>What will post next, where, and why slots were skipped{d.next_slot_at ? <> · next hourly slot <b className="ink2">{fmtTime(d.next_slot_at)} {zoneLabel()}</b>{nextIn !== null && nextIn > 0 ? ` in ${fmtDuration(nextIn)}` : ""}</> : null}</>}
         actions={<RefreshBtn onClick={() => q.refetch()} spinning={q.isFetching} />} />
 
       <div className="g collapse-md" style={{ gridTemplateColumns: "480px 1fr" }}>
@@ -91,7 +91,7 @@ export function QueueView() {
 
         <div className="col">
           <Card>
-            <CardHead title="Hourly slots · today (UTC)" hint="Each cell is one slot · jitter 0–5 min"
+            <CardHead title="Hourly slots · today (UTC)" hint={`Each cell is one UTC-hour slot · jitter 0–5 min · hover for ${zoneLabel()} time`}
               actions={<Legend items={[{ color: "var(--p)", label: "posted" }, { color: "var(--ps2)", label: "planned" }, { color: "#F6D7A4", label: "skipped / empty" }, { color: "var(--red)", label: "failed" }, { color: "#E6E6EE", label: "not allowed" }]} />} />
             {d.slots.map((s, i) => (
               <div key={s.account_id} className="row slot-row" style={{ gap: 14, padding: "10px 0", borderBottom: i < d.slots.length - 1 ? "1px solid var(--line)" : 0 }}>
@@ -99,7 +99,7 @@ export function QueueView() {
                 <div className="grow" style={{ minWidth: 0 }}>
                   <Hours labels={i === d.slots.length - 1} cells={s.hours.map((h) => ({
                     cls: `${SLOT_CLS[h.state] ?? ""}${h.hour === nowH ? " now" : ""}`,
-                    title: `${String(h.hour).padStart(2, "0")}:00 — ${h.state.replace("_", " ")}`,
+                    title: `${String(h.hour).padStart(2, "0")}:00 UTC (${utcHourInZone(h.hour)}) — ${h.state.replace("_", " ")}`,
                   }))} />
                 </div>
               </div>

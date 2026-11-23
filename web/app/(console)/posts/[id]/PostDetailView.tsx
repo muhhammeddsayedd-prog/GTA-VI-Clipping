@@ -11,7 +11,7 @@ import { Drawer, useToast } from "@/components/kit/overlays";
 import { Badge, Banner, Btn, Card, CardHead, ErrorState, KV, PageHead, Plat, platformName, SkeletonCards, When } from "@/components/kit/primitives";
 import { POLL, useApi } from "@/lib/api/client";
 import type { Event, PostDetail } from "@/lib/api/types";
-import { fmtAgo, fmtDuration, fmtTime, humanize, series } from "@/lib/format";
+import { fmtAgo, fmtDuration, fmtTime, humanize, series, zoneLabel } from "@/lib/format";
 import { AccountName } from "@/components/domain/AccountName";
 
 function stepOf(e: Event): "done" | "fail" | "run" {
@@ -63,7 +63,7 @@ export function PostDetailView({ id }: { id: string }) {
             ))}
           </div>
           <div className="pfoot" style={{ flexWrap: "wrap" }}>
-            <div><div className="k">Published</div><div className="v">{p.published_at ? `${fmtTime(p.published_at, true)} UTC` : "—"}</div></div>
+            <div><div className="k">Published</div><div className="v">{p.published_at ? `${fmtTime(p.published_at, true)} ${zoneLabel()}` : "—"}</div></div>
             <div><div className="k">{p.lane === "spike" ? "Request → live" : "Upload took"}</div><div className="v">{latency !== null ? fmtDuration(latency) : "—"}</div></div>
             <div><div className="k">Stats updated</div><div className="v">{p.stats_updated_at ? fmtAgo(p.stats_updated_at) : "—"}</div></div>
             <div className="right row">
@@ -98,7 +98,7 @@ export function PostDetailView({ id }: { id: string }) {
           <KV rows={[
             ["Account", <AccountName key="acc" id={p.account_id} withId />],
             ["Lane", p.lane],
-            ["Slot", p.slot_at ? `${fmtTime(p.slot_at)} UTC` : "— (spike lane)"],
+            ["Slot", p.slot_at ? `${fmtTime(p.slot_at)} ${zoneLabel()}` : "— (spike lane)"],
             ["Dry run", p.dry_run ? "yes" : "no"],
             ["Attempts", String(p.attempts)],
             ["Upload request", <span key="u" className="mono">{p.upload_request_id ?? "—"}</span>],

@@ -14,8 +14,8 @@ from sixstars.gate.models import (
     EXPRESS,
     FORBIDDEN_TIERS,
     PRECHECK_NOT_RUN,
+    PREFERRED_LIKE,
     TIER_AUTO,
-    TIER_PREFERRED,
     CheckResult,
     ClipFacts,
     CreatorFacts,
@@ -85,13 +85,13 @@ def check_creator(
     tier = creator.tier
     failures: _Failures = []
     limit: object = None
-    if tier in FORBIDDEN_TIERS or tier not in (TIER_PREFERRED, TIER_AUTO):
+    if tier in FORBIDDEN_TIERS or tier not in (*PREFERRED_LIKE, TIER_AUTO):
         failures.append(
             (ReasonCode.CREATOR_FORBIDDEN, f"creator tier is {tier or 'unknown'!r}: never clipped (D10)")
         )
     elif limits.name == EXPRESS:
         limit = list(limits.tiers)
-        allowed = (tier == TIER_PREFERRED and "preferred" in limits.tiers) or (
+        allowed = (tier in PREFERRED_LIKE and "preferred" in limits.tiers) or (
             tier == TIER_AUTO and ("auto" in limits.tiers or ("auto_no_music" in limits.tiers and music == 0))
         )
         if not allowed:

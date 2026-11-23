@@ -6,25 +6,29 @@ express renders. Arguments are lists, never shell strings.
 
 from dataclasses import dataclass, field
 from pathlib import PurePath
+from typing import Final
 
 from sixstars.factory.audio import SFX_GAIN_DB, LoudnormMeasurement, SfxPlan, SfxTrack, build_audio_filters
 from sixstars.factory.bleep import Span
 from sixstars.factory.escape import normalize_filter_path, render_filter
 from sixstars.factory.layout import (
+    DEFAULT_SCALER,
     REF_HEIGHT,
     REF_WIDTH,
     BrollCut,
     Geometry,
     Layout,
     LayoutA,
+    LayoutG,
+    LayoutG0,
     LayoutMontage,
-    PunchIns,
-    ZoomCut,
+    LayoutV2Rules,
     layout_filters,
 )
 from sixstars.factory.overlays import (
     SEAM_TRACK_COLOR,
     ass_filter,
+    disclosure_filter,
     end_card_filters,
     follow_filter,
     progress_filters,
@@ -77,12 +81,9 @@ class RenderSpec:
     sfx_times_s: tuple[float, ...] = ()
     logo_path: PurePath | None = None
     hook_shown: bool = True
-    zoom: bool = True
     loudnorm: LoudnormMeasurement | None = None
     nvenc_available: bool = False
-    # docs/27 edit effects (all off by default: the classic look).
-    zoom_cut: ZoomCut | None = None
-    punch_ins: PunchIns | None = None
+    # docs/27 sound effects and compression (off by default: the classic look).
     sfx_tracks: tuple[SfxTrack, ...] = ()
     sfx_gain_db: float = SFX_GAIN_DB
     compress: bool = False
@@ -100,9 +101,19 @@ class RenderSpec:
     watermark: bool = True
     # Layout M (Phase E): the B-roll inserts as (source start in file time, clip time, length), read as
     # extra inputs after the sound effects, and the seam fade PNG laid over the frame at `fade_top`.
+    # D118 campaign look: a disclosure line ("Paid partnership") over the first `disclosure_s` seconds,
+    # and the campaign's logo PNG in a corner (`campaign_logo_pos`) for the whole clip.
+    disclosure_text: str = ""
+    disclosure_s: float = 0.0
+    campaign_logo: PurePath | None = None
+    campaign_logo_pos: str = ""
     broll: tuple[tuple[float, float, float], ...] = ()
     fade_png: PurePath | None = None
     fade_top: int = 0
+    # The ffmpeg scaler of every crop (`factory.layout_v2.scaler`, D119).
+    scaler: str = DEFAULT_SCALER
+    # Render v2 (`factory.layout_v2`): the geometry of layouts G and G0.
+    layout_v2: LayoutV2Rules = field(default_factory=LayoutV2Rules)
 
     @property
     def _active_tracks(self) -> tuple[SfxTrack, ...]:
@@ -145,9 +156,10 @@ def broll_cuts(spec: RenderSpec) -> tuple[BrollCut, ...]:
 
 
 def build_video_filters(spec: RenderSpec) -> list[str]:
-    """Video chains: layout, seam, progress bar, subtitles and overlays, then the end card."""
+    """Video chains: layout, seam, progress bar, subtitles and overlays, then the end card. Layouts G and G0
+    (Render v2) have no seam and no progress bar."""
     params = spec.params
-    geometry = Geometry.for_canvas(params.width, params.height)
+    geometry = Geometry.for_canvas(params.width, params.height, spec.layout_v2)
     duration = spec.clip_duration_s
     chains = layout_filters(
         spec.layout,
@@ -155,12 +167,10 @@ def build_video_filters(spec: RenderSpec) -> list[str]:
         source_h=spec.source.height,
         geometry=geometry,
         fps=params.fps,
-        duration_s=duration,
-        zoom=spec.zoom,
         out="v_layout",
-        zoom_cut=spec.zoom_cut,
-        punch_ins=spec.punch_ins,
         broll=broll_cuts(spec) if isinstance(spec.layout, LayoutMontage) else (),
+        scaler=spec.scaler,
+        v2=spec.layout_v2,
     )
     if spec.fade_png is not None:
         fade = render_filter("movie", [("filename", normalize_filter_path(str(spec.fade_png)))])
@@ -170,10 +180,6 @@ def build_video_filters(spec: RenderSpec) -> list[str]:
         chains.append(f"{fade},format=rgba[v_fade_img]")
         overlay = render_filter("overlay", [("x", "0"), ("y", str(y))])
         chains.append(f"[v_layout][v_fade_img]{overlay}[v_layout_f]")
-    # The seam and the progress bar belong to the split frame: they are hidden while a punch-in fills it.
-    shown = None
-    if spec.punch_ins is not None and spec.punch_ins.spans:
-        shown = f"not({spec.punch_ins.expression()})"
     # The progress bar goes under the text. In layout A it runs along the seam (the seam is its track), so
     # it never crosses the streamer's face; in layout B it sits at the bottom of the safe zone.
     bar_source, bar_y = ("v_layout_f" if spec.fade_png is not None else "v_layout"), None
@@ -182,24 +188,29 @@ def build_video_filters(spec: RenderSpec) -> list[str]:
         bar_y = geometry.m_top + geometry.m_game_h + geometry.m_face_h - geometry.progress_h
     if isinstance(spec.layout, LayoutA):
         seam_y = geometry.seam_y(spec.layout.kind)
-        seam = seam_filter(geometry, SEAM_TRACK_COLOR, enable=shown, y=seam_y)
+        seam = seam_filter(geometry, SEAM_TRACK_COLOR, y=seam_y)
         chains.append(f"[{bar_source}]{seam}[v_seam]")
         bar_source = "v_seam"
         bar_y = seam_y - max(0, (geometry.progress_h - geometry.a_seam_h) // 2)
-    chains += progress_filters(
-        geometry=geometry,
-        accent_color=params.accent_color,
-        fps=params.fps,
-        duration_s=duration,
-        source=bar_source,
-        out="v_progress",
-        y=bar_y,
-        enable=shown,
-    )
-    text_source = "v_progress"
+    if isinstance(spec.layout, LayoutG | LayoutG0):
+        text_source = bar_source
+    else:
+        chains += progress_filters(
+            geometry=geometry,
+            accent_color=params.accent_color,
+            fps=params.fps,
+            duration_s=duration,
+            source=bar_source,
+            out="v_progress",
+            y=bar_y,
+        )
+        text_source = "v_progress"
     if spec.title_png is not None and (params.hook_seconds > 0 or spec.title_whole_clip):
-        chains += title_filters(spec, geometry, source="v_progress", out="v_titled")
+        chains += title_filters(spec, geometry, source=text_source, out="v_titled")
         text_source = "v_titled"
+    if spec.campaign_logo is not None and spec.campaign_logo_pos:
+        chains += campaign_logo_filters(spec, geometry, source=text_source, out="v_logo")
+        text_source = "v_logo"
     text_chain = [ass_filter(spec.ass_path, spec.fonts.fonts_dir)]
     watermark = (
         None
@@ -228,6 +239,17 @@ def build_video_filters(spec: RenderSpec) -> list[str]:
     )
     if follow is not None:
         text_chain.append(follow)
+    disclosure = disclosure_filter(
+        spec.disclosure_text,
+        geometry=geometry,
+        font_name=params.font,
+        fonts=spec.fonts,
+        clip_s=duration,
+        show_s=spec.disclosure_s,
+        safe_top_px=params.safe_top_px,
+    )
+    if disclosure is not None:
+        text_chain.append(disclosure)
     finish = f"trim=duration={_seconds(duration)},setpts=PTS-STARTPTS,setsar=1,format=yuv420p"
     text_chain.append(finish)
     if spec.end_card_s <= 0:
@@ -248,6 +270,38 @@ def build_video_filters(spec: RenderSpec) -> list[str]:
     )
     chains.append(f"[v_main][v_end]concat=n=2:v=1:a=0[{VIDEO_OUT}]")
     return chains
+
+
+LOGO_WIDTH_REF: Final = 200  # campaign logo width on the 1080x1920 reference canvas
+LOGO_MARGIN_REF: Final = 48
+
+
+def logo_position(pos: str, geometry: Geometry, safe_top_px: int, safe_bottom_px: int) -> tuple[str, str]:
+    """`overlay` x/y expressions for a corner inside the safe zone (pure)."""
+    scale = geometry.height / REF_HEIGHT
+    margin = round(LOGO_MARGIN_REF * scale)
+    top = round(safe_top_px * scale) + margin
+    bottom = round(safe_bottom_px * scale) + margin
+    x = f"W-w-{margin}" if pos.endswith("right") else str(margin)
+    y = str(top) if pos.startswith("top") else f"H-h-{bottom}"
+    return x, y
+
+
+def campaign_logo_filters(spec: RenderSpec, geometry: Geometry, *, source: str, out: str) -> list[str]:
+    """D118: the campaign's logo PNG, scaled to `LOGO_WIDTH_REF`, laid over `source` in its corner for the
+    whole clip."""
+    assert spec.campaign_logo is not None
+    width = max(2, round(LOGO_WIDTH_REF * geometry.width / REF_WIDTH) // 2 * 2)
+    image = [
+        render_filter("movie", [("filename", normalize_filter_path(str(spec.campaign_logo)))]),
+        "format=rgba",
+        render_filter("scale", [("w", str(width)), ("h", "-2")]),
+    ]
+    x, y = logo_position(
+        spec.campaign_logo_pos, geometry, spec.params.safe_top_px, spec.params.safe_bottom_px
+    )
+    overlay = render_filter("overlay", [("x", x), ("y", y)])
+    return [f"{','.join(image)}[{out}_img]", f"[{source}][{out}_img]{overlay}[{out}]"]
 
 
 def title_filters(spec: RenderSpec, geometry: Geometry, *, source: str, out: str) -> list[str]:
@@ -371,29 +425,6 @@ def build_loudnorm_measure_command(spec: RenderSpec, *, ffmpeg: str = "ffmpeg") 
         "-map",
         f"[{AUDIO_OUT}]",
         "-vn",
-        "-f",
-        "null",
-        "-",
-    ]
-
-
-def build_envelope_command(spec: RenderSpec, *, ffmpeg: str = "ffmpeg") -> list[str]:
-    """Measures the momentary loudness of the clip's source audio every 100 ms (`ebur128`), for placing the
-    punch-ins; read the readings from stderr with `effects.parse_momentary`. Needs a source with audio."""
-    return [
-        ffmpeg,
-        "-hide_banner",
-        "-nostdin",
-        "-nostats",
-        "-ss",
-        _seconds(spec.window.start_s),
-        "-t",
-        _seconds(spec.clip_duration_s),
-        "-i",
-        _path_arg(spec.source.path),
-        "-vn",
-        "-af",
-        "ebur128",
         "-f",
         "null",
         "-",

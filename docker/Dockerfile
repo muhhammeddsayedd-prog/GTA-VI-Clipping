@@ -53,6 +53,18 @@ RUN mkdir -p /out/panns \
       "http://storage.googleapis.com/us_audioset/youtube_corpus/v1/csv/class_labels_indices.csv" \
     && test "$(wc -l < /out/panns/class_labels_indices.csv)" -eq 528
 
+# MediaPipe Face Landmarker with blendshapes (Apache 2.0): the cover engine's frame scorer (docs/29a).
+ARG FACE_LANDMARKER_SHA256=64184e229b263107bc2b804c6625db1341ff2bb731874b0bcc2fe6544e0bc9ff
+RUN mkdir -p /out/mediapipe \
+    && curl -fsSL --retry 5 --retry-all-errors -o /out/mediapipe/face_landmarker.task \
+      "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task" \
+    && echo "${FACE_LANDMARKER_SHA256}  /out/mediapipe/face_landmarker.task" | sha256sum -c -
+# MediaPipe selfie segmenter (Apache 2.0): the streamer cut-out of the moment-led cover.
+ARG SELFIE_SEGMENTER_SHA256=191ac9529ae506ee0beefa6b2c945a172dab9d07d1e802a290a4e4038226658b
+RUN curl -fsSL --retry 5 --retry-all-errors -o /out/mediapipe/selfie_segmenter.tflite \
+      "https://storage.googleapis.com/mediapipe-models/image_segmenter/selfie_segmenter/float16/latest/selfie_segmenter.tflite" \
+    && echo "${SELFIE_SEGMENTER_SHA256}  /out/mediapipe/selfie_segmenter.tflite" | sha256sum -c -
+
 # ── Runtime image ────────────────────────────────────────────────────────────────────────────────────────
 FROM python:3.12-slim-bookworm AS runtime
 
@@ -69,7 +81,10 @@ ENV TZ=UTC \
     TWITCH_DOWNLOADER_CLI=/usr/local/bin/TwitchDownloaderCLI \
     HF_HOME=/models/huggingface \
     PANNS_DATA_DIR=/models/panns \
-    PANNS_CHECKPOINT_PATH="/models/panns/Cnn14_mAP=0.431.pth"
+    PANNS_CHECKPOINT_PATH="/models/panns/Cnn14_mAP=0.431.pth" \
+    SIXSTARS_FACE_LANDMARKER=/models/mediapipe/face_landmarker.task \
+    SIXSTARS_SELFIE_SEGMENTER=/models/mediapipe/selfie_segmenter.tflite \
+    PLAYWRIGHT_BROWSERS_PATH=/models/ms-playwright
 
 # libicu72: TwitchDownloaderCLI (.NET globalization). fontconfig: font lookup for libass and drawtext.
 # The service user has uid/gid 1000, the same as `deploy` on the servers, so the bind-mounted /data and
@@ -77,10 +92,11 @@ ENV TZ=UTC \
 # fonts-noto-color-emoji: colour emoji in the title bar (docs/27), drawn with Pillow (SIL OFL 1.1).
 RUN apt-get update \
     && apt-get install -y --no-install-recommends ca-certificates curl fontconfig fonts-noto-color-emoji libicu72 tini \
+       libegl1 libgles2 \
     && rm -rf /var/lib/apt/lists/* \
     && groupadd --gid 1000 sixstars \
     && useradd --uid 1000 --gid 1000 --create-home --home-dir /home/sixstars --shell /usr/sbin/nologin sixstars \
-    && install -d -o sixstars -g sixstars /app /data /models /models/panns /models/huggingface
+    && install -d -o sixstars -g sixstars /app /data /models /models/panns /models/huggingface /models/ms-playwright
 
 COPY --from=ffmpeg /ffmpeg /ffprobe /usr/local/bin/
 COPY --from=uv /uv /usr/local/bin/uv
@@ -93,6 +109,8 @@ RUN fc-cache -f \
     && ffmpeg -hide_banner -encoders | grep -q libx264
 
 COPY --from=fetch --chown=sixstars:sixstars /out/panns/ /models/panns/
+# libegl1/libgles2 above: the MediaPipe wheel loads them even on CPU.
+COPY --from=fetch --chown=sixstars:sixstars /out/mediapipe/ /models/mediapipe/
 
 # Everything below runs as the service user, so the virtualenv stays writable for the start-up upgrade of
 # yt-dlp and streamlink without a recursive chown layer.
@@ -103,6 +121,14 @@ RUN ln -s /models/panns /home/sixstars/panns_data
 # Dependencies first (cached until pyproject.toml or uv.lock change).
 COPY --chown=sixstars:sixstars pyproject.toml uv.lock README.md ./
 RUN uv sync --frozen --no-dev --no-install-project --compile-bytecode
+
+# Cover compositor (docs/29a stage 4): Chromium's headless shell for Playwright, and the system libraries
+# it needs (installed as root).
+USER root
+RUN /app/.venv/bin/python -m playwright install-deps chromium \
+    && rm -rf /var/lib/apt/lists/*
+USER sixstars
+RUN python -m playwright install --only-shell chromium
 
 # PyTorch, CPU build. panns-inference and torchlibrosa import torch but do not declare it, so uv.lock has no
 # torch at all. Until pyproject.toml declares it with the CPU index (see PROGRESS.md, M11), install it here.
@@ -127,6 +153,12 @@ ENV HF_HUB_OFFLINE=1
 # Self-check with the offline flag set: both models load from /models.
 RUN python -c "import sys; from faster_whisper import WhisperModel; WhisperModel(sys.argv[1], device='cpu', compute_type='int8'); print('whisper ok')" "${WHISPER_MODEL}" \
     && python -c "from panns_inference import AudioTagging; AudioTagging(checkpoint_path=None, device='cpu'); print('panns ok')"
+
+# Cover engine (docs/29a): the face landmarker loads from /models, and RapidOCR fetches its PP-OCR models into
+# the virtualenv now, so the workers never download them at run time.
+RUN python -c "import os; from mediapipe.tasks.python import vision; from mediapipe.tasks.python.core.base_options import BaseOptions; vision.FaceLandmarker.create_from_options(vision.FaceLandmarkerOptions(base_options=BaseOptions(model_asset_path=os.environ['SIXSTARS_FACE_LANDMARKER']), output_face_blendshapes=True)).close(); print('landmarker ok')" \
+    && python -c "from rapidocr import RapidOCR; RapidOCR(); print('rapidocr ok')" \
+    && python -c "from playwright.sync_api import sync_playwright; p = sync_playwright().start(); p.chromium.launch().close(); p.stop(); print('chromium ok')"
 
 # Application code last. --inexact keeps packages installed above that are not in uv.lock (torch).
 COPY --chown=sixstars:sixstars src ./src

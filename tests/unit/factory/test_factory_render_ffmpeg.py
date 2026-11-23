@@ -298,3 +298,192 @@ def test_two_pass_loudness_hits_the_target(render_clip: RenderClip, ffmpeg_tools
     )
     assert spec.loudnorm is not None
     assert integrated_loudness(ffmpeg_tools[0], output, 10.0) == pytest.approx(-14.0, abs=1.0)
+
+
+@pytest.fixture(scope="module")
+def static_source(ffmpeg_tools: tuple[str, str], tmp_path_factory: pytest.TempPathFactory) -> Path:
+    """A 6-second 1920x1080 still test pattern (SMPTE bars under a fine grid) with a tone: every frame of the
+    source is the same picture, so any change between rendered frames comes from the render."""
+    path = tmp_path_factory.mktemp("static source") / "static 6s.mp4"
+    run([ffmpeg_tools[0], "-hide_banner", "-loglevel", "error", "-nostdin", "-y",
+         "-f", "lavfi", "-i", "smptehdbars=size=1920x1080:rate=30:duration=6,drawgrid=w=37:h=29:t=2:c=white",
+         "-f", "lavfi", "-i", "sine=frequency=440:sample_rate=48000:duration=6",
+         "-c:v", "libx264", "-preset", "ultrafast", "-crf", "12", "-pix_fmt", "yuv420p",
+         "-c:a", "aac", "-shortest", str(path)])  # fmt: skip
+    return path
+
+
+def _gray(
+    image: Image.Image, box: tuple[int, int, int, int]
+) -> "np.ndarray[tuple[int, ...], np.dtype[np.float64]]":
+    return np.asarray(image.convert("L").crop(box), dtype=np.float64)
+
+
+@pytest.mark.parametrize(
+    ("layout", "regions"),
+    [
+        # Layout C: the facecam panel (above the seam at y=669) and the gameplay panel (below it), clear of
+        # the progress bar that runs along the seam.
+        pytest.param(
+            LayoutA(Box(1440, 720, 480, 360), cam_top=True), [(0, 0, 1080, 640), (0, 700, 1080, 1480)], id="C"
+        ),
+        # Layout B: the 4:5 gameplay from y=285, above the progress bar at y=1500.
+        pytest.param(LayoutB(), [(0, 300, 1080, 1480)], id="B"),
+    ],
+)
+def test_framing_is_static_for_the_whole_clip(
+    layout: Layout,
+    regions: list[tuple[int, int, int, int]],
+    ffmpeg_tools: tuple[str, str],
+    static_source: Path,
+    params_factory: Callable[..., FactoryParams],
+    tmp_path: Path,
+) -> None:
+    """Render v2 (D119, M19 R0): the frames at 0.5 s, 3 s and 5.5 s of a still source are the same picture,
+    pixel-aligned within 1 px. Before R0 the gameplay grew to 108% over the last 40% of the clip."""
+    ffmpeg = ffmpeg_tools[0]
+    params = params_factory(watermark="", end_card_s=0)
+    ass_path = tmp_path / "empty.ass"
+    ass_path.write_text(build_ass([], layout=layout.kind, params=params, duration_s=6.0), encoding="utf-8")
+    output = tmp_path / "static.mp4"
+    spec = RenderSpec(
+        source=SourceInfo(static_source, 1920, 1080),
+        window=ClipWindow(0.0, 6.0),
+        layout=layout,
+        ass_path=ass_path,
+        output_path=output,
+        series_no=1,
+        params=params,
+        mode="express",
+        scaler="lanczos",
+    )
+    run(build_render_command(spec, ffmpeg=ffmpeg))
+    frames = [frame_at(ffmpeg, output, t, tmp_path / f"f{t}.png") for t in (0.5, 3.0, 5.5)]
+    for box in regions:
+        first = _gray(frames[0], box)
+        assert first.std() > 20, "the region has no detail to compare"
+        # Sensitivity: the same picture shifted by 2 px differs clearly, so a 1 px drift would show.
+        shifted = np.abs(first[:, 2:] - first[:, :-2]).mean()
+        assert shifted > 8, f"pattern too flat to detect a shift ({shifted:.1f})"
+        for other in frames[1:]:
+            diff = np.abs(_gray(other, box) - first).mean()
+            assert diff < min(2.0, shifted / 4), f"framing changed in {box}: mean diff {diff:.2f}"
+
+
+@pytest.fixture(scope="module")
+def boxes_source(ffmpeg_tools: tuple[str, str], tmp_path_factory: pytest.TempPathFactory) -> Path:
+    """A 3-second 1920x1080 source: blue gameplay, a red facecam at (1440, 720, 480, 360) and a green
+    chat box at (0, 0, 400, 400)."""
+    path = tmp_path_factory.mktemp("boxes source") / "boxes.mp4"
+    video = (
+        "color=c=0x0000FF:s=1920x1080:r=30:d=3,"
+        "drawbox=x=1440:y=720:w=480:h=360:color=0xFF0000:t=fill,"
+        "drawbox=x=0:y=0:w=400:h=400:color=0x00FF00:t=fill"
+    )
+    run([ffmpeg_tools[0], "-hide_banner", "-loglevel", "error", "-nostdin", "-y",
+         "-f", "lavfi", "-i", video, "-f", "lavfi", "-i", "sine=frequency=440:sample_rate=48000:duration=3",
+         "-c:v", "libx264", "-preset", "ultrafast", "-crf", "10", "-pix_fmt", "yuv420p",
+         "-c:a", "aac", "-shortest", str(path)])  # fmt: skip
+    return path
+
+
+def _share(region: "np.ndarray[tuple[int, ...], np.dtype[np.uint8]]", rgb: tuple[int, int, int]) -> float:
+    """Share of the pixels of an (h, w, 3) region close to a colour."""
+    close = np.all(np.abs(region.astype(int) - np.array(rgb)) <= 60, axis=2)
+    return float(close.mean())
+
+
+@pytest.mark.parametrize("kind", ["G", "G0"])
+def test_render_v2_frames_have_the_spec_sizes_and_avoid_cam_and_chat(
+    kind: str,
+    ffmpeg_tools: tuple[str, str],
+    boxes_source: Path,
+    params_factory: Callable[..., FactoryParams],
+    tmp_path: Path,
+) -> None:
+    """Render v2 R1: G puts the cam panel (1080x720) over 1080x1200 of gameplay that slid clear of the cam
+    and the chat; G0 puts 1080x1350 of gameplay at y=285 over a dark blur. No seam, no progress bar."""
+    from sixstars.factory.layout import Box as LBox
+    from sixstars.factory.layout import LayoutG, LayoutG0, LayoutV2Rules
+
+    ffmpeg, ffprobe = ffmpeg_tools
+    params = params_factory(watermark="", end_card_s=0)
+    chat = LBox(0, 0, 400, 400)
+    layout = LayoutG(LBox(1440, 720, 480, 360), overlay_boxes=(chat,)) if kind == "G" else LayoutG0((chat,))
+    ass_path = tmp_path / "empty.ass"
+    ass_path.write_text(build_ass([], layout=layout.kind, params=params, duration_s=3.0), encoding="utf-8")
+    output = tmp_path / f"{kind}.mp4"
+    spec = RenderSpec(
+        source=SourceInfo(boxes_source, 1920, 1080),
+        window=ClipWindow(0.0, 3.0),
+        layout=layout,
+        ass_path=ass_path,
+        output_path=output,
+        series_no=1,
+        params=params,
+        mode="express",
+        scaler="lanczos",
+        layout_v2=LayoutV2Rules(enabled=True, scaler="lanczos"),
+    )
+    run(build_render_command(spec, ffmpeg=ffmpeg))
+    assert_streams(probe(ffprobe, output), expected_duration=3.0)
+    image = frame_at(ffmpeg, output, 1.5, tmp_path / f"{kind}.png")
+    blue, red, green = (0, 0, 255), (255, 0, 0), (0, 255, 0)
+    if kind == "G":
+        assert _share(pixels(image, (0, 0, 1080, 716)), red) > 0.95, "cam panel is the facecam"
+        game = pixels(image, (0, 724, 1080, 1920))
+        assert _share(game, blue) > 0.97, "gameplay panel holds gameplay only"
+        assert _share(game, red) < 0.001 and _share(game, green) < 0.001, "cam or chat leaked in"
+    else:
+        game = pixels(image, (0, 289, 1080, 1631))
+        assert _share(game, blue) > 0.97 and _share(game, green) < 0.001
+        top = pixels(image, (0, 0, 1080, 270))
+        assert top.max() < 230 and _share(top, blue) < 0.5, "blurred, darkened band above"
+
+
+def test_render_v2_cam_panel_is_framed_on_the_face_with_a_dark_fill(
+    ffmpeg_tools: tuple[str, str], params_factory: Callable[..., FactoryParams], tmp_path: Path
+) -> None:
+    """Render v2 R2: a small square cam (Jerma's box) framed around the face: the sharp cam in the middle of
+    the 1080x720 panel, a darker blurred copy of the cam on both sides, nothing from outside the cam box."""
+    from sixstars.factory.layout import Box as LBox
+    from sixstars.factory.layout import LayoutG, LayoutV2Rules, cam_window
+
+    ffmpeg, ffprobe = ffmpeg_tools
+    source = tmp_path / "jerma.mp4"
+    video = "color=c=0x0000FF:s=1920x1080:r=30:d=2,drawbox=x=0:y=651:w=248:h=246:color=0xFF0000:t=fill"
+    run([ffmpeg, "-hide_banner", "-loglevel", "error", "-nostdin", "-y", "-f", "lavfi", "-i", video,
+         "-f", "lavfi", "-i", "sine=frequency=440:sample_rate=48000:duration=2", "-c:v", "libx264",
+         "-preset", "ultrafast", "-crf", "10", "-pix_fmt", "yuv420p", "-c:a", "aac", "-shortest",
+         str(source)])  # fmt: skip
+    rules = LayoutV2Rules(enabled=True, scaler="lanczos")
+    cam, face = LBox(0, 651, 248, 246), LBox(80, 700, 80, 100)
+    framing = cam_window(face, cam, 1080, 720, rules, 1920, 1080)
+    assert framing.fill
+    params = params_factory(watermark="", end_card_s=0)
+    ass_path = tmp_path / "empty.ass"
+    ass_path.write_text(build_ass([], layout="G", params=params, duration_s=2.0), encoding="utf-8")
+    output = tmp_path / "g_face.mp4"
+    spec = RenderSpec(
+        source=SourceInfo(source, 1920, 1080),
+        window=ClipWindow(0.0, 2.0),
+        layout=LayoutG(cam, face_box=face),
+        ass_path=ass_path,
+        output_path=output,
+        series_no=1,
+        params=params,
+        mode="express",
+        scaler="lanczos",
+        layout_v2=rules,
+    )
+    run(build_render_command(spec, ffmpeg=ffmpeg))
+    assert_streams(probe(ffprobe, output), expected_duration=2.0)
+    image = frame_at(ffmpeg, output, 1.0, tmp_path / "g_face.png")
+    p = framing.placed
+    sharp = pixels(image, (p.x + 20, p.y + 20, p.x + p.w - 20, p.y + p.h - 20))
+    assert _share(sharp, (255, 0, 0)) > 0.95, "the sharp cam fills its place"
+    panel = pixels(image, (0, 0, 1080, 716))
+    assert _share(panel, (0, 0, 255)) < 0.001, "no gameplay pixels in the cam panel"
+    if p.x > 30:
+        side = pixels(image, (4, 100, p.x - 10, 600))
+        assert side[..., 0].mean() < 230 and side[..., 0].mean() > 80, "a darkened red fill beside the cam"

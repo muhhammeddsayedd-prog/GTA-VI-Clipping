@@ -125,3 +125,30 @@ Write `posts` row before the call (`pending`), update to `published` with `platf
 
 - A short clip and its story cut form a family (`coalesce(clips.parent_clip_id, clips.id)`). The hourly lane does not give an account a clip of a family it posted less than `posting.sibling_gap_h` (12) hours ago.
 - A clip longer than its platform takes (`posting.max_duration_s`: TikTok 600 s via the API and Instagram Reels 900 s per docs.upload-post.com/api/video-requirements, YouTube Shorts 180 s per YouTube Help) is not given to that platform's accounts.
+
+## R15 Campaign lanes (D118, clipping campaigns PR 4)
+
+Each account's day is shared by the Normal lane and the campaign lanes (`lane_quotas`: one row per account and open campaign, min/max posts a day). In an hourly slot (`posting/campaign_lane.order_candidates`, pure), an account tries:
+
+1. campaign clips whose campaign is furthest below its daily minimum, while it is campaign hours for the platform (`lanes.campaign_hours_utc`: 08–22 UTC, YouTube 08–18);
+2. Normal clips, which before `lanes.return_unused_at_utc` (18 UTC) leave room for the campaign minimums still open;
+3. campaign clips of campaigns between their minimum and maximum.
+
+A campaign clip is never posted as a Normal clip. It is skipped when:
+- its campaign has no open lane on the account (paused, ended, budget gone, another platform);
+- it is outside campaign hours;
+- the campaign is at its daily maximum;
+- the campaign posted on this account less than `lanes.campaign_gap_s` ago.
+
+D116, caps, gaps and spike rules are unchanged. Spike posts of a campaign clip count toward its campaign's day.
+
+Campaign posts:
+- `posts.campaign_id` is copied from the clip.
+- The publisher checks the campaign's status, dates and budget again right before sending (`campaign_closed: …`).
+- Caption: clip line, credit, the brief's required line (CTA and mention), the brief's tags, then the base tags. Only the clip line is shortened.
+- No first comment.
+- Paid labels, per the Upload-Post docs of 2026-11-23:
+  - YouTube: `hasPaidProductPlacement`.
+  - TikTok: `brand_content_toggle`, left out on `SELF_ONLY` posts, which Upload-Post refuses.
+  - Instagram: no API field; the label is set in the app.
+

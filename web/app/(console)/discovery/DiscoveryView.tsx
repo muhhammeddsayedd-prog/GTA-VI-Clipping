@@ -14,7 +14,7 @@ import { BlockBanners, readBlocks } from "@/components/domain/sources/BlockBanne
 import { SourceCard } from "@/components/domain/sources/SourceCard";
 import { POLL, useApi } from "@/lib/api/client";
 import type { Candidate, Discovery, Event, Page } from "@/lib/api/types";
-import { fmtAgo, fmtCompact, fmtNum, fmtTime, fmtUsd, humanize } from "@/lib/format";
+import { fmtAgo, fmtCompact, fmtNum, fmtTime, fmtUsd, humanize, zoneLabel } from "@/lib/format";
 import { isRecord, num as numOf, numericEntries, str } from "@/lib/shape";
 import { useListParams } from "@/lib/use-list";
 import { useSettings } from "@/lib/use-settings";
@@ -178,7 +178,7 @@ function CandidateDrawer({ c, onClose, cut, weights }: { c: Candidate | null; on
   const extra = all.filter(([k]) => !(k in w));
   const cutoff = c ? cutoffOf(c, cut) : null;
   return (
-    <Drawer open={!!c} onClose={onClose} title="Candidate" sub={c ? `${c.source_type === "live" ? "Live observation" : "Video"} · checked ${fmtTime(c.checked_at)} UTC` : undefined} width={520}>
+    <Drawer open={!!c} onClose={onClose} title="Candidate" sub={c ? `${c.source_type === "live" ? "Live observation" : "Video"} · checked ${fmtTime(c.checked_at)} ${zoneLabel()}` : undefined} width={520}>
       {c && (
         <>
           <div className="row">
@@ -198,7 +198,7 @@ function CandidateDrawer({ c, onClose, cut, weights }: { c: Candidate | null; on
           <div className="flabel mt2">Raw metrics</div>
           <KV rows={[
             ...(c.source_type === "live"
-              ? [["Viewers", fmtNum(c.viewers)], ["Started", c.started_at ? `${fmtTime(c.started_at)} UTC` : "—"]] as [string, string][]
+              ? [["Viewers", fmtNum(c.viewers)], ["Started", c.started_at ? `${fmtTime(c.started_at)} ${zoneLabel()}` : "—"]] as [string, string][]
               : [["Views", fmtNum(c.views)], ["Views per hour", fmtNum(c.views_per_hour)], ["Likes", fmtNum(c.likes)], ["Comments", fmtNum(c.comments)], ["Published", c.published_at ? fmtAgo(c.published_at) : "—"]] as [string, string][]),
             ...extra.map(([k, v]) => [humanize(k), fmtNum(v)] as [string, string]),
             ...(typeof c.score_parts?.origin === "string" ? [["Observed by", humanize(c.score_parts.origin)] as [string, string]] : []),

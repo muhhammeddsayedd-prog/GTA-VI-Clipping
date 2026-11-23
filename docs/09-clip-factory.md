@@ -83,7 +83,7 @@ Grab one frame at the window middle; send to the writer model with vision; it re
 | Credit | "🎥 @creator" small (34 px), white 85%, bottom of gameplay area, whole clip |
 | Watermark | `@6starsclips` 30 px, 60% opacity, top-right (1040 right-aligned, 240) after the hook ends |
 | Progress bar | 8 px accent bar at y = 1500 growing left→right over the clip |
-| Punchline zoom | Last 40% of the clip: slow zoom 100→108% on the gameplay region (`zoompan` or `scale`+`crop` with `t`) |
+| Punchline zoom | Removed 2026-11-23 (Render v2 R0, D119): the frame never zooms; every crop and scale is fixed for the whole clip |
 | Keyword SFX | Short CC0 "pop" at each keyword time, −12 dB |
 | End card | `factory.end_card_s` (1.5 s): dark card, "6 STARS CLIPS", "Moments #<series_no>", "Follow for more" |
 

@@ -31,7 +31,7 @@ A Python system running on a Hetzner server finds trending GTA 6 creators on Twi
 
 ## Environments
 
-- `APP_ENV=staging`: GTA 5 content (`settings.target_game = "Grand Theft Auto V"`), private test accounts, separate Supabase project, staging server.
+- `APP_ENV=staging`: GTA 6 content (`settings.target_game = "Grand Theft Auto VI"`; GTA 5 was removed everywhere on 2026-11-18), private test accounts, separate Supabase project, staging server.
 - `APP_ENV=production`: GTA 6 content, real accounts, production Supabase project, production server.
 - Branch `develop` deploys to staging; branch `main` deploys to production. Merge `develop` → `main` only after the staging acceptance tests pass.
 

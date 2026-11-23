@@ -251,6 +251,11 @@ def decide_hourly_account(
         )
     if now >= slot + SLOT_LENGTH:
         return skip(Reason.SLOT_EXPIRED, f"slot {slot.isoformat()} is over; the next slot has started")
+    if account.hourly_paused_until is not None and account.hourly_paused_until >= now:
+        return skip(
+            Reason.HOURLY_PAUSED,
+            f"the hourly lane of {account.id} is paused until {account.hourly_paused_until.isoformat()}",
+        )
     if account.hourly_hours_utc is not None and slot.hour not in account.hourly_hours_utc:
         return skip(
             Reason.OUTSIDE_HOURLY_HOURS,

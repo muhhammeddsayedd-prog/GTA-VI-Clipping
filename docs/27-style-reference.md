@@ -24,10 +24,10 @@ Common rules: interesting from frame one, a visual change every 1–3 s, big tex
 | Captions | Each subtitle line is split into chunks of at most 2 words / 14 characters (also at punctuation, pauses ≥ 0.25 s and repeated words). Anton, size 150, capitals, white, outline 7% of size, hard shadow. Every chunk pops in 80%→110%→100% in 120 ms; a keyword chunk pops to 125% and its keyword words are in the accent colour. A chunk said again straight away shows once as `X2`/`X3`. Profanity masked as before. | `caption_*` |
 | Accent | Magenta `#FF2BD6`. | `factory.accent_color` |
 | Hook | TikTok-style title bar for the first `factory.hook_seconds` (3 s), then gone so the content has the frame; look copied from V3: TikTok Sans at weight 420, size 64 (down to 44 to fit), black on one tight white rectangle (padding 14/8 px, radius 6, no shadow), wrapped fill-first in at most 2 lines inside 700 px, colour emoji inline, top of the safe zone (below the LIVE badge on spike clips). Drawn with Pillow (`factory/titlebar.py`) because libass has no colour emoji, then overlaid by ffmpeg; without the title font the ASS hook box is used. The watermark sits just below it from t=0. | `hook_mode` |
-| Punch-ins | From the momentary loudness of the window (`ebur128`, 100 ms), up to 4 spans of 1.2 s where the audio is ≥ 5 dB over the clip median, 2.5 s apart, not in the first 0.5 s or last 0.3 s, ≥ 1 s from the payoff. During a span the frame hard-cuts to the facecam (layout A) or the source centre (layout B), filling 1080x1920 at 125%; seam and progress bar are hidden. | `punchin_*` |
-| Zoom cuts | The gameplay alternates 100% / 108% every 2.5 s (replaces the slow tail zoom). | `zoomcut_*` |
+| Punch-ins | **Removed 2026-11-23 (Render v2 R0, D119, migration 0043).** Was: from the momentary loudness of the window (`ebur128`, 100 ms), up to 4 spans of 1.2 s where the audio is ≥ 5 dB over the clip median, 2.5 s apart, not in the first 0.5 s or last 0.3 s, ≥ 1 s from the payoff. During a span the frame hard-cuts to the facecam (layout A) or the source centre (layout B), filling 1080x1920 at 125%; seam and progress bar are hidden. | `punchin_*` |
+| Zoom cuts | **Removed 2026-11-23 (Render v2 R0, D119).** Was: the gameplay alternated 100% / 108% every 2.5 s. The slow tail zoom is gone too: nothing in the frame moves. | (retired `zoomcut_*`) |
 | Payoff | The clip writer (P2) names `payoff_s` and `payoff_emoji`. At that moment a 230 px emoji pops in centred on the gameplay for 1.5 s and a bass hit plays. | `payoff_fx` |
-| Sound effects | Whoosh 0.3 s before each punch-in, impact on its first frame, boom on the payoff, keyword pops except within 0.4 s of another effect; all at −10 dB. Files are generated (CC0, `assets/sfx/LICENSES.md`). | `cut_sfx`, `sfx_gain_db` |
+| Sound effects | Whoosh 0.3 s before each B-roll cut of the montage (punch-ins removed by D119), impact on its first frame, boom on the payoff, keyword pops except within 0.4 s of another effect; all at −10 dB. Files are generated (CC0, `assets/sfx/LICENSES.md`). | `sfx_gain_db` |
 | Loudness | Compressor (−20 dB threshold, 4:1, 5/80 ms, +2 dB) before the two-pass loudnorm; target −12 LUFS, true peak −1.5 dB. | `compress`, `factory.loudness_lufs` |
 | End card | Off: the clip ends on the payoff and loops. | `factory.end_card_s` = 0 |
 | Layout | Unchanged: gameplay on top, facecam below, captions on the seam (owner's choice). Superseded by D112: see section 5. | — |
@@ -50,12 +50,12 @@ The owner's second set of references (ten Instagram reels, development-plan/M18 
 
 | Style | Layout | Text | Pacing |
 |---|---|---|---|
-| `cam_top_viral` | C: facecam 1080x672 on top, gameplay 1080x1248 below, seam and progress bar between them | the section 2 captions in the lower gameplay (y 1400), title bar on the seam for `factory.hook_seconds` | punch-ins, zoom cuts, sound effects, compressor |
+| `cam_top_viral` | **Disabled 2026-11-23 (D119, migration 0043; with `cam_top_viral_follow`).** C: facecam 1080x672 on top, gameplay 1080x1248 below, seam and progress bar between them | the section 2 captions in the lower gameplay (y 1400), title bar on the seam for `factory.hook_seconds` | punch-ins, zoom cuts, sound effects, compressor |
 | `cam_top_title` | C | no spoken captions; the writer's `title_line` (else the hook) plus the payoff emoji as a title bar on the seam for the whole clip (references R02-R04, R07) | calm: no punch-ins, no zoom cuts, no sound effects |
 | `cam_top_question` | C | the writer's `question` in big red capitals (Anton) with a black outline at the top of the gameplay, whole clip (reference R05) | calm |
-| `headline_card` | H: black frame, brand header (star avatar, `factory.watermark` name) and the writer's `headline` from y 300, the stream as a 4:3 crop 1080x810 at y 630 that keeps the streamer's facecam, credit under it; no watermark (reference R09) | headline only | calm |
+| `headline_card` | **Disabled 2026-11-23 (Render v2 R1, D119, migration 0054: frame retired).** H: black frame, brand header (star avatar, `factory.watermark` name) and the writer's `headline` from y 300, the stream as a 4:3 crop 1080x810 at y 630 that keeps the streamer's facecam, credit under it; no watermark (reference R09) | headline only | calm |
 | `cam_top_wordcap` | C | one or two heavy words (Montserrat Black capitals) centred on y 580, the bottom edge of the facecam, the spoken word in yellow `#FFD400`; no title (reference R06) | calm; favoured for story cuts |
-| `pov_fullframe` | P: the gameplay alone as a 3:4 crop 1080x1440 at y 240 between black bars, away from the facecam | the writer's `pov_line` centred on y 900, white with a black outline (reference R08) | calm |
+| `pov_fullframe` | **Disabled 2026-11-23 (Render v2 R1, D119, migration 0054: frame retired).** P: the gameplay alone as a 3:4 crop 1080x1440 at y 240 between black bars, away from the facecam | the writer's `pov_line` centred on y 900, white with a black outline (reference R08) | calm |
 
 Without a facecam both styles use layout B. The director gives each account a style the catalogue allows for the lane, not the one of the account's last clip, and different from the other accounts of the same clip where possible; the pick is seeded with the clip id. The first render is made in the style of the reference account; each other style of the plan is rendered by the job `clip.variants` once the gate has approved the clip (`factory/variants.py`), checked like the gate checks a file, and uploaded to Storage as `<clip key>.<style>.mp4`. The console's clip page lists the renders and plays each one.
 
@@ -74,11 +74,25 @@ Until 20 posts of a style are scored, nothing changes. A seven-day simulation (t
 
 ## 7. The hype montage (development-plan/M18 Phase E, reference R10)
 
-`hype_montage` (migration 0031): layout M (docs/09 section 3), two-tier captions on the seam (a chunk with a keyword shows the keyword big, italic, white over an accent-coloured glow, the rest of the chunk small above it), a whoosh and an impact on each B-roll cut, the payoff emoji and bass hit, no title.
+`hype_montage` (migration 0031; **disabled 2026-11-23 by Render v2 R1, D119, migration 0054**): layout M (docs/09 section 3), two-tier captions on the seam (a chunk with a keyword shows the keyword big, italic, white over an accent-coloured glow, the rest of the chunk small above it), a whoosh and an impact on each B-roll cut, the payoff emoji and bass hit, no title.
 
 The B-roll comes from the footage around the moment that the source file already holds (the padded window, widened for story cuts), never from the clip itself (`factory/montage.py`): the picture change is measured twice a second over the padded window; the busiest stretches outside the clip that are not stills (menus, loading and black screens) are laid over the gameplay panel every other `montage_every_s` (3) seconds from the second slot on, never within 1.5 s of the payoff or in the last second, at most six. A clip with less than 9 s of footage around it does not get the style (`requires: ["facecam", "broll"]`); it is hourly only. When the montage is one account's variant, the source copy for `clip.variants` holds the whole padded window. Official game logos are never used.
 
 ## Follow line (YouTube lane tuning C, migration 0036)
 
 Style rules `follow_overlay_s` (0..5, `0` off) and `follow_overlay_text` draw one line, centred on a dark box with an accent outline, over the last `follow_overlay_s` seconds of the clip, low inside the safe zone (`overlays.follow_layout`). It adds no time: the clip still ends on the payoff and loops, so `factory.end_card_s` stays `0`. The text names a handle, so a style using it is limited to one account. Migration 0036 adds `cam_top_viral_follow`, `cam_top_wordcap_follow` and `cam_top_title_follow`: copies of the three styles YouTube used most, with "Follow @6starsClips-m3x for Part 2" over the last 1.5 s, for `youtube_main` hourly clips only, at the same weight and moment-type affinity as their originals, so the director picks each pair about evenly and the style bandit compares them.
+
+## Campaign looks (D118, clipping campaigns PR 3)
+
+A campaign clip is drawn in its campaign's render profile (`render_profiles`), on top of whichever design style the director picked:
+
+| Profile | Watermark | Extra | Disclosure |
+|---|---|---|---|
+| `brand` | "6 Stars Clips" | none | none (Normal and Spike lanes) |
+| `clean-disclose` | off | none | "Paid partnership", top left of the safe zone, first 1.5 s |
+| `partner-logo` (copied per campaign with its logo) | off | campaign logo PNG, 200 px wide (reference canvas), in a corner inside the safe zone, whole clip | first 1.5 s |
+| `brand-disclose` | on | none | first 1.5 s |
+| `overlay-keep` | off | the streamer's stream overlay kept | refused for now: needs a full-frame layout (Render v2) |
+
+Campaign renders never use the follow line (a Normal-lane test) or the POV crop (it cuts the face cam away). Before drawing, `brief_match` checks that the face cam is in the frame (`streamer_on_screen`, default on), that the length is within the brief's `min_len`/`max_len`, and that the streamer belongs to the campaign. A clip that fails is made as a Normal clip in `brand` (event `campaign.brief_failed`), never dropped.
 

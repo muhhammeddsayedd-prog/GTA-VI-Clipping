@@ -176,6 +176,37 @@ def check_services(now: datetime, open_now: set[str]) -> list[ServiceHealth]:
     return health
 
 
+def campaign_watcher_stale(age_s: float | None, active_campaigns: int, stale_after_s: float) -> bool:
+    """D118: the watcher matters only while a campaign is active; then a missing or old beat is stale."""
+    return active_campaigns > 0 and is_stale(age_s, stale_after_s)
+
+
+def check_campaign_watcher(now: datetime, open_now: set[str]) -> bool:
+    """Alert when the campaign watcher stopped while a campaign is active (live campaign streams would be
+    missed; discovery still finds the big ones)."""
+    row = db.fetch_one(
+        "select (select count(*) from clip_campaigns where status = 'active') as active, "
+        "(select last_seen from heartbeats where name = 'campaign:watcher') as last_seen"
+    )
+    assert row is not None
+    age = None if row["last_seen"] is None else (now - row["last_seen"]).total_seconds()
+    limit = settings.get_float("campaigns.watcher_stale_s", 300.0)
+    stale = campaign_watcher_stale(age, int(row["active"]), limit)
+    incidents.report(
+        "heartbeat:campaign-watcher",
+        stale,
+        severity="warn",
+        title="Campaign watcher not running",
+        body=f"{'never seen' if age is None else f'last pass {age:.0f} s ago'} (limit {limit:g} s) while "
+        f"{row['active']} campaign(s) are active: live campaign streams can be missed. It runs in the "
+        "scheduler service.",
+        recovered_title="Campaign watcher is back",
+        data={"age_s": age, "active": int(row["active"])},
+        open_now=open_now,
+    )
+    return stale
+
+
 def check_queue(open_now: set[str]) -> int:
     row = db.fetch_one("select count(*) as n from clips where status = 'approved' and lane = 'hourly'")
     depth = int(row["n"]) if row else 0
@@ -358,6 +389,7 @@ def run_checks(now: datetime) -> dict[str, Any]:
         "spend_over": lambda: check_spend(now, open_now),
         "disk_pct": lambda: check_disk(open_now),
         "proxy": lambda: check_proxy(now, open_now),
+        "campaign_watcher": lambda: check_campaign_watcher(now, open_now),
     }
     for name, check in checks.items():
         try:

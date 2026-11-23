@@ -49,7 +49,11 @@ def test_the_twins_copy_their_style_for_youtube_hourly_only(test_database_url: s
     youtube = {e.id for e in catalog.usable("hourly", "youtube_main")}
     instagram = {e.id for e in catalog.usable("hourly", "instagram_main")}
     spikes = {e.id for e in catalog.usable("spike", "youtube_main")}
-    assert set(TWINS) <= youtube and not set(TWINS) & instagram and not set(TWINS) & spikes
+    # Migration 0043 (Render v2 R0, D119) disables cam_top_viral and its twin; the other twins stay usable.
+    assert styles["cam_top_viral_follow"]["enabled"] is False
+    usable_twins = {twin for twin in TWINS if styles[twin].get("enabled", True)}
+    assert usable_twins == set(TWINS) - {"cam_top_viral_follow"}
+    assert usable_twins <= youtube and not set(TWINS) & instagram and not set(TWINS) & spikes
     assert catalog.get("cam_top_viral_follow").rules.follow_overlay_s == 1.5  # type: ignore[union-attr]
 
 

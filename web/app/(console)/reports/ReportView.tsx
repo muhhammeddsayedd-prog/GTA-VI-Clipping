@@ -9,7 +9,7 @@ import { useToast } from "@/components/kit/overlays";
 import { Badge, Btn, Card, CardHead, ErrorState, Grid, IconBtn, KV, PageHead, Plat, SkeletonCards } from "@/components/kit/primitives";
 import { POLL, useApi } from "@/lib/api/client";
 import type { PostPlatform } from "@/lib/api/types";
-import { fmtCompact, fmtDuration, fmtNum, fmtUsd, humanize } from "@/lib/format";
+import { fmtCompact, fmtDuration, fmtNum, fmtUsd, humanize, zonedParts, zoneLabel } from "@/lib/format";
 import { useListParams } from "@/lib/use-list";
 
 /** Mirrors `sixstars.stats.report.build()`. */
@@ -26,15 +26,18 @@ interface Report {
   guardian: { claims: number; takedowns: number; emails_ignored: number; emails_open: number; strikes: number; strike_limit: number; emergency_stop: boolean; stop_reason: string | null; manual_removals: { platform: string; post_url: string | null }[] };
   spend: { provider: string; spent_usd: number; budget_usd: number | null }[];
   issues: string[];
+  timezone_label?: string;
 }
 
 const iso = (d: Date) => d.toISOString().slice(0, 10);
 const shift = (day: string, n: number) => { const d = new Date(`${day}T00:00:00Z`); d.setUTCDate(d.getUTCDate() + n); return iso(d); };
-const yesterday = () => shift(iso(new Date()), -1);
+/** Today's date in the app zone (the report day follows `app.timezone`). */
+const zoneToday = () => { const p = zonedParts(Date.now()); return `${p.year}-${String(p.month).padStart(2, "0")}-${String(p.day).padStart(2, "0")}`; };
+const yesterday = () => shift(zoneToday(), -1);
 const pretty = (day: string) => new Date(`${day}T00:00:00Z`).toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
 
 function asText(r: Report): string {
-  const lines = [`VI Stars Clippy daily report — ${r.day} (${r.timezone})`, "",
+  const lines = [`VI Stars Clippy daily report — ${r.day} (${r.timezone_label ?? r.timezone})`, "",
     ...r.accounts.map((a) => `${a.handle ?? a.account_id}: ${fmtNum(a.followers)} followers (${a.followers_change ?? "—"}), ${a.published} posts, ${a.failed} failed`),
     `Views: ${fmtNum(r.views.total)} (${r.views.change ?? "—"})`,
     `Posts: ${r.posts.hourly_published} hourly, ${r.posts.spike_published} spike, ${r.posts.failed} failed`,
@@ -51,10 +54,10 @@ export function ReportView() {
   const day = lp.get("day") || yesterday();
   const q = useApi<Report>("reports/daily", { format: "json", day }, { interval: POLL.slow });
   const toast = useToast();
-  const today = iso(new Date());
+  const today = zoneToday();
 
   const head = (
-    <PageHead title="Daily report" sub={<>Same numbers as the 00:00 UTC Telegram report · day of <b className="ink2">{pretty(day)}</b></>}
+    <PageHead title="Daily report" sub={<>Same numbers as the Telegram report sent after 00:00 {zoneLabel()} · day of <b className="ink2">{pretty(day)}</b> ({zoneLabel()} time)</>}
       actions={<>
         <label className="field" style={{ width: 170, minWidth: 150 }}>
           <span className="sr-only">Report day</span>

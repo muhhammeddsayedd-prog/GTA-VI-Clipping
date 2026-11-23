@@ -15,7 +15,6 @@ from sixstars.factory.window import (
     resolve_trim,
     snap_duration,
     total_duration_s,
-    zoom_start_s,
 )
 
 DOCS = Path(__file__).resolve().parents[3] / "docs" / "16-settings-reference.md"
@@ -37,6 +36,9 @@ def test_fields_match_the_documented_factory_settings_one_to_one() -> None:
     documented.remove("factory.pre_p2_checks")
     documented.remove("factory.pre_p2_throttle")
     documented.remove("factory.pre_p2_queue_min")
+    # Render v2 (D119): `FactoryConfig.layout_v2` (`LayoutV2Rules`) and the text system of R4.
+    documented.remove("factory.layout_v2")
+    documented.remove("factory.text_v2")
     assert list(FactoryParams.setting_keys()) == documented
 
 
@@ -198,8 +200,3 @@ def test_frame_snapping(duration: float, fps: int, frames: int, snapped: float) 
 )
 def test_total_duration_adds_the_end_card(clip: float, end_card: float, expected: float) -> None:
     assert total_duration_s(clip, end_card, 30) == pytest.approx(expected)
-
-
-def test_zoom_covers_the_last_forty_percent() -> None:
-    assert zoom_start_s(10.0) == pytest.approx(6.0)
-    assert zoom_start_s(36.0) == pytest.approx(21.6)

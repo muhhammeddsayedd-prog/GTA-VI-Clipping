@@ -36,7 +36,7 @@ from sixstars.clients.youtube import YouTubeClient
 from sixstars.discovery import assign, blocked, health, media, scoring, sources, store, tiers
 from sixstars.discovery.blocked import Queue
 from sixstars.discovery.config import DiscoveryConfig
-from sixstars.discovery.models import Candidate, Creator, Scored
+from sixstars.discovery.models import PREFERRED_LIKE_TIERS, Candidate, Creator, Scored
 from sixstars.discovery.sources import Gathered, SourceReport
 from sixstars.discovery.tiers import ChannelInfo
 from sixstars.discovery.ytsearch import YtDlpSearch
@@ -186,7 +186,7 @@ def score_candidate(
     """Score one candidate for its creator (pure)."""
     past = scoring.history_part(creator.avg_clip_views, history.clip_views, creator.claims_count)
     language = candidate.language or creator.language
-    preferred = creator.tier == "preferred"
+    preferred = creator.tier in PREFERRED_LIKE_TIERS
     measured = history.chat_rates.get(creator.id)
     if candidate.source_type == "live":
         score, parts = scoring.score_live(

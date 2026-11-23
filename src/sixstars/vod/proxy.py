@@ -27,7 +27,7 @@ from pathlib import Path
 from typing import Any, Final, Literal
 from urllib.parse import urlsplit, urlunsplit
 
-from sixstars import db, events, settings, usage
+from sixstars import clock, db, events, settings, usage
 from sixstars.chat.net import proxy_refusal
 from sixstars.config import env
 from sixstars.factory.pipeline import next_budget_reset
@@ -306,8 +306,15 @@ def health_state() -> Mapping[str, Any] | None:
     return value if isinstance(value, dict) else None
 
 
+def _checked(value: Any) -> str:
+    try:
+        return clock.fmt_local(datetime.fromisoformat(str(value)))
+    except ValueError:
+        return "at an unknown time"
+
+
 def status_line() -> str:
-    """`proxy reachable (checked 13:05 UTC), 0.42 GB used today` for the blocked-downloads message."""
+    """`proxy reachable (checked 15:05 Cairo (13:05 UTC)), 0.42 GB used today` (blocked-downloads line)."""
     try:
         state = health_state()
         today = used_gb_today()
@@ -316,7 +323,6 @@ def status_line() -> str:
     if state is None:
         probe = "proxy not checked yet"
     else:
-        checked = str(state.get("checked_at", ""))[11:16]
         verdict = "reachable" if state.get("ok") else f"NOT reachable ({state.get('reason', '?')})"
-        probe = f"proxy {verdict} (checked {checked} UTC)"
+        probe = f"proxy {verdict} (checked {_checked(state.get('checked_at'))})"
     return f"{probe}, {today:.2f} GB used today"

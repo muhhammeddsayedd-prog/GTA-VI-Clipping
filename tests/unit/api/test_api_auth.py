@@ -18,6 +18,7 @@ PROTECTED = [
     ("GET", "/v1/status"),
     ("POST", "/v1/control/stop"),
     ("POST", "/v1/control/start"),
+    ("POST", "/v1/control/lane/resume"),
     ("POST", "/v1/control/settings"),
 ]
 

@@ -36,7 +36,16 @@ from sixstars.factory.assets import load_assets
 from sixstars.factory.bleep import Span
 from sixstars.factory.config import FactoryConfig
 from sixstars.factory.director import AccountSlot, DirectorRules, StylePlan, plan_styles
-from sixstars.factory.layout import Box, Layout, LayoutA, LayoutB, LayoutKind, gameplay_band
+from sixstars.factory.layout import (
+    Box,
+    Layout,
+    LayoutA,
+    LayoutB,
+    LayoutG,
+    LayoutG0,
+    LayoutKind,
+    gameplay_band,
+)
 from sixstars.factory.lines import Line, Word
 from sixstars.factory.performance import PostViews, StyleStats, post_scores, summarise
 from sixstars.factory.window import ClipWindow
@@ -203,9 +212,7 @@ def recipe_json(
         # montage's B-roll (Phase E).
         "window_start_s": window_start_s,
         "broll": broll,
-        "layout": None
-        if not isinstance(layout, LayoutA)
-        else {"facecam_box": _box_json(layout.facecam_box), "gameplay_box": _box_json(layout.gameplay_box)},
+        "layout": _layout_json(layout),
         "lines": [
             {"index": line.index, "words": [[word.text, word.start_s, word.end_s] for word in line.words]}
             for line in lines
@@ -215,13 +222,42 @@ def recipe_json(
     }
 
 
+def _layout_json(layout: Layout) -> dict[str, Any] | None:
+    """The detected layout of a recipe: its kind, the facecam (and gameplay) box, and for Render v2 the
+    face box and the streamer's overlay boxes. None without a facecam or overlays (layout B). Pure."""
+    if isinstance(layout, LayoutA):
+        return {
+            "kind": layout.kind,
+            "facecam_box": _box_json(layout.facecam_box),
+            "gameplay_box": _box_json(layout.gameplay_box),
+        }
+    if isinstance(layout, LayoutG):
+        return {
+            "kind": "G",
+            "facecam_box": _box_json(layout.facecam_box),
+            "face_box": _box_json(layout.face_box),
+            "overlay_boxes": [_box_json(box) for box in layout.overlay_boxes],
+        }
+    if isinstance(layout, LayoutG0) and layout.overlay_boxes:
+        return {"kind": "G0", "overlay_boxes": [_box_json(box) for box in layout.overlay_boxes]}
+    return None
+
+
 def layout_from_recipe(recipe: Mapping[str, Any]) -> Layout:
+    """The layout stored by `recipe_json`. A recipe written before Render v2 (no kind) gives layout A with
+    its facecam, else B; `pipeline.framed_layout` turns those into G or G0 while `factory.layout_v2` is on.
+    Pure."""
     raw = recipe.get("layout")
     if not isinstance(raw, Mapping):
         return LayoutB()
+    overlays = tuple(
+        box for box in (_box(item) for item in raw.get("overlay_boxes") or ()) if box is not None
+    )
     facecam = _box(raw.get("facecam_box"))
-    if facecam is None:
-        return LayoutB()
+    if raw.get("kind") == "G" and facecam is not None:
+        return LayoutG(facecam_box=facecam, face_box=_box(raw.get("face_box")), overlay_boxes=overlays)
+    if raw.get("kind") == "G0" or facecam is None:
+        return LayoutG0(overlay_boxes=overlays) if raw.get("kind") == "G0" else LayoutB()
     return LayoutA(facecam_box=facecam, gameplay_box=_box(raw.get("gameplay_box")))
 
 
@@ -388,6 +424,7 @@ def _render_one(
     """Render, check, upload and record one style. Raises nothing the caller must handle: the row says
     what happened."""
     # the pipeline imports this module
+    from sixstars.campaigns import profiles as campaign_profiles
     from sixstars.factory.pipeline import RenderJob, framed_layout, render_file
     from sixstars.gate import profiles
     from sixstars.gate import visual as visuals
@@ -424,17 +461,22 @@ def _render_one(
             hook=recipe.get("hook"),
             keywords=keywords,
             duck=tuple(Span(float(s), float(e)) for s, e in recipe.get("duck", [])),
-            style=entry.rules,
+            style=campaign_profiles.styled(clip_id, entry.rules),  # D118: the clip's campaign look
             payoff_s=recipe.get("payoff_s"),
             payoff_emoji=recipe.get("payoff_emoji"),
             style_id=style_id,
             texts={str(k): str(v) for k, v in dict(recipe.get("texts") or {}).items() if v},
             broll_from=ClipWindow(0.0, media.duration_s) if recipe.get("broll") else None,
+            scaler=cfg.scaler,
+            layout_v2=cfg.layout_v2,
+            face_rules=cfg.face_detect,
         )
         outcome = render_file(job)
-        kind = framed_layout(job.layout, entry.rules).kind
+        kind = (outcome.layout or framed_layout(job.layout, entry.rules, cfg.layout_v2)).kind
         settings = profiles.load()
-        facts = visuals.measure_file(output, outcome.clip_duration_s, settings, layout_kind=kind)
+        facts = visuals.measure_file(
+            output, outcome.clip_duration_s, settings, layout_kind=kind, layout_v2=cfg.layout_v2
+        )
         problems = file_problems(
             facts,
             width=settings.width,
@@ -445,7 +487,8 @@ def _render_one(
             max_freeze_s=settings.max_freeze_s,
         )
         checks = {
-            "band": list(gameplay_band(kind)),
+            "cam": outcome.cam_check,
+            "band": list(gameplay_band(kind, cfg.layout_v2)),
             "longest_black_s": None if facts is None else facts.longest_black_s,
             "longest_freeze_s": None if facts is None else facts.longest_freeze_s,
             "problems": problems,
@@ -466,6 +509,15 @@ def _render_one(
             checks=Jsonb(checks),
             error="; ".join(problems) or None,
         )
+        if isinstance(outcome.cam_check, dict) and outcome.cam_check.get("fallback") == "G0":
+            events.emit(
+                "clip.cam_no_face",
+                level="warn",
+                entity_type="clip",
+                entity_id=clip_id,
+                message=f"no face in the facecam: style {style_id} drawn as layout G0",
+                data={**outcome.cam_check, "style_id": style_id},
+            )
         log.info("variant_rendered", style_id=style_id, problems=problems, render_ms=outcome.render_ms)
     except Exception as exc:  # noqa: BLE001 - one failed style must not stop the others
         log.error("variant_failed", style_id=style_id, error=f"{type(exc).__name__}: {exc}"[:300])

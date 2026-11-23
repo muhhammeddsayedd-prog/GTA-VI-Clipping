@@ -234,8 +234,8 @@ def test_filter_graph_options(
     assert (
         "concat" not in no_end_card and no_end_card.count("[vout]") == 1 and no_end_card.count("[aout]") == 1
     )
-    no_zoom = build_filter_complex(spec_factory(zoom=False))
-    assert "eval=frame" not in no_zoom and "eval=frame" in build_filter_complex(spec_factory())
+    assert "eval=frame" not in build_filter_complex(spec_factory()), "no zoom (D119)"
+    assert "flags=lanczos" in build_filter_complex(spec_factory(scaler="lanczos"))
     no_watermark = build_filter_complex(spec_factory(params=params_factory(watermark="")))
     assert "x=1040-text_w" not in no_watermark
     silent_source = build_filter_complex(

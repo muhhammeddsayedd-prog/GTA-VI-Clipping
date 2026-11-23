@@ -1,6 +1,6 @@
-"""The daily report: `GET /v1/reports/daily?format=telegram|json` (WF06 at 00:00 UTC, and `/report`).
+"""The daily report: `GET /v1/reports/daily?format=telegram|json` (WF06 hourly with `due=1`, and `/report`).
 
-`build()` collects the numbers of one day (by default the day that just ended, in `reports.timezone`)
+`build()` collects the numbers of one day (by default the day that just ended, in `app.timezone`)
 as a JSON object; `render_telegram()` turns it into text for Telegram's HTML parse mode. Every value
 that comes from the database or from a platform (clip titles, handles, stop reasons, reject reasons) is
 escaped, and the text never exceeds `TELEGRAM_MAX_CHARS`: the least important lines are dropped first
@@ -12,9 +12,10 @@ from datetime import UTC, date, datetime, time, timedelta, tzinfo
 from html import escape
 from statistics import median
 from typing import Any
-from zoneinfo import ZoneInfo
 
-from sixstars import db, settings
+from psycopg.types.json import Jsonb
+
+from sixstars import clock, db, settings
 from sixstars.config import env
 from sixstars.guardian import stop
 from sixstars.guardian.health import BUDGETS
@@ -43,13 +44,8 @@ ISSUE_TYPES = (
 
 
 def report_zone() -> tzinfo:
-    name = settings.get_str("reports.timezone", "UTC")
-    if name.upper() == "UTC":
-        return UTC
-    try:
-        return ZoneInfo(name)
-    except Exception:  # unknown name, or no time zone data on this machine
-        return UTC
+    """The report day follows the app's display zone (`app.timezone`)."""
+    return clock.app_zone()
 
 
 def day_bounds(day: date, zone: tzinfo) -> tuple[datetime, datetime]:
@@ -60,6 +56,45 @@ def day_bounds(day: date, zone: tzinfo) -> tuple[datetime, datetime]:
 def default_day(now: datetime, zone: tzinfo) -> date:
     """The day that ended most recently."""
     return (now.astimezone(zone) - timedelta(days=1)).date()
+
+
+SENT_EVENT = "report.daily_sent"
+
+
+def claim_due_day(now: datetime | None = None) -> date | None:
+    """The local day whose report is due now, or None when it was already sent.
+
+    WF06 calls every hour; the first call after midnight in `app.timezone` claims the day that just
+    ended by writing a `report.daily_sent` event, so the report follows the zone (and summer time) and
+    goes out once per day.
+    """
+    now = now or datetime.now(UTC)
+    zone = report_zone()
+    day = default_day(now, zone)
+    # The lock serialises overlapping calls (a manual WF06 run during the hourly one); the not-exists
+    # check alone lets two calls insert before either commits, and the report would go out twice.
+    with db.transaction():
+        db.execute("select pg_advisory_xact_lock(hashtextextended(%s, 0))", (f"{SENT_EVENT}:{day}",))
+        row = db.fetch_one(
+            """
+            insert into events (type, level, service, entity_type, entity_id, message, data)
+            select %s, 'info', %s, 'report', %s, %s, %s
+            where not exists (
+                select 1 from events where type = %s and entity_type = 'report' and entity_id = %s
+            )
+            returning id
+            """,
+            (
+                SENT_EVENT,
+                env().SERVICE_NAME,
+                day.isoformat(),
+                f"daily report for {day.isoformat()} ({clock.zone_label(zone)})",
+                Jsonb({"day": day.isoformat(), "timezone": clock.zone_name(zone)}),
+                SENT_EVENT,
+                day.isoformat(),
+            ),
+        )
+    return day if row is not None else None
 
 
 # ── queries ──────────────────────────────────────────────────
@@ -375,7 +410,7 @@ def _spend(start: datetime, end: datetime) -> list[dict[str, Any]]:
     return out
 
 
-def _issues(start: datetime, end: datetime) -> list[str]:
+def _issues(start: datetime, end: datetime, zone: tzinfo) -> list[str]:
     rows = db.fetch_all(
         """
         select created_at, type, message from events
@@ -385,7 +420,7 @@ def _issues(start: datetime, end: datetime) -> list[str]:
         (list(ISSUE_TYPES), start, end),
     )
     return [
-        f"{row['created_at'].astimezone(UTC):%H:%M} {row['message'] or row['type']}"[:160]
+        f"{row['created_at'].astimezone(zone):%H:%M} {row['message'] or row['type']}"[:160]
         for row in reversed(rows)
     ]
 
@@ -399,7 +434,8 @@ def build(day: date | None = None, now: datetime | None = None) -> dict[str, Any
     accounts = _accounts(start, end)
     return {
         "day": day.isoformat(),
-        "timezone": str(zone),
+        "timezone": clock.zone_name(zone),
+        "timezone_label": clock.zone_label(zone),
         "generated_at": now.astimezone(UTC).isoformat(),
         "env": env().APP_ENV,
         "accounts": accounts,
@@ -412,7 +448,7 @@ def build(day: date | None = None, now: datetime | None = None) -> dict[str, Any
         "discovery": _discovery(start, end),
         "guardian": _guardian(start, end, now),
         "spend": _spend(start, end),
-        "issues": _issues(start, end),
+        "issues": _issues(start, end, zone),
     }
 
 
@@ -463,11 +499,12 @@ def _lines(report: Mapping[str, Any]) -> list[tuple[int, str]]:
     """The report as `(priority, line)`; lines with a higher number are dropped first when it is too long."""
     out: list[tuple[int, str]] = []
     env_name = escape(str(report["env"]), quote=False)
+    zone = str(report.get("timezone_label") or report["timezone"])
     out.append(
         (
             0,
             f"⭐ <b>6 Stars Clips</b> — daily report "
-            f"({escape(str(report['day']))} {escape(str(report['timezone']))}, {env_name})",
+            f"({escape(str(report['day']))} {escape(zone)}, {env_name})",
         )
     )
     out.append((0, ""))
