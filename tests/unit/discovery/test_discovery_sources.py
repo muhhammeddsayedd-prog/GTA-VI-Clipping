@@ -430,6 +430,16 @@ def test_clip_allowed() -> None:
     assert tiers.clip_allowed(creator("preferred", 1), True)
 
 
+def test_decide_tier_keeps_campaign_unless_the_creator_forbids_clipping() -> None:
+    """D118: the P6 read never overwrites tier `campaign`, but a creator who forbids clipping wins."""
+    assert tiers.decide_tier("campaign", "campaign: x", verdict("auto")) == ("campaign", "campaign: x")
+    assert tiers.decide_tier("campaign", "campaign: x", verdict("preferred")) == ("campaign", "campaign: x")
+    assert tiers.decide_tier("campaign", "campaign: x", verdict("restricted", "no reuploads")) == (
+        "restricted",
+        "no reuploads",
+    )
+
+
 def verdict(tier: str, evidence: str | None = None) -> PermissionVerdict:
     return PermissionVerdict(tier=tier, evidence=evidence)  # type: ignore[arg-type]
 

@@ -372,6 +372,16 @@ def test_express_tiers() -> None:
     assert (demoted.profile, demoted.lane) == ("hourly", "hourly")
 
 
+def test_a_campaign_creator_is_treated_like_a_preferred_one() -> None:
+    """D118: tier `campaign` passes the creator check, has no daily cap and may post at once."""
+    assert run(who=creator("campaign", clips_today=50)).approved
+    settings = make_settings()
+    preferred_only = replace(settings, express=replace(settings.express, tiers=("preferred",)))
+    decision = run(express_clip(), who=creator("campaign"), settings=preferred_only)
+    assert decision.approved and not decision.demoted
+    assert decision.profile == "express"
+
+
 def test_express_auto_creator_with_music_fails_the_tier_and_the_music_rule() -> None:
     decision = run(express_clip(music_ratio=0.05), who=creator("auto"), precheck=PrecheckState.PASSED)
     assert decision.demoted

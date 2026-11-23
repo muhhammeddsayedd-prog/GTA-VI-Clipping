@@ -128,7 +128,7 @@ def _new_rank(row: dict[str, Any], now: datetime, params: PostingParams, use_vis
         ranking.rank_input_score(float(row["score"]), row.get("score_parts"), use_visual),
         row["source_type"],
         row["spike_tier"],
-        row["creator_tier"] == "preferred",
+        row["creator_tier"] in ("campaign", "preferred"),
         reference,
         now,
         params,

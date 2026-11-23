@@ -752,3 +752,56 @@ Read-only production analysis, 11-17 to 11-22:
 - **Budget re-set:** after 3 days at the new spend, propose `ai.daily_budget_usd` at 1.3× the new average.
 - **B1:** Haiku shadow on P2 and P9V (async, own budget, sample rate 0.2).
 - **After B1:** TikTok (L0).
+## Clipping campaigns PR 1 — registry and lanes (2026-11-23)
+
+**Branch:** `clipcamp-1` (from `main` 874d640, so production gets campaign work without develop's L0/L1). Plan: "6 Stars Clips — Lanes & Clipping Campaigns Plan" (Plan and Operating flows tabs), decision **D118** (supersedes D05).
+
+### What was built
+
+- Migration `0050_clip_campaigns.sql` (additive, idempotent):
+  - Tables `clip_campaigns`, `clip_campaign_creators`, `clip_campaign_posts`, `render_profiles` (five seeded looks: `brand`, `clean-disclose`, `partner-logo`, `overlay-keep`, `brand-disclose`), `lane_quotas`, `creator_live_status`.
+  - Tier `campaign` in `creators_tier_check`, plus `creators.tier_before_campaign`.
+  - Nullable `campaign_id` on `live_sessions`, `videos`, `viewer_clips`, `spikes`, `clips`, `posts`, and `clips.render_profile`.
+  - Settings `lanes.campaign_share` and `lanes.campaign_max_per_day`; `normal`/`spike` quota rows for every account.
+- `src/sixstars/campaigns/`:
+  - `models.py`.
+  - `rules.py` (pure): transitions, save checks, quota fit, lane rows, tier moves, audit diff.
+  - `store.py`.
+  - `service.apply_change` is the one write path: it checks, saves with version + 1, rewrites lane quotas, moves streamers in and out of tier `campaign`, emits a `campaign.changed` event and sends a Telegram line.
+  - `lookup.py`: a streamer is found by Twitch login, YouTube @handle or channel id, never by name alone.
+  - `commands.py`.
+- CLI `sixstars campaign add|edit|activate|pause|resume|end|budget|list|show|lookup|quotas`.
+- Clients:
+  - `TwitchClient.get_users_by_login` (Helix Get Users `login=`).
+  - `YouTubeClient.channel_for_handle` (`channels.list?forHandle=`, 1 unit).
+  - Both have fakes.
+- Tier `campaign` is treated like `preferred` everywhere `preferred` was tested: the gate creator check, the express tier rule, the discovery preferred bonus, the ranking boost, and the console tier list.
+  - The P6 permission read never overwrites it.
+  - A P6 `restricted` verdict, or a block, still wins and pauses the streamer's active campaigns (`service.on_creator_forbidden`).
+- Tests:
+  - `tests/unit/campaigns/` (rules, lookup).
+  - New cases in `tests/unit/gate/test_gate_decision.py` and `tests/unit/discovery/test_discovery_sources.py`.
+  - `tests/integration/test_campaign_registry.py`.
+
+### Deviations
+
+- Numbering: `develop` took D117 and migrations 0037-0040 (AI cost, titles v2) while this was built, so this is **D118** and the campaign migrations are **0050** (PR 1) and **0051** (PR 2), with room in between for other branches. Gaps are fine for `supabase db push --include-all`.
+
+- Naming (owner, 23 Nov): `clip_campaigns` / `clip_campaign_posts` / `lane_quotas`, and Telegram `/clipcamp …` later. This avoids the docs/28 `ad_campaigns` and `/campaign` and the existing `/resume`.
+- A campaign is a tag (`campaign_id`), not a new lane value: `clips.lane` / `posts.lane` stay `spike|hourly`.
+- Instagram campaign share is 18, not 20, because the account cap is 45, not 50.
+- Pausing or ending is never blocked by the save checks (a bare status change to paused/ended skips them), so the guardian can always stop a campaign.
+- The gate gave `campaign` no daily cap (like `preferred`).
+- The console Campaigns page moved to PR 6, as the Operating flows tab says. Until then, campaigns are added through the CLI.
+- **TikTok (owner, 23 Nov):** TikTok campaign posts are wanted. Production `tiktok_main.lanes` is `{}`; re-enabling it is asked for at the PR 4 release. `tiktok_live` has no real second account.
+
+### Open issues / next
+
+- PR 2 (sourcing):
+  - campaign watcher (Twitch `/streams?user_id=` every 60 s, YouTube RSS every 3 min);
+  - `live.campaign_slots`;
+  - VOD and Twitch-clip priority;
+  - spike tagging;
+  - cross-lane moment dedupe.
+- Settle first: multi-day live sessions without a forced restart.
+- Disk: merged worktrees m03/m04/m05/m10/m11/media/styles/console were removed (13 GB free on D:). `6stars-wt-m06` (unmerged) and `6stars-wt-tz` (uncommitted work holding an untracked `0034_app_timezone.sql`) were kept.

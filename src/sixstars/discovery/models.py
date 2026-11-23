@@ -8,7 +8,10 @@ from typing import Any, Final, Literal
 
 Platform = Literal["twitch", "youtube"]
 SourceType = Literal["live", "vod"]
-Tier = Literal["preferred", "auto", "restricted", "blocked"]
+Tier = Literal["campaign", "preferred", "auto", "restricted", "blocked"]
+
+# D118: `campaign` (an active clipping campaign) ranks like `preferred`.
+PREFERRED_LIKE_TIERS: Final[frozenset[str]] = frozenset({"campaign", "preferred"})
 
 # Tiers that are never clipped (decision D10): no candidate row, no live slot, no job.
 FORBIDDEN_TIERS: Final[frozenset[str]] = frozenset({"restricted", "blocked"})
