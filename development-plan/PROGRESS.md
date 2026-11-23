@@ -679,3 +679,25 @@ Read-only production analysis, 11-17 to 11-22:
 - **Budget re-set:** after 3 days at the new spend, propose `ai.daily_budget_usd` at 1.3× the new average.
 - **B1:** Haiku shadow on P2 and P9V (async, own budget, sample rate 0.2).
 - **After B1:** TikTok (L0).
+## Title writer v2 (2026-11-23)
+
+**Branch:** `titles-v2` (off `develop`). Reference: `docs/30-titles-v2.md`.
+
+### What was built
+
+- Migration `0040_titles_v2.sql` (additive): `creators.title_name` + `creators.title_aliases` (30 names seeded where empty), table `clip_titles` (facts, all candidates with failed checks, chosen title, caption, tags, explored, features, prior title, applied), scoring_config `titles.v2` (**disabled**).
+- Prompt `p11_title_writer.md` (brief Part 1 + spoiler rule), schema `TitleSet`, `ai.calls.write_titles` (fast model by default, low effort, cached system prompt).
+- `sixstars/titles/`: `facts` (name book, facts builder: P9V `seen` as the event, peak line, hours into stream, hours/percent/money said, chat words, other streamers), `checks` (Part 2 as pure functions, choice in pattern order, 20% exploration stable per clip id, features, fallback), `store`, `service` (one retry, fallback, apply only while not posted, scoring_log stage `title`, events `clip.retitled` / `clip.title_fallback`), `commands`.
+- Gate: `title_v2.after_approval` right after approval and before the spike handoff. Never raises; the P2 title stays on any failure.
+- CLI: `sixstars titles retitle|compare|queue`.
+- Tests: `tests/unit/titles/` (checks, facts, service with stubs).
+
+### Deviations
+
+See docs/30 "Differences from the brief": spoiler rule kept, two brief examples left out of the prompt (they break the banned-phrase rule), "GTA 6" counts as one word, `title_name` instead of `display_name`, no campaign concept, no per-line audio level, migration 0040 (0038/0039 are taken by `ai-cost-a5`), no ranking boost.
+
+### Open issues / next
+
+- Staging: enable `titles.v2`, run `sixstars titles compare --limit 30 --status approved --status rejected --status posted` (staging has only one posted clip), owner reviews old vs new.
+- Production: only after owner approval: flag on, then `sixstars titles queue --apply`. The comparison on production's 30 most recent posted clips needs a production read (not done from this machine).
+- Learning Loop L2 reads `clip_titles.features` where `applied`.

@@ -14,6 +14,7 @@ One function per prompt of docs/15:
     score_clip          P9  fast model    the score of a finished cut, median of several asks
     score_clip_visual   P9V see below     the score of the rendered clip, judged from its frames (vision)
     sentence_ends       P10 fast model    where sentences end in a transcript without punctuation
+    write_titles        P11 see below     five candidate titles from the facts of an approved clip
 
 Models come from `ai.model_writer` and `ai.model_fast`; P9V uses the one `ai.visual_score_model` names
 (`"fast"` or `"writer"`). Tokens and cost are recorded by the client in
@@ -47,6 +48,7 @@ from sixstars.ai.schemas import (
     ScoreParts,
     SpikeVerdict,
     TakedownVerdict,
+    TitleSet,
     TranslatedSegment,
     VisualClipScore,
     VisualVerdict,
@@ -79,6 +81,7 @@ P8 = "p8_translate_lines"
 P9 = "p9_clip_score"
 P9V = "p9_visual_score"
 P10 = "p10_sentence_ends"
+P11 = "p11_title_writer"
 
 # Shapes fixed by docs/15 (prompt contract, not runtime settings).
 SPIKE_BATCH_SIZE = 10
@@ -111,6 +114,7 @@ MAX_TOKENS: dict[str, int] = {
     P9: 2000,
     P9V: 3000,
     P10: 3000,
+    P11: 2500,
 }
 # Reasoning depth per prompt. The clip writer and the layout box are judgement calls worth more thought;
 # the classifiers are not.
@@ -126,6 +130,7 @@ EFFORT: dict[str, Effort] = {
     P9: "low",
     P9V: "low",
     P10: "low",
+    P11: "low",
 }
 
 _log = get_logger("ai")
@@ -586,6 +591,39 @@ def write_clip(
         topic=writing.topic,
     )
     return writing
+
+
+# ── P11 title_writer ─────────────────────────────────────────
+
+
+def title_model(choice: str) -> str:
+    """The model for P11: `"writer"` or `"fast"` (scoring_config `titles.v2.model`; fast by default: the
+    facts do the work and code checks the result)."""
+    return _writer_model() if choice == "writer" else _fast_model()
+
+
+def write_titles(
+    facts_json: str,
+    *,
+    model_choice: str = "fast",
+    lane: BudgetKind = "vod",
+    client: AnthropicClient | None = None,
+    clip_id: str | None = None,
+    extra_note: str | None = None,
+) -> TitleSet:
+    """P11: five candidate titles and a short caption from the facts of one clip. The rules are checked by
+    `titles.checks` afterwards; `extra_note` carries the failures into the one retry."""
+    _guard(P11, lane)
+    return _ask(
+        P11,
+        TitleSet,
+        title_model(model_choice),
+        {"facts": facts_json},
+        client,
+        ref_id=clip_id,
+        extra_note=extra_note,
+        tag="title_retry" if extra_note else None,
+    )
 
 
 # ── P9 clip_score ────────────────────────────────────────────

@@ -29,3 +29,4 @@ Funnel before Phase 1 (production, per hour, 18 Nov UTC; spikes → clips → ap
 | Time (UTC) | Change | Flag | Rollback | Result after monitoring |
 |---|---|---|---|---|
 | 2026-11-18 16:06 | PR #58: code + migration 0026 deployed to production, every flag off (no behaviour change; config version 8 = the seed rows). Live sessions start saving their chat baseline every 5 min (data only). | — | flags are off | pending |
+| 2026-11-23 | Title writer v2 (`docs/30-titles-v2.md`): after approval, P11 writes 5 candidate titles from facts (P9V event, names, numbers), code checks pick one, clips.title/caption/hashtags replaced while not posted. Migration `0040_titles_v2.sql` (creators.title_name/title_aliases, clip_titles). Staging first. | `titles.v2` (off) | flag off; old titles in `clip_titles.prior_title` | pending (staging) |
