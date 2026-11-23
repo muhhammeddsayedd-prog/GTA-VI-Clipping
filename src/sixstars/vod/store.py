@@ -714,10 +714,12 @@ def ensure_video(
     row = db.fetch_one(
         """
         insert into videos
-          (creator_id, platform, source_id, url, title, duration_s, has_chat, live_session_id)
-        values (%s, %s, %s, %s, %s, %s, %s, %s)
+          (creator_id, platform, source_id, url, title, duration_s, has_chat, live_session_id, campaign_id)
+        values (%s, %s, %s, %s, %s, %s, %s, %s,
+                (select campaign_id from live_sessions where id = %s::uuid))
         on conflict (platform, source_id) do update
-          set live_session_id = coalesce(videos.live_session_id, excluded.live_session_id)
+          set live_session_id = coalesce(videos.live_session_id, excluded.live_session_id),
+              campaign_id = coalesce(videos.campaign_id, excluded.campaign_id)
         returning id::text as id
         """,
         (
@@ -728,6 +730,7 @@ def ensure_video(
             title,
             int(duration_s) if duration_s else None,
             has_chat,
+            live_session_id,
             live_session_id,
         ),
     )

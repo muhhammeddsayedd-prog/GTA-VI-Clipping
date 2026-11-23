@@ -29,6 +29,7 @@ from sixstars import db, events, jobs, notify
 from sixstars import storage as clip_storage
 from sixstars.ai.calls import BudgetExceededError, ChatLine
 from sixstars.ai.schemas import ClipWriting, SpikeVerdict
+from sixstars.campaigns import tagging
 from sixstars.clients.anthropic_client import AnthropicClient, BudgetKind
 from sixstars.clients.transcribe import Mode, Transcriber
 from sixstars.config import env
@@ -1098,14 +1099,15 @@ def claim_clip(item: RenderInput, *, force: bool = False) -> ClipRow:
                 )
                 return replace(existing, status="rendering")
             return existing
+        tag = tagging.tag_for(item.creator_id, item.lane, datetime.now(UTC))  # D117: campaign lane
         row = db.fetch_one(
             """
             insert into clips
               (id, series_no, spike_id, creator_id, source_platform, source_id, source_url, source_type,
-               lane, start_s, end_s, gate_profile, status)
+               lane, start_s, end_s, gate_profile, status, campaign_id, render_profile)
             values
               (coalesce(%s::uuid, gen_random_uuid()), nextval('clip_series_seq'), %s, %s, %s, %s, %s, %s,
-               %s, %s, %s, %s, 'rendering')
+               %s, %s, %s, %s, 'rendering', %s, %s)
             returning id, series_no
             """,
             (
@@ -1120,6 +1122,8 @@ def claim_clip(item: RenderInput, *, force: bool = False) -> ClipRow:
                 item.source_offset_s + item.window_start_s,
                 item.source_offset_s + item.window_end_s,
                 "express" if item.lane == "spike" else "hourly",
+                tag.campaign_id if tag else None,
+                tag.render_profile if tag else None,
             ),
         )
         assert row is not None
@@ -1135,6 +1139,7 @@ def claim_clip(item: RenderInput, *, force: bool = False) -> ClipRow:
             entity_id=clip_id,
             data={
                 "series_no": series_no,
+                "campaign": tag.slug if tag else None,
                 "spike_id": item.spike_id,
                 "lane": item.lane,
                 "mode": item.mode,
@@ -1329,10 +1334,11 @@ def claim_story_clip(parent_id: str, item: RenderInput, window: ClipWindow) -> C
             """
             insert into clips
               (series_no, creator_id, source_platform, source_id, source_url, source_type, lane, start_s,
-               end_s, gate_profile, status, version, parent_clip_id)
-            values
-              (nextval('clip_series_seq'), %s, %s, %s, %s, %s, 'hourly', %s, %s, 'hourly', 'rendering',
-               'story', %s)
+               end_s, gate_profile, status, version, parent_clip_id, campaign_id, render_profile)
+            select
+               nextval('clip_series_seq'), %s, %s, %s, %s, %s, 'hourly', %s, %s, 'hourly', 'rendering',
+               'story', p.id, p.campaign_id, p.render_profile
+            from clips p where p.id = %s
             returning id::text as id, series_no
             """,
             (

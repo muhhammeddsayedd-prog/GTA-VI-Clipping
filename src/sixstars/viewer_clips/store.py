@@ -16,6 +16,7 @@ from sixstars.config import env
 from sixstars.discovery.models import FORBIDDEN_TIERS
 from sixstars.viewer_clips import JOB_PROCESS
 from sixstars.viewer_clips.select import Range, Ranked
+from sixstars.vod.ranges import clipped_offsets
 
 PLATFORM: Final = "twitch"
 ENTITY: Final = "viewer_clip"
@@ -142,7 +143,33 @@ def taken_ranges(video_ids: Collection[str]) -> dict[str, list[Range]]:
     taken: dict[str, list[Range]] = {}
     for row in rows:
         taken.setdefault(str(row["video_id"]), []).append((float(row["start_s"]), float(row["end_s"])))
+    # D117 moment dedupe: moments the live lane clipped from the same broadcast (stored under the stream,
+    # not the archive id) count as taken too.
+    sessions = db.fetch_all(
+        "select vod_source_id, clipped_ranges, started_at from live_sessions "
+        "where platform = %s and vod_source_id = any(%s) and started_at is not null",
+        (PLATFORM, list(video_ids)),
+    )
+    for session in sessions:
+        for item in clipped_offsets(session["clipped_ranges"] or [], session["started_at"]):
+            taken.setdefault(str(session["vod_source_id"]), []).append((item.start_s, item.end_s))
     return taken
+
+
+def campaign_broadcasters() -> list[str]:
+    """Twitch user ids of the streamers of active campaigns (D117), best priority first."""
+    rows = db.fetch_all(
+        """
+        select c.channel_id, max(k.priority) as priority
+        from clip_campaigns k
+        join clip_campaign_creators l on l.campaign_id = k.id
+        join creators c on c.id = l.creator_id
+        where k.status = 'active' and c.platform = 'twitch' and c.tier not in ('restricted', 'blocked')
+        group by c.channel_id
+        order by priority desc, c.channel_id
+        """
+    )
+    return [str(row["channel_id"]) for row in rows]
 
 
 def creators_by_channel(channel_ids: Collection[str]) -> dict[str, Mapping[str, Any]]:

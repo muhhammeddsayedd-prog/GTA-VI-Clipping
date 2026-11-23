@@ -403,7 +403,7 @@ def active_sessions() -> list[Session]:
     rows = db.fetch_all(
         """
         select s.id::text as id, s.creator_id::text as creator_id, s.platform, s.source_id, s.status,
-               s.below_cutoff_since, c.handle, c.channel_id, c.tier
+               s.below_cutoff_since, c.handle, c.channel_id, c.tier, s.campaign_id::text as campaign_id
         from live_sessions s join creators c on c.id = s.creator_id
         where s.status = any(%s)
         order by s.assigned_at
@@ -423,6 +423,7 @@ def active_sessions() -> list[Session]:
                 below_cutoff_since=row["below_cutoff_since"],
                 identity=squashed or f"{row['platform']}:{row['channel_id']}",
                 creator_tier=row["tier"],
+                campaign_id=row["campaign_id"],
             )
         )
     return sessions
@@ -521,23 +522,24 @@ def vod_job_payload(video_id: str, item: Scored) -> dict[str, Any]:
     }
 
 
-def queue_video(item: Scored) -> str | None:
+def queue_video(item: Scored, priority: int = VOD_JOB_PRIORITY, campaign_id: str | None = None) -> str | None:
     """Insert the `videos` row (status `new`) and its `vod.process` job in one transaction. Returns the
-    video id, or None when the video was already there."""
+    video id, or None when the video was already there. A campaign VOD (D117) carries its campaign and a
+    higher priority."""
     candidate = item.candidate
     with db.transaction():
         row = db.fetch_one(
             """
             insert into videos
               (creator_id, platform, source_id, url, title, duration_s, published_at, trend_score, has_chat,
-               thumbnail_url)
-            values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+               thumbnail_url, campaign_id)
+            values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             on conflict (platform, source_id) do nothing
             returning id::text as id
             """,
             (item.creator.id, candidate.platform, candidate.source_id, candidate.url, candidate.title)
             + (candidate.duration_s, candidate.published_at, item.score, candidate.has_chat)
-            + (candidate.thumbnail_url,),
+            + (candidate.thumbnail_url, campaign_id),
         )
         if row is None:
             return None
@@ -546,7 +548,7 @@ def queue_video(item: Scored) -> str | None:
             "normal",
             VOD_JOB_TYPE,
             vod_job_payload(video_id, item),
-            priority=VOD_JOB_PRIORITY,
+            priority=priority,
             dedupe_key=f"vod:{video_id}",
         )
         return video_id

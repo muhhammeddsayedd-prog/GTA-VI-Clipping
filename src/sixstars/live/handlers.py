@@ -25,7 +25,7 @@ from sixstars.clients.twitch import TwitchClient, TwitchVideo
 from sixstars.factory import pipeline
 from sixstars.live import store
 from sixstars.live.config import LiveConfig
-from sixstars.live.manager import JOB_REPLAY_FIND, REPLAY_PRIORITY, queue_replay_scan
+from sixstars.live.manager import JOB_REPLAY_FIND, queue_replay_scan, replay_priority
 from sixstars.logging import get_logger
 
 ARCHIVES_TO_CHECK: Final = 5
@@ -207,7 +207,7 @@ def handle_replay_find(job: jobs.Job) -> None:
         "normal",
         JOB_REPLAY_FIND,
         {**job.payload, "attempt": attempt},
-        priority=REPLAY_PRIORITY,
+        priority=replay_priority(session_id),
         run_after=again,
         dedupe_key=f"replay.find:{session_id}:{attempt}",
     )

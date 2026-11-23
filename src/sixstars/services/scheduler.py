@@ -7,6 +7,7 @@ M11 tasks:
 - recovery of jobs left `running` by a dead worker, every minute (`jobs.requeue_stale`), with the
   threshold `guardian.heartbeat_stale_s`;
 - the ranking refresh (docs/11 section 5), every 10 minutes: `rank_score` of every approved clip.
+- the campaign watcher (D117), every `campaigns.watch_interval_s`: live campaign streams get their slots;
 
 M13 tasks (the rules live in `sixstars.guardian`):
 
@@ -33,6 +34,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from sixstars import db, events, jobs, notify, settings
+from sixstars.campaigns import watcher as campaign_watcher
 from sixstars.guardian import config as guardian_config
 from sixstars.guardian import failover as guardian_failover
 from sixstars.guardian import health as guardian_health
@@ -56,6 +58,8 @@ PRUNE_INTERVAL_S = 3600.0
 LAUNCH_SUMMARY_INTERVAL_S = 60.0
 VOD_RECOVERY_TICK_S = 15.0  # how often the task looks; the pass itself runs every vod.recovery_interval_s
 VOD_RECOVERY_SETTING = "vod.recovery_interval_s"
+CAMPAIGN_WATCH_TICK_S = 10.0  # how often the task looks; the pass runs every campaigns.watch_interval_s
+CAMPAIGN_WATCH_SETTING = "campaigns.watch_interval_s"
 LAUNCH_SUMMARY_EVENT = "launch.health_summary"
 STALE_SETTING = "guardian.heartbeat_stale_s"
 RANK_EPSILON = 1e-6
@@ -306,6 +310,21 @@ def recover_vod_orphans(clock: float | None = None) -> list[str] | None:
     return vod_process.recover_orphans()
 
 
+_campaign_watch_at: float | None = None
+
+
+def watch_campaigns(clock: float | None = None) -> dict[str, Any] | None:
+    """D117: one campaign watcher pass every `campaigns.watch_interval_s` (read each tick, so a change
+    applies without a restart). Returns the pass summary, or None when it is not due."""
+    global _campaign_watch_at
+    clock = time.monotonic() if clock is None else clock
+    interval_s = settings.get_float(CAMPAIGN_WATCH_SETTING, 60.0)
+    if _campaign_watch_at is not None and clock - _campaign_watch_at < interval_s:
+        return None
+    _campaign_watch_at = clock
+    return campaign_watcher.run_once()
+
+
 def tasks() -> list[PeriodicTask]:
     """The periodic tasks of the scheduler."""
     return [
@@ -319,6 +338,7 @@ def tasks() -> list[PeriodicTask]:
         PeriodicTask("prune", PRUNE_INTERVAL_S, prune),
         PeriodicTask("launch_summary", LAUNCH_SUMMARY_INTERVAL_S, launch_summary),
         PeriodicTask("vod_recovery", VOD_RECOVERY_TICK_S, recover_vod_orphans),
+        PeriodicTask("campaign_watch", CAMPAIGN_WATCH_TICK_S, watch_campaigns),
     ]
 
 

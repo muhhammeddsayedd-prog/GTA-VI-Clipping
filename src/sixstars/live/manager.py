@@ -35,7 +35,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any, Final
 
-from sixstars import jobs, notify
+from sixstars import db, jobs, notify, settings
 from sixstars.live import buffer, health, store
 from sixstars.live.config import LiveConfig
 from sixstars.live.session import LiveSession, Outcome, SessionDeps
@@ -46,6 +46,8 @@ SERVICE: Final = "live-manager"
 JOB_REPLAY_SCAN: Final = "replay.scan"
 JOB_REPLAY_FIND: Final = "replay.find"
 REPLAY_PRIORITY: Final = 25
+CAMPAIGN_VOD_PRIORITY_KEY: Final = "campaigns.vod_priority"
+CAMPAIGN_VOD_PRIORITY_DEFAULT: Final = 35
 ORPHAN_SWEEP_S: Final = 60.0
 SHUTDOWN_JOIN_S: Final = 20.0
 DISK_WARN_TITLE: Final = "Live lane paused: data volume almost full"
@@ -55,6 +57,14 @@ SessionFactory = Callable[[store.SessionRow, LiveConfig, SessionDeps], LiveSessi
 
 def utcnow() -> datetime:
     return datetime.now(UTC)
+
+
+def replay_priority(session_id: str) -> int:
+    """D117: the replay of a campaign session runs at campaign VOD priority, others at REPLAY_PRIORITY."""
+    row = db.fetch_one("select campaign_id from live_sessions where id = %s", (session_id,))
+    if row is None or row["campaign_id"] is None:
+        return REPLAY_PRIORITY
+    return settings.get_int(CAMPAIGN_VOD_PRIORITY_KEY, CAMPAIGN_VOD_PRIORITY_DEFAULT)
 
 
 def queue_replay(row: store.SessionRow, cfg: LiveConfig, now: datetime) -> str:
@@ -67,7 +77,7 @@ def queue_replay(row: store.SessionRow, cfg: LiveConfig, now: datetime) -> str:
             "normal",
             JOB_REPLAY_FIND,
             {"live_session_id": row.id, "deadline": deadline.isoformat()},
-            priority=REPLAY_PRIORITY,
+            priority=replay_priority(row.id),
             run_after=now + timedelta(seconds=cfg.replay_find_interval_s),
             dedupe_key=f"replay.find:{row.id}",
         )
@@ -83,7 +93,7 @@ def queue_replay_scan(session_id: str, vod_source_id: str, run_after: datetime) 
         "normal",
         JOB_REPLAY_SCAN,
         {"live_session_id": session_id},
-        priority=REPLAY_PRIORITY,
+        priority=replay_priority(session_id),
         run_after=run_after,
         dedupe_key=f"replay:{session_id}",
     )

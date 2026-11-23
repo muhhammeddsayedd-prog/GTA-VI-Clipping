@@ -43,6 +43,7 @@ ERROR_CHARS: Final = 300
 # of the VOD lane, so it does not count against `twitch_clips.max_backlog` for ever.
 ORPHAN_GRACE_KEY: Final = "vod.orphan_grace_s"
 ORPHAN_GRACE_DEFAULT_S: Final = 300.0
+CAMPAIGN_FIRST_KEY: Final = "twitch_clips.campaign_first"  # D117
 
 _log = get_logger("discovery")
 
@@ -176,10 +177,23 @@ def _run(
         now,
         max_items=clips_config.read_per_pass,
     )
+    campaign_ids = store.campaign_broadcasters() if settings.get_bool(CAMPAIGN_FIRST_KEY, True) else []
+    if campaign_ids:
+        clips = select.merge_clips(
+            clips,
+            [
+                clip
+                for broadcaster_id in campaign_ids
+                for clip in twitch.get_clips_by_broadcaster(
+                    broadcaster_id, now - timedelta(hours=clips_config.lookback_h), now
+                )
+            ],
+        )
     report = ClipsReport("ok" if clips else "empty", found=len(clips))
     ranked, unfit = select.rank_all(
         clips, now, clips_config, config.title_blocklist, config.score.non_english_penalty
     )
+    ranked = select.campaign_first(ranked, set(campaign_ids))
     _add(report.skipped, unfit)
     report.eligible = len(ranked)
     known = store.known_ids([item.clip.id for item in ranked])
