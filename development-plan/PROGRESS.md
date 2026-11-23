@@ -721,6 +721,15 @@ Production audit 2026-11-21: `youtube_main` had been lowered to the learned-cap 
 - YouTube uploads that were never live are not queued (campaign streamers are taken from their streams).
 - Several live campaign streamers beyond `live.campaign_slots` are not recorded. They are taken from their VOD after the stream, as the Operating flows tab says.
 
+### Staging (2026-11-23)
+
+- Merged via #84 (branch `clipcamp-staging-2`). #84 went in with a failed `ruff format --check` on `cli.py` (my merge command did not wait for green CI). #85 fixed it with CI green, and the staging deploy (14:05 UTC, run of #82) applied 0051.
+- First watcher pass on staging:
+  - `jerma985` live in Grand Theft Auto VI (7,134 viewers).
+  - His running trending session was re-tagged to `staging-test-jerma`, not restarted (`retagged: 1, started: 0`).
+  - The heartbeat beats every 60 s and `creator_live_status` is filled.
+- Still to see: the session moving `assigned -> recording` after the deploy restart, and the first clip carrying `campaign_id` / `render_profile`.
+
 ### Open issues / next
 
 - Not yet verified: a multi-day session (a 120 h marathon) without a forced restart.
