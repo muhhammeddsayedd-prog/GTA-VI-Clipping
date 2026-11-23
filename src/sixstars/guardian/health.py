@@ -47,6 +47,9 @@ BUDGETS: tuple[tuple[str, tuple[str, ...], str, bool], ...] = (
     # YouTube video jobs pause themselves at this budget (vod/process.py `_gates`); Twitch goes on.
     ("proxy", ("DataImpulse",), "proxy.daily_budget_usd", False),
 )
+# Budgets where 0 or less means "no limit", as their own guard reads them (`vod/proxy.budget_reached`). The
+# others keep 0 as "nothing may be spent".
+ZERO_MEANS_NO_LIMIT: frozenset[str] = frozenset({"proxy"})
 
 
 @dataclass(frozen=True, slots=True)
@@ -234,7 +237,8 @@ def check_spend(now: datetime, open_now: set[str]) -> dict[str, bool]:
         if not isinstance(budget, int | float) or isinstance(budget, bool):
             continue
         total = sum(spent.get(provider, 0.0) for provider in providers)
-        over[label] = total > float(budget)
+        unlimited = label in ZERO_MEANS_NO_LIMIT and float(budget) <= 0
+        over[label] = not unlimited and total > float(budget)
         pause = pause or (over[label] and pauses_vod)
         incidents.report(
             f"spend:{label}",

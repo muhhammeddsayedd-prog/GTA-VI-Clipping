@@ -164,7 +164,12 @@ def _writer_record(row: store.ClipRow) -> dict[str, object]:
 
 
 def score_document(
-    row: store.ClipRow, scored: VisualClipScore, model: str, frames: int, samples: int
+    row: store.ClipRow,
+    scored: VisualClipScore,
+    model: str,
+    frames: int,
+    samples: int,
+    asked: Sequence[int] = (),
 ) -> dict[str, object]:
     """`clips.score_parts` after the visual score. The four parts at the top are those of the score now in
     `clips.score` (the shape every reader already knows); `writer` and `visual` hold each judge's own
@@ -181,6 +186,7 @@ def score_document(
             "model": model,
             "frames": frames,
             "samples": samples,
+            "asked": list(asked),  # each sample's own score, in the order asked (AI cost plan A0)
         },
     }
 
@@ -224,7 +230,7 @@ def run(
         peak = chat.peak_s if chat is not None else None
         audience = None if chat is not None else viewer_audience(row)
         shots = visuals.sample_score_frames(Path(row.local_path), row.duration_s, count, peak, ffmpeg)
-        scored = calls.score_clip_visual(
+        scored, asked = calls.score_clip_visual_samples(
             rendered_clip(row, chat, audience),
             [jpeg for _, jpeg in shots],
             [time_s for time_s, _ in shots],
@@ -232,7 +238,7 @@ def run(
             lane=lane,
             client=client,
         )
-        document = score_document(row, scored, calls.visual_score_model(), len(shots), samples)
+        document = score_document(row, scored, calls.visual_score_model(), len(shots), samples, asked)
         stored = store.store_visual_score(row.id, scored.score, document)
     except calls.BudgetExceededError:
         raise

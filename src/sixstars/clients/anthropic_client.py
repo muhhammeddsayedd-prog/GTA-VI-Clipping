@@ -86,6 +86,20 @@ _FENCE_RE = re.compile(r"^```[a-zA-Z0-9_-]*\s*\n?(.*?)\n?```$", re.DOTALL)
 _JSON_START_RE = re.compile(r"[{\[]")
 
 
+@dataclass(frozen=True, slots=True)
+class _Reply:
+    """What one Messages request returned: the text, why it stopped, and its tokens and cost."""
+
+    text: str
+    stop_reason: str | None
+    model: str
+    input_tokens: int  # the uncached part, as the API reports it
+    output_tokens: int
+    cache_write: int
+    cache_read: int
+    cost: float
+
+
 class AnthropicError(ClientError):
     """The model call failed or its output could not be used."""
 
@@ -220,11 +234,13 @@ class AnthropicClient:
         effort: Effort | None,
         ref_id: str | None,
         response_format: dict[str, Any] | None = None,
-    ) -> tuple[str, str | None]:
-        """One Messages request. Returns `(text, stop_reason)` and records tokens and cost.
+        attempt: int = 1,
+    ) -> _Reply:
+        """One Messages request. Returns the reply text, stop reason and its token counts and cost.
 
         `response_format` is the structured output format (`output_format(schema)`), or None to ask in
-        free text."""
+        free text. A successful reply is recorded in `api_usage` by the caller once it is known whether the
+        reply was usable; a failed request (`http_error`) and a refusal are recorded here."""
         system_block: dict[str, Any] = {"type": "text", "text": system}
         if cache_system:
             system_block["cache_control"] = {"type": "ephemeral"}
@@ -251,10 +267,12 @@ class AnthropicClient:
                 status=exc.status_code,
                 message=str(exc.message)[:LOGGED_REASON_CHARS],
             )
+            self._record_failed_call(prompt_id, model, ref_id, attempt, f"HTTP {exc.status_code}")
             kind = AnthropicBadRequest if exc.status_code == 400 else AnthropicError
             raise kind(f"Anthropic API returned HTTP {exc.status_code}") from exc
         except anthropic.APIConnectionError as exc:
             self._log.warning("api_call_failed", prompt_id=prompt_id, error=type(exc).__name__)
+            self._record_failed_call(prompt_id, model, ref_id, attempt, type(exc).__name__)
             raise AnthropicError("Anthropic API could not be reached") from exc
 
         used = response.usage
@@ -262,34 +280,77 @@ class AnthropicClient:
         output_tokens = int(getattr(used, "output_tokens", 0) or 0)
         cache_write = int(getattr(used, "cache_creation_input_tokens", 0) or 0)
         cache_read = int(getattr(used, "cache_read_input_tokens", 0) or 0)
-        cost = cost_usd(model, input_tokens, output_tokens, cache_write, cache_read)
-        usage.record(
-            SERVICE,
-            prompt_id,
+        reply = _Reply(
+            text="".join(block.text for block in response.content if block.type == "text"),
+            stop_reason=response.stop_reason,
             model=model,
-            input_tokens=input_tokens + cache_write + cache_read,
+            input_tokens=input_tokens,
             output_tokens=output_tokens,
-            cost_usd=cost,
-            ref_id=ref_id,
+            cache_write=cache_write,
+            cache_read=cache_read,
+            cost=cost_usd(model, input_tokens, output_tokens, cache_write, cache_read),
         )
         self._log.info(
             "api_call",
             endpoint="messages",
             prompt_id=prompt_id,
             model=model,
+            attempt=attempt,
             stop_reason=response.stop_reason,
             input_tokens=input_tokens,
             cache_write_tokens=cache_write,
             cache_read_tokens=cache_read,
             output_tokens=output_tokens,
-            cost_usd=round(cost, 6),
+            cost_usd=round(reply.cost, 6),
             duration_ms=int((time.monotonic() - started) * 1000),
         )
         if response.stop_reason == "refusal":
             details = getattr(response, "stop_details", None)
-            raise AnthropicRefusal(getattr(details, "category", None))
-        text = "".join(block.text for block in response.content if block.type == "text")
-        return text, response.stop_reason
+            category = getattr(details, "category", None)
+            self._record_usage(prompt_id, reply, ref_id, attempt, "refusal", category)
+            raise AnthropicRefusal(category)
+        return reply
+
+    def _record_usage(
+        self,
+        prompt_id: str,
+        reply: _Reply,
+        ref_id: str | None,
+        attempt: int,
+        outcome: usage.Outcome,
+        detail: str | None = None,
+    ) -> None:
+        """One `api_usage` row for a request that got a response."""
+        usage.record(
+            SERVICE,
+            prompt_id,
+            model=reply.model,
+            input_tokens=reply.input_tokens + reply.cache_write + reply.cache_read,
+            output_tokens=reply.output_tokens,
+            cost_usd=reply.cost,
+            ref_id=ref_id,
+            detail=usage.CallDetail(
+                stop_reason=reply.stop_reason,
+                attempt=attempt,
+                outcome=outcome,
+                cache_read_tokens=reply.cache_read,
+                cache_write_tokens=reply.cache_write,
+                detail=detail,
+            ),
+        )
+
+    def _record_failed_call(
+        self, prompt_id: str, model: str, ref_id: str | None, attempt: int, detail: str
+    ) -> None:
+        """One zero-cost `api_usage` row for a request that got no usable response."""
+        usage.record(
+            SERVICE,
+            prompt_id,
+            model=model,
+            cost_usd=0.0,
+            ref_id=ref_id,
+            detail=usage.CallDetail(attempt=attempt, outcome="http_error", detail=detail),
+        )
 
     def complete_json[T: BaseModel](
         self,
@@ -303,6 +364,7 @@ class AnthropicClient:
         cache_system: bool = True,
         effort: Effort | None = DEFAULT_EFFORT,
         ref_id: str | None = None,
+        tag: str | None = None,
     ) -> T:
         """Ask `model` for JSON matching `schema` and return the validated object.
 
@@ -318,6 +380,10 @@ class AnthropicClient:
         falls back to the schema written into the system prompt and free-text parsing. Raises
         `InvalidModelOutput` when the last reply is still unusable and `AnthropicRefusal` when the model
         declines.
+
+        Every request is one `api_usage` row with its attempt number and outcome (`ok`, `invalid` with the
+        failing check, `refusal`, `http_error`); `tag` marks a call made for a special reason (for example
+        `title_retry`) in the row's `detail`.
         """
         content: list[dict[str, Any]] = [image_block(image) for image in images or ()]
         if isinstance(user_content, str):
@@ -335,28 +401,44 @@ class AnthropicClient:
             )
             response_format = None
 
-        def ask(blocks: list[dict[str, Any]], cap: int) -> tuple[str, str | None]:
+        def ask(blocks: list[dict[str, Any]], cap: int, attempt: int) -> _Reply:
             nonlocal response_format
             if response_format is not None:
                 try:
                     return self._call(
-                        prompt_id, model, system, blocks, cap, cache_system, effort, ref_id, response_format
+                        prompt_id,
+                        model,
+                        system,
+                        blocks,
+                        cap,
+                        cache_system,
+                        effort,
+                        ref_id,
+                        response_format,
+                        attempt,
                     )
                 except AnthropicBadRequest:
                     self._log.warning("structured_output_rejected", prompt_id=prompt_id, model=model)
                     response_format = None
             legacy = system_with_schema(system, schema)
-            return self._call(prompt_id, model, legacy, blocks, cap, cache_system, effort, ref_id)
+            return self._call(
+                prompt_id, model, legacy, blocks, cap, cache_system, effort, ref_id, attempt=attempt
+            )
 
         blocks = content
         doubled = False
         problem = ""
         for attempt in range(1 + REPAIR_ATTEMPTS):
-            text, stop_reason = ask(blocks, limit)
+            reply = ask(blocks, limit, attempt + 1)
+            text, stop_reason = reply.text, reply.stop_reason
             try:
-                return _parse(schema, text)
+                parsed = _parse(schema, text)
             except (ValidationError, ValueError) as error:
                 problem = _describe(error)
+            else:
+                self._record_usage(prompt_id, reply, ref_id, attempt + 1, "ok", tag)
+                return parsed
+            self._record_usage(prompt_id, reply, ref_id, attempt + 1, "invalid", _tagged(tag, problem))
             self._log.warning(
                 "invalid_model_output",
                 prompt_id=prompt_id,
@@ -380,6 +462,10 @@ class AnthropicClient:
             )
             blocks = [*content, {"type": "text", "text": repair}]
         raise InvalidModelOutput(f"{prompt_id}: reply is not valid for {name}: {problem}")
+
+
+def _tagged(tag: str | None, text: str) -> str:
+    return f"{tag}: {text}" if tag else text
 
 
 def _schema_name(schema: type[BaseModel]) -> str:

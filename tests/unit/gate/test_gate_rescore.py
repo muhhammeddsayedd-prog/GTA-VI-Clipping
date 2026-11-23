@@ -271,6 +271,7 @@ def test_run_stores_the_visual_score_and_keeps_the_writers(world: World) -> None
             "model": "claude-sonnet-5-5",
             "frames": 8,
             "samples": 3,
+            "asked": [7, 8, 6],  # each sample in the order asked
         },
     }
     # the gate judges the reloaded row, and a second gate run does not score again
