@@ -168,6 +168,16 @@ def clip_box(x: float, y: float, w: float, h: float, width: int, height: int) ->
     return Box(x0, y0, x1 - x0, y1 - y0)
 
 
+def even_box(box: Box) -> Box:
+    """The largest box on even pixels inside `box`: ffmpeg rounds an odd crop of 4:2:0 video, which would
+    leave a frame a row or a column short of the bytes expected. Pure."""
+    x, y = box.x + box.x % 2, box.y + box.y % 2
+    w, h = (box.x + box.w - x) // 2 * 2, (box.y + box.h - y) // 2 * 2
+    if w < 2 or h < 2:
+        raise ValueError(f"box too small to crop: {box}")
+    return Box(x, y, w, h)
+
+
 def sample_times(window: ClipWindow, count: int) -> list[float]:
     """`count` file times spread over the window (the middle of each of `count` equal parts). Pure."""
     step = window.duration_s / count
@@ -223,14 +233,24 @@ class CamFaceCheck:
     frames: int
     elapsed_ms: int
 
+    @property
+    def reason(self) -> str | None:
+        """Why no face is used: `no_frames` (no frame of the cam could be read) or `no_face`."""
+        if self.face_box is not None:
+            return None
+        return "no_frames" if self.frames == 0 else "no_face"
+
     def as_json(self) -> dict[str, object]:
         face = self.face_box
-        return {
+        result: dict[str, object] = {
             "face_box": None if face is None else {"x": face.x, "y": face.y, "w": face.w, "h": face.h},
             "hits": self.hits,
             "frames": self.frames,
             "ms": self.elapsed_ms,
         }
+        if self.reason is not None:
+            result["reason"] = self.reason
+        return result
 
 
 def find_cam_face(
@@ -248,8 +268,9 @@ def find_cam_face(
     started = time.monotonic()
     detector = detector or default_detector(rules.detector_score)
     grab = grab or grab_frames
-    frames = grab(source, sample_times(window, rules.check_frames), cam_box, ffmpeg=ffmpeg)
+    crop = even_box(cam_box)
+    frames = grab(source, sample_times(window, rules.check_frames), crop, ffmpeg=ffmpeg)
     face, hits = median_face([detector.detect(frame) for frame in frames], rules.detector_score)
     if face is not None:
-        face = Box(cam_box.x + face.x, cam_box.y + face.y, face.w, face.h)
+        face = Box(crop.x + face.x, crop.y + face.y, face.w, face.h)
     return CamFaceCheck(face, hits, len(frames), int((time.monotonic() - started) * 1000))
