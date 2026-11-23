@@ -1,6 +1,7 @@
 """Live slot planning and VOD picking as pure functions: keep, release after the grace time below the
 cutoff, one source per creator, fill to the maximum, forbidden and unchecked creators."""
 
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 
 from sixstars.discovery import assign, tiers
@@ -234,3 +235,16 @@ def test_forbidden_and_unchecked_creators_are_never_picked() -> None:
 def test_low_hourly_queue_widens_the_run() -> None:
     assert assign.widen_for_low_queue(50, 6, approved_hourly=11, low_watermark=12) == (40, 12, True)
     assert assign.widen_for_low_queue(50, 6, approved_hourly=12, low_watermark=12) == (50, 6, False)
+
+
+def test_a_campaign_session_is_never_released_for_its_score() -> None:
+    """D118: the campaign watcher owns a tagged session; discovery keeps it and fills the other slots."""
+    weak = live("camp", 10)
+    tagged = replace(session(weak, since=NOW - timedelta(hours=2)), campaign_id="k1")
+    result = plan([tagged], [weak, live("b", 90), live("c", 80)], max_slots=2)
+    assert [keep.session_id for keep in result.keep] == [tagged.id]
+    assert result.release == []
+    assert [item.candidate.channel_name for item in result.assign] == ["b"]
+    # The same session without its tag is released once it has been below the cutoff long enough.
+    untagged = replace(tagged, campaign_id=None)
+    assert [r.session_id for r in plan([untagged], [weak]).release] == [untagged.id]

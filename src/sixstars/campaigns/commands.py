@@ -4,6 +4,7 @@ list, show, lookup and quotas. Each returns an exit code; every change goes thro
 """
 
 import json
+import sys
 from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime
 from typing import Any, Final
@@ -58,6 +59,14 @@ def caption_rules(
     if banned:
         rules["banned_words"] = list(banned)
     return rules
+
+
+def safe_stdout() -> None:
+    """Never crash on a console that cannot show a character (an emoji tag on a Windows code page)."""
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if callable(reconfigure):
+            reconfigure(errors="replace")
 
 
 def _refuse(exc: service.CampaignError) -> int:
@@ -237,12 +246,12 @@ def describe(c: Campaign) -> str:
         f", max {c.max_payout:g}" if c.max_payout is not None else ""
     )
     lines = [
-        f"{c.slug} — {c.name} [{c.status}] v{c.version} priority {c.priority}",
+        f"{c.slug} - {c.name} [{c.status}] v{c.version} priority {c.priority}",
         f"  platforms: {', '.join(c.platforms) or '-'}; quota: {quota}",
         f"  payout: {payout}; budget left: {'-' if c.budget_left is None else f'{c.budget_left:g}'}"
         + (f" of {c.budget_total:g}" if c.budget_total is not None else ""),
         f"  profile: {c.render_profile}; game: {c.required_game or 'any'}; streamers: {len(c.creator_ids)}",
-        f"  window: {c.starts_at or '-'} → {c.ends_at or '-'}",
+        f"  window: {c.starts_at or '-'} -> {c.ends_at or '-'}",
     ]
     if c.caption_rules:
         lines.append(f"  caption rules: {json.dumps(dict(c.caption_rules), ensure_ascii=False)}")
