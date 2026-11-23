@@ -388,6 +388,7 @@ def _render_one(
     """Render, check, upload and record one style. Raises nothing the caller must handle: the row says
     what happened."""
     # the pipeline imports this module
+    from sixstars.campaigns import profiles as campaign_profiles
     from sixstars.factory.pipeline import RenderJob, framed_layout, render_file
     from sixstars.gate import profiles
     from sixstars.gate import visual as visuals
@@ -424,7 +425,7 @@ def _render_one(
             hook=recipe.get("hook"),
             keywords=keywords,
             duck=tuple(Span(float(s), float(e)) for s, e in recipe.get("duck", [])),
-            style=entry.rules,
+            style=campaign_profiles.styled(clip_id, entry.rules),  # D118: the clip's campaign look
             payoff_s=recipe.get("payoff_s"),
             payoff_emoji=recipe.get("payoff_emoji"),
             style_id=style_id,

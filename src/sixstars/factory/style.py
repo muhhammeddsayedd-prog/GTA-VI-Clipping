@@ -102,6 +102,12 @@ class StyleRules:
     # to one account (`factory.styles` `accounts`).
     follow_overlay_s: float = 0.0
     follow_overlay_text: str = ""
+    # D118 campaign looks (set by `sixstars.campaigns.profiles.apply`, never from factory.styles): a
+    # disclosure line over the first `disclosure_s` seconds and the campaign's logo in a corner.
+    disclosure_text: str = ""
+    disclosure_s: float = 0.0
+    campaign_logo: str = ""
+    campaign_logo_pos: str = ""
 
     def __post_init__(self) -> None:
         if self.caption_words < 0 or self.caption_chars < 1:

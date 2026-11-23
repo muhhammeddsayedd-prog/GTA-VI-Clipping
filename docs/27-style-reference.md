@@ -82,3 +82,17 @@ The B-roll comes from the footage around the moment that the source file already
 
 Style rules `follow_overlay_s` (0..5, `0` off) and `follow_overlay_text` draw one line, centred on a dark box with an accent outline, over the last `follow_overlay_s` seconds of the clip, low inside the safe zone (`overlays.follow_layout`). It adds no time: the clip still ends on the payoff and loops, so `factory.end_card_s` stays `0`. The text names a handle, so a style using it is limited to one account. Migration 0036 adds `cam_top_viral_follow`, `cam_top_wordcap_follow` and `cam_top_title_follow`: copies of the three styles YouTube used most, with "Follow @6starsClips-m3x for Part 2" over the last 1.5 s, for `youtube_main` hourly clips only, at the same weight and moment-type affinity as their originals, so the director picks each pair about evenly and the style bandit compares them.
 
+## Campaign looks (D118, clipping campaigns PR 3)
+
+A campaign clip is drawn in its campaign's render profile (`render_profiles`), on top of whichever design style the director picked:
+
+| Profile | Watermark | Extra | Disclosure |
+|---|---|---|---|
+| `brand` | "6 Stars Clips" | none | none (Normal and Spike lanes) |
+| `clean-disclose` | off | none | "Paid partnership", top left of the safe zone, first 1.5 s |
+| `partner-logo` (copied per campaign with its logo) | off | campaign logo PNG, 200 px wide (reference canvas), in a corner inside the safe zone, whole clip | first 1.5 s |
+| `brand-disclose` | on | none | first 1.5 s |
+| `overlay-keep` | off | the streamer's stream overlay kept | refused for now: needs a full-frame layout (Render v2) |
+
+Campaign renders never use the follow line (a Normal-lane test) or the POV crop (it cuts the face cam away). Before drawing, `brief_match` checks that the face cam is in the frame (`streamer_on_screen`, default on), that the length is within the brief's `min_len`/`max_len`, and that the streamer belongs to the campaign. A clip that fails is made as a Normal clip in `brand` (event `campaign.brief_failed`), never dropped.
+

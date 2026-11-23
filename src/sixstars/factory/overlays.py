@@ -11,6 +11,7 @@ Positions follow docs/09 section 5 on the 1080x1920 reference canvas.
 
 from dataclasses import dataclass
 from pathlib import PurePath
+from typing import Final
 
 from sixstars.factory.escape import (
     ass_text,
@@ -443,6 +444,44 @@ def follow_filter(
             ("bordercolor", accent_color),
             ("borderw", "2"),
             ("enable", f"gte(t,{_seconds(start)})"),
+        ],
+    )
+
+
+DISCLOSURE_SIZE: Final = 40  # reference pixels
+DISCLOSURE_LEFT: Final = 48
+DISCLOSURE_GAP: Final = 24
+
+
+def disclosure_filter(
+    text: str,
+    *,
+    geometry: Geometry,
+    font_name: str,
+    fonts: FontFiles,
+    clip_s: float,
+    show_s: float,
+    safe_top_px: int,
+) -> str | None:
+    """D118: the disclosure line ("Paid partnership") at the top left of the safe zone, on a dark box, over
+    the first `show_s` seconds. None when off or empty."""
+    line = single_line(text)
+    if not line or show_s <= 0 or clip_s <= 0:
+        return None
+    scale = geometry.height / REF_HEIGHT
+    return drawtext_filter(
+        line,
+        font_name=font_name,
+        fonts=fonts,
+        size=max(8, round(DISCLOSURE_SIZE * scale)),
+        color="white",
+        x=str(round(DISCLOSURE_LEFT * scale)),
+        y=str(round((safe_top_px + DISCLOSURE_GAP) * scale)),
+        extra=[
+            ("box", "1"),
+            ("boxcolor", "black@0.6"),
+            ("boxborderw", str(max(2, round(12 * scale)))),
+            ("enable", f"lt(t,{_seconds(min(show_s, clip_s))})"),
         ],
     )
 

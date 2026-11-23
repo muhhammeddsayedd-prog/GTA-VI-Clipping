@@ -11,7 +11,7 @@ from typing import Any, Final
 
 import typer
 
-from sixstars.campaigns import lookup, service, store
+from sixstars.campaigns import lookup, rules, service, store
 from sixstars.campaigns.models import Campaign, Status
 from sixstars.clients._http import ClientError
 from sixstars.clients.twitch import TwitchClient
@@ -260,3 +260,82 @@ def describe(c: Campaign) -> str:
     if c.submit_url:
         lines.append(f"  submit: {c.submit_url}")
     return "\n".join(lines)
+
+
+# ── render profiles (PR 3) ───────────────────────────────────
+
+
+def profile_add(
+    profile_id: str,
+    base: str,
+    logo: str | None,
+    pos: str | None,
+    watermark: bool | None,
+    disclosure: str | None,
+    disclosure_s: float | None,
+) -> int:
+    """Copy `base` into a new profile and change what is given; a logo PNG is stored in the row."""
+    from pathlib import Path
+
+    from sixstars import db
+    from sixstars.campaigns import profiles
+
+    if pos is not None and pos not in profiles.LOGO_POSITIONS:
+        typer.echo(f"--pos must be one of {', '.join(profiles.LOGO_POSITIONS)}", err=True)
+        return EXIT_USAGE
+    if not rules.SLUG_PATTERN.fullmatch(profile_id):
+        typer.echo("profile id: use 2-63 lower-case letters, digits and dashes", err=True)
+        return EXIT_USAGE
+    png = None
+    if logo is not None:
+        try:
+            png = Path(logo).read_bytes()
+        except OSError as exc:
+            typer.echo(f"cannot read {logo}: {exc}", err=True)
+            return EXIT_USAGE
+    with db.transaction():
+        created = db.fetch_one(
+            """
+            insert into render_profiles (id, watermark, logo_pos, keep_overlay, disclosure_text, disclosure_s,
+                                         description)
+            select %s, coalesce(%s, watermark), coalesce(%s, logo_pos), keep_overlay,
+                   coalesce(%s, disclosure_text), coalesce(%s, disclosure_s), 'copy of ' || id
+            from render_profiles where id = %s
+            on conflict (id) do nothing
+            returning id
+            """,
+            (profile_id, watermark, pos, disclosure, disclosure_s, base),
+        )
+        if created is None:
+            typer.echo(f"profile {profile_id} exists already, or {base} does not exist", err=True)
+            return EXIT_USAGE
+        if png is not None:
+            try:
+                profiles.save_logo(profile_id, png)
+            except ValueError as exc:
+                typer.echo(str(exc), err=True)
+                raise typer.Exit(code=EXIT_USAGE) from exc
+    return profile_list()
+
+
+def profile_list() -> int:
+    from sixstars import db
+
+    rows = db.fetch_all(
+        "select id, watermark, logo_pos, logo_png is not null as has_logo, keep_overlay, disclosure_text, "
+        "disclosure_s from render_profiles order by id"
+    )
+    for row in rows:
+        logo = (
+            f"logo {row['logo_pos']}" + ("" if row["has_logo"] else " (none uploaded)")
+            if row["logo_pos"]
+            else "-"
+        )
+        disclosure = (
+            f'"{row["disclosure_text"]}" {float(row["disclosure_s"]):g}s' if row["disclosure_text"] else "-"
+        )
+        typer.echo(
+            f"{row['id']:<28} watermark {'on ' if row['watermark'] else 'off'}  {logo:<26} "
+            f"overlay {'kept' if row['keep_overlay'] else '-':<5} disclosure {disclosure}"
+        )
+    return EXIT_OK
