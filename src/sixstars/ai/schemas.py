@@ -695,3 +695,25 @@ class CoverLines(Reply):
     """P12: candidate cover lines (two quotes and one label)."""
 
     candidates: list[CoverLineCandidate] = Field(min_length=1, max_length=6)
+
+
+# ── P13 cover_qa (cover engine, docs/29a stage 5) ────────────
+
+
+class CoverQaScores(Reply):
+    """The five 0-2 scores of the cover review."""
+
+    readable: int = Field(ge=0, le=2)
+    faithful: int = Field(ge=0, le=2)
+    natural: int = Field(ge=0, le=2)
+    clear: int = Field(ge=0, le=2)
+    safe: int = Field(ge=0, le=2)
+
+
+class CoverQa(Reply):
+    """P13: the vision check of a composed cover."""
+
+    scores: CoverQaScores
+    total: int = Field(ge=0, le=10)
+    hard_fail: bool
+    reason: str = ""

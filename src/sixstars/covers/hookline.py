@@ -30,6 +30,8 @@ MAX_SHARED_CONTENT_WORDS = 2
 TRANSCRIPT_PAD_S = 5.0
 RECENT_LINES = 20
 BANNED_PHRASES = ("INSANE", "CRAZY", "YOU WON'T BELIEVE", "YOU WONT BELIEVE", "SPOILER")
+# Story reveals: the words the title writer avoids for a story clip (P11 rule 9).
+STORY_SPOILERS = ("ENDING", "FINALE", "FINAL MISSION", "TWIST", "BETRAYAL", "BETRAYED")
 STOPWORDS = frozenset(
     [
         "a",
@@ -184,6 +186,21 @@ def source_found(source: str, transcript_words: Sequence[str]) -> bool:
     return False
 
 
+def text_problems(text: str) -> list[str]:
+    """The banned words, story reveals and outcome words in a cover line (the QA gate runs it again on the
+    final line). Pure."""
+    problems: list[str] = []
+    upper = text.upper().replace("’", "'")
+    for phrase in BANNED_PHRASES:
+        if re.search(rf"\b{re.escape(phrase)}\b", upper):
+            problems.append(f"banned:{phrase.lower()}")
+    if any(re.search(rf"\b{re.escape(phrase)}\b", upper) for phrase in STORY_SPOILERS):
+        problems.append("story_spoiler")
+    if titles.spoils_ending(text):
+        problems.append("spoils_outcome")
+    return problems
+
+
 def validate(raw: Mapping[str, Any], context: LineContext) -> Candidate:
     """Check one model candidate against docs/29a section 6.3. Pure."""
     style: LineStyle = "label" if raw.get("style") == "label" else "quote"
@@ -203,13 +220,7 @@ def validate(raw: Mapping[str, Any], context: LineContext) -> Candidate:
         problems.append("emoji")
     if text.count("?!") > 1 or _REPEATED_PUNCT.search(text.replace("?!", "")):
         problems.append("punctuation")
-    upper = text.upper().replace("’", "'")
-    for phrase in BANNED_PHRASES:
-        if re.search(rf"\b{re.escape(phrase)}\b", upper):
-            problems.append(f"banned:{phrase.lower()}")
-    outcome = titles.spoils_ending(text)
-    if outcome:
-        problems.append("spoils_outcome")
+    problems += text_problems(text)
     shared = content_words(text) & content_words(context.title)
     if len(shared) > MAX_SHARED_CONTENT_WORDS:
         problems.append("repeats_title")

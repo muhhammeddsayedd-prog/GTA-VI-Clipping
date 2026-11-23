@@ -5,6 +5,7 @@
 const LINE_WIDTH = 900;
 const CAP_MIN = 110, CAP_MAX = 170, FONT_MIN = 96;
 const BOX_FONT_MIN = 56, BOX_FONT_MAX = 64;
+const SAFE_TOP = 400, SAFE_BOTTOM = 1520;
 
 function loadImage(el, src) {
   return new Promise((resolve) => {
@@ -85,7 +86,8 @@ async function renderCover(data) {
     }
     Object.assign(result, fitLine(line));
     const height = line.getBoundingClientRect().height;
-    const top = Math.round(data.lineY - height / 2);
+    let top = Math.round(data.lineY - height / 2);
+    if (data.clamp !== false) top = Math.min(Math.max(top, SAFE_TOP + 10), SAFE_BOTTOM - 10 - height);
     line.style.top = `${top}px`;
     shade.style.top = `${top - 90}px`;
     shade.style.height = `${height + 180}px`;
@@ -100,5 +102,10 @@ async function renderCover(data) {
     box.style.top = `${Math.round(data.lineY - box.getBoundingClientRect().height / 2)}px`;
   }
   await document.fonts.ready;
+  const text = data.boxText ? $("box") : (line.childElementCount ? line : null);
+  if (text) {
+    const r = text.getBoundingClientRect();
+    result.textRect = [Math.round(r.left), Math.round(r.top), Math.round(r.width), Math.round(r.height)];
+  }
   return result;
 }

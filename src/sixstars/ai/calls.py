@@ -43,6 +43,7 @@ from sixstars.ai.schemas import (
     ClipScore,
     ClipWriting,
     CoverLines,
+    CoverQa,
     Layout,
     Moment,
     PermissionVerdict,
@@ -84,6 +85,7 @@ P9V = "p9_visual_score"
 P10 = "p10_sentence_ends"
 P11 = "p11_title_writer"
 P12 = "p12_cover_hookline"
+P13 = "p13_cover_qa"
 
 # Shapes fixed by docs/15 (prompt contract, not runtime settings).
 SPIKE_BATCH_SIZE = 10
@@ -118,6 +120,7 @@ MAX_TOKENS: dict[str, int] = {
     P10: 3000,
     P11: 2500,
     P12: 1500,
+    P13: 1200,
 }
 # Reasoning depth per prompt. The clip writer and the layout box are judgement calls worth more thought;
 # the classifiers are not.
@@ -135,6 +138,7 @@ EFFORT: dict[str, Effort] = {
     P10: "low",
     P11: "low",
     P12: "low",
+    P13: "low",
 }
 
 _log = get_logger("ai")
@@ -641,6 +645,26 @@ def write_cover_lines(
     account's recent lines and the transcript around the peak. Checked by `covers.hookline.validate`."""
     _guard(P12, lane)
     return _ask(P12, CoverLines, model_for(P12), values, client, ref_id=clip_id)
+
+
+# The cover review sees the grid crop and the full cover at this long side (readable text, small cost).
+COVER_QA_MAX_SIDE_PX = 768
+
+
+def review_cover(
+    preview_jpeg: bytes,
+    cover_jpeg: bytes,
+    values: dict[str, object],
+    *,
+    lane: BudgetKind = "vod",
+    client: AnthropicClient | None = None,
+    clip_id: str | None = None,
+) -> CoverQa:
+    """P13 (cover engine stage 5): the vision check of a composed cover (the 3:4 grid crop, then the full
+    9:16 cover) against the title and the transcript around the peak."""
+    _guard(P13, lane)
+    images = [prepare_jpeg(data, max_side=COVER_QA_MAX_SIDE_PX).data for data in (preview_jpeg, cover_jpeg)]
+    return _ask(P13, CoverQa, model_for(P13), values, client, images=images, ref_id=clip_id)
 
 
 # ── P9 clip_score ────────────────────────────────────────────

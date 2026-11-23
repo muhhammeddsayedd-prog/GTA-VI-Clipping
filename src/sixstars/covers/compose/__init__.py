@@ -31,6 +31,7 @@ SPLIT_GAME = (1080, 540)
 SPLIT_FACE_SHARE, SPLIT_FACE_CENTRE = 0.42, 0.45
 FACE_LED_SHARE = 0.47 * (SAFE_BOTTOM - SAFE_TOP) / CANVAS_H  # face 40-55% of the safe band
 FACE_LED_CENTRE = 800 / CANVAS_H
+FACE_LED_BAND_SHARE = (0.40, 0.55)
 CUTOUT_FACE_SHARE, CUTOUT_ASPECT = 0.45, 0.8
 LINE_Y: dict[str, int] = {"split": 1000, "tiktok_native": 1000, "face_led": 1300, "moment_led": 560}
 # A facecam crop smaller than this (source pixels tall) is too soft to fill the whole canvas.
@@ -93,10 +94,18 @@ def sentence_case(text: str) -> str:
     return lowered[:1].upper() + lowered[1:]
 
 
-def choose_layout(proposed: CoverLayout, face_crop_h: int | None) -> CoverLayout:
-    """Face-led needs a facecam large enough to fill the canvas; otherwise split. Pure."""
-    if proposed == "face_led" and (face_crop_h is None or face_crop_h < FACE_LED_MIN_CROP_PX):
+def choose_layout(proposed: CoverLayout, face_crop_h: int | None, face_h: int | None = None) -> CoverLayout:
+    """Face-led needs a facecam large enough to fill the canvas, and a face that lands at 40-55% of the
+    safe band once scaled (a small webcam box cannot zoom out far enough); otherwise split. Pure."""
+    if proposed != "face_led":
+        return proposed
+    if face_crop_h is None or face_crop_h < FACE_LED_MIN_CROP_PX:
         return "split"
+    if face_h is not None:
+        on_canvas = face_h * CANVAS_H / face_crop_h
+        band = SAFE_BOTTOM - SAFE_TOP
+        if not FACE_LED_BAND_SHARE[0] * band <= on_canvas <= FACE_LED_BAND_SHARE[1] * band:
+            return "split"
     return proposed
 
 
@@ -176,6 +185,8 @@ class CoverSpec:
     lines: tuple[str, ...] = ()
     key_word: str = ""
     brand_mark: bool = False
+    # The line's centre (canvas y); None = the layout's place (`LINE_Y`).
+    line_y: int | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -192,6 +203,14 @@ class ComposedCover:
     extras: Mapping[str, Any] = field(default_factory=dict)
 
 
+def placed_face(face: Rect, crop: Rect, x0: int, y0: int, scale: float) -> Rect:
+    """Where a face box of the source picture lands on the canvas after the crop and scale. Pure."""
+    fx, fy, fw, fh = face
+    cx, cy, cw, _ch = crop
+    s = scale / cw
+    return round(x0 + (fx - cx) * s), round(y0 + (fy - cy) * s), round(fw * s), round(fh * s)
+
+
 def prepare(spec: CoverSpec, work: Path) -> tuple[CoverLayout, dict[str, str]]:
     """Write the prepared pictures for the template into `work` and return the layout used (face-led
     falls back to split for a small facecam) and the template's image paths."""
@@ -205,7 +224,7 @@ def prepare(spec: CoverSpec, work: Path) -> tuple[CoverLayout, dict[str, str]]:
     layout = spec.layout
     if face_img is not None and box is not None:
         led = face_crop(box, face_img.width, face_img.height, 9, 16, FACE_LED_SHARE, FACE_LED_CENTRE)
-        layout = choose_layout(layout, led[3])
+        layout = choose_layout(layout, led[3], box[3])
     elif layout in ("face_led", "moment_led") and face_img is None:
         layout = "split"
 
@@ -219,6 +238,7 @@ def prepare(spec: CoverSpec, work: Path) -> tuple[CoverLayout, dict[str, str]]:
             assert box is not None
             rect = face_crop(box, face_img.width, face_img.height, 9, 16, FACE_LED_SHARE, FACE_LED_CENTRE)
             save("face", _finish(_crop_resize(face_img, rect, (CANVAS_W, CANVAS_H)), sharpen=True))
+            files["face_rect"] = ",".join(map(str, placed_face(box, rect, 0, 0, CANVAS_W)))
         elif layout in ("split", "tiktok_native"):
             rect = (
                 face_crop(
@@ -229,11 +249,14 @@ def prepare(spec: CoverSpec, work: Path) -> tuple[CoverLayout, dict[str, str]]:
             )
             face_panel = _finish(_crop_resize(face_img, rect, SPLIT_FACE), sharpen=True)
             save("face", face_panel)
+            if box is not None:
+                files["face_rect"] = ",".join(map(str, placed_face(box, rect, 0, 380, SPLIT_FACE[0])))
             save("fillTop", _fill(face_panel))
         elif layout == "moment_led" and box is not None:
             rect = face_crop(box, face_img.width, face_img.height, 4, 5, CUTOUT_FACE_SHARE, 0.42)
             portrait = _finish(_crop_resize(face_img, rect, (480, 600)), sharpen=True)
             save("cutout", cut_out(portrait))
+            files["face_rect"] = ",".join(map(str, placed_face(box, rect, 64, 1180, 480 * 340 / 600)))
     if game_img is not None:
         if layout == "moment_led":
             rect = cover_crop(game_img.width, game_img.height, CANVAS_W, CANVAS_H)
@@ -318,7 +341,8 @@ def compose(
         "lines": list(spec.lines) if layout != "tiktok_native" else [],
         "keyWord": spec.key_word,
         "boxText": sentence_case(" ".join(spec.lines)) if layout == "tiktok_native" and spec.lines else "",
-        "lineY": LINE_Y[layout],
+        "lineY": spec.line_y if spec.line_y is not None else LINE_Y[layout],
+        "clamp": spec.line_y is None,
     }
     png = work / f"{name}.png"
     result = (render or renderer()).render(layout, data, png)
@@ -333,4 +357,10 @@ def compose(
         cap_height=int(result.get("capHeight") or 0),
         fits=bool(result.get("fits", True)),
         render_ms=int((time.monotonic() - started) * 1000),
+        extras={
+            "text_rect": result.get("textRect"),
+            "parts_dir": str(work / f"{name}_parts"),
+            "has_line": bool(data["lines"] or data["boxText"]),
+            "face_rect": [int(v) for v in files["face_rect"].split(",")] if "face_rect" in files else None,
+        },
     )
