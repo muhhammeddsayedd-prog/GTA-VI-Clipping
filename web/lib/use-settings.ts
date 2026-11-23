@@ -15,6 +15,7 @@ export function useSettings() {
   return {
     ready: Boolean(q.data),
     get: (key: string): Json | undefined => map.get(key),
+    str: (key: string): string | null => { const v = map.get(key); return typeof v === "string" ? v : null; },
     num: (key: string): number | null => { const v = map.get(key); return typeof v === "number" && Number.isFinite(v) ? v : null; },
   };
 }

@@ -9,7 +9,7 @@ import { Modal } from "@/components/kit/overlays";
 import { Badge, Banner, Btn, Card, CardHead, ErrorState, KV, PageHead, Plat, SkeletonCards, When } from "@/components/kit/primitives";
 import { POLL, useApi } from "@/lib/api/client";
 import type { Post, TakedownDetail } from "@/lib/api/types";
-import { fmtDay, fmtTime, humanize, series } from "@/lib/format";
+import { fmtFull, fmtTime, humanize, series } from "@/lib/format";
 import { useAccounts } from "@/lib/use-accounts";
 import { readTakedownActions, type TakedownAction } from "@/lib/takedown";
 import { AccountName } from "@/components/domain/AccountName";
@@ -68,7 +68,7 @@ export function TakedownView({ id }: { id: string }) {
       <div className="g collapse-md" style={{ gridTemplateColumns: "1fr 1fr" }}>
         <Card>
           <CardHead title={t.source === "email" ? "Email" : humanize(t.source)} hint={t.source === "email" ? "Gmail message · labelled 6stars-processed" : undefined} />
-          <KV rows={[["From", t.sender ?? "—"], ["Received", `${fmtDay(t.received_at)} · ${new Date(t.received_at).toISOString().slice(11, 16)} UTC`], ["Subject", t.subject ?? "—"]]} />
+          <KV rows={[["From", t.sender ?? "—"], ["Received", fmtFull(t.received_at)], ["Subject", t.subject ?? "—"]]} />
           <blockquote className="quote mt" style={{ margin: "16px 0 0" }}>{t.body_excerpt ?? "No body stored."}</blockquote>
           {ta.summary && <p className="small mt" style={{ marginBottom: 0 }}><b>Claude&apos;s summary{ta.kind ? ` (${humanize(ta.kind)})` : ""}:</b> {ta.summary}</p>}
         </Card>

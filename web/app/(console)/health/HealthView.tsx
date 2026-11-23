@@ -11,7 +11,7 @@ import { Badge, Banner, Btn, Card, CardHead, ErrorState, Grid, KV, PageHead, Ref
 import { HBars } from "@/components/kit/charts";
 import { POLL, useApi } from "@/lib/api/client";
 import type { Event, Health, Heartbeat, Incident } from "@/lib/api/types";
-import { fmtAgo, fmtDuration, fmtTime } from "@/lib/format";
+import { fmtAgo, fmtDuration, fmtTime, zoneLabel } from "@/lib/format";
 
 type Selected = { key: string; title: string; opened_at: string; open: boolean; data: Record<string, unknown> | null };
 
@@ -131,7 +131,7 @@ function IncidentDrawer({ sel, events, onClose }: { sel: Selected | null; events
   const usage = [["Live buffers", gb("live_buffers_gb")], ["VOD windows", gb("vod_windows_gb")], ["Rendered clips", gb("clips_gb")], ["Chat files", gb("chat_gb")]]
     .filter(([, v]) => v !== null) as [string, number][];
   return (
-    <Drawer open={!!sel} onClose={onClose} title={sel?.title ?? ""} sub={sel && <>Incident · opened {fmtTime(sel.opened_at)} UTC · <Badge status={sel.open ? "open" : "recovered"} /></>}>
+    <Drawer open={!!sel} onClose={onClose} title={sel?.title ?? ""} sub={sel && <>Incident · opened {fmtTime(sel.opened_at)} {zoneLabel()} · <Badge status={sel.open ? "open" : "recovered"} /></>}>
       {sel && (
         <>
           {typeof data.pct === "number" && (

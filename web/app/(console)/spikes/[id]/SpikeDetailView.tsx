@@ -12,7 +12,7 @@ import { Badge, Btn, Card, CardHead, ErrorState, KV, PageHead, Plat, SkeletonCar
 import { ModeBadge, PART_LABELS, spikeAt } from "@/components/domain/content/bits";
 import { POLL, useApi } from "@/lib/api/client";
 import type { SpikeDetail } from "@/lib/api/types";
-import { fmtClock, fmtTime, series } from "@/lib/format";
+import { fmtClock, fmtTime, series, zoneLabel } from "@/lib/format";
 
 const PART_ORDER = ["msgs_z", "uniq_z", "react_z", "clipreq_z", "audio_z"];
 
@@ -39,7 +39,7 @@ export function SpikeDetailView({ id }: { id: string }) {
     <>
       <PageHead back="/spikes"
         title={<span className="row" style={{ gap: 12 }}>Spike <TierChip tier={s.tier} /> · {s.creator.handle}</span>}
-        sub={<span className="row" style={{ gap: 8, flexWrap: "wrap" }}><Plat p={s.creator.platform} /><ModeBadge mode={s.mode} /> detected <When iso={s.detected_at} /> UTC · <Badge status={s.status} />{s.spike_to_post_s !== null && <> · spike → post {s.spike_to_post_s} s</>}</span>}
+        sub={<span className="row" style={{ gap: 8, flexWrap: "wrap" }}><Plat p={s.creator.platform} /><ModeBadge mode={s.mode} /> detected <When iso={s.detected_at} /> {zoneLabel()} · <Badge status={s.status} />{s.spike_to_post_s !== null && <> · spike → post {s.spike_to_post_s} s</>}</span>}
         actions={<Btn icon={<Code2 size={15} />} onClick={() => setRaw(true)}>Raw JSON</Btn>} />
       <TraceBar trace={s.trace} on="spike" />
 

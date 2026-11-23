@@ -78,7 +78,8 @@ WORKFLOWS: dict[str, tuple[str, str, str]] = {
     "WF06": (
         "Daily Report",
         "daily-report",
-        "At 00:00 UTC, fetches the daily report and sends it to Telegram.",
+        "Every hour, asks the API whether a new day has ended in app.timezone (default Africa/Cairo) and, "
+        "once per day, sends that day's report to Telegram.",
     ),
     "WF07": (
         "Notify Relay",
@@ -339,11 +340,19 @@ def build(wf_id: str, ctx: Json) -> tuple[list[Json], Json]:
     if wf_id == "WF06":
         nodes = [
             schedule(
-                "Daily at 00:00 UTC",
-                {"field": "days", "daysInterval": 1, "triggerAtHour": 0, "triggerAtMinute": 0},
+                "Every hour at minute 5",
+                {"field": "hours", "hoursInterval": 1, "triggerAtMinute": 5},
             ),
             config_node(ctx),
-            api_request(ctx, "Fetch daily report", "GET", "/v1/reports/daily?format=telegram"),
+            api_request(ctx, "Fetch daily report if due", "GET", "/v1/reports/daily?format=telegram&due=1"),
+            node(
+                "Report due?",
+                "if",
+                2.2,
+                {"conditions": string_condition("={{ String($json.due) }}", "true"), "options": {}},
+                notes="The API answers due=true once per day in app.timezone (the first call after local "
+                "midnight). Otherwise the false output is left unconnected on purpose.",
+            ),
             telegram_send(ctx, "Send report", "={{ $json.text }}"),
         ]
         return nodes, chain(*(n["name"] for n in nodes))

@@ -10,7 +10,7 @@ FastAPI service (`sixstars api`) behind Caddy (HTTPS). Used by n8n only. All rou
 | `POST /v1/guardian/check` | WF03 | claims/removals check | `{"checked":n,"problems":[…]}` |
 | `POST /v1/guardian/takedown` | WF04 | body `{from, subject, body_text, received_at, message_id}`; idempotent on `message_id` | `{"is_takedown":…,"actions":[…]}` |
 | `POST /v1/stats/collect` | WF05 | account + post stats | `{"accounts":n,"posts":n}` |
-| `GET /v1/reports/daily?format=telegram\|json` | WF06, WF08 | build report for the previous UTC day | `{"text":"…"}` or JSON |
+| `GET /v1/reports/daily?format=telegram\|json[&day=YYYY-MM-DD][&due=1]` | WF06, WF08, console | build report for the day that just ended in `app.timezone` (or `day`). `due=1` (WF06, hourly) answers `{"due": false}` until a new local day has ended, then that day's report once with `"due": true` (recorded as event `report.daily_sent`) | `{"text":"…"}` or JSON |
 | `GET /v1/status?format=telegram\|json` | WF08 | live sessions, queue depth, posts last hour, stop flag, spend today | `{"text":"…"}` |
 | `POST /v1/control/stop` | WF08 | set emergency stop with reason | `{"stopped":true}` |
 | `POST /v1/control/start` | WF08 | clear emergency stop | `{"stopped":false}` |

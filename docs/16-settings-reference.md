@@ -16,6 +16,7 @@ Defaults below are the production values from `supabase/migrations/0002_seed_set
 | `launch.dry_run` | `true` | If true, posting logs what it would post but publishes nothing. Production sets false before launch; posting still waits for launch_at. |
 | `control.emergency_stop` | `false` | If true, all posting stops. Discovery and rendering continue. |
 | `control.stop_reason` | `null` | Why the emergency stop was set. |
+| `app.timezone` | `"Africa/Cairo"` | IANA time zone for every time shown to people (console, Telegram, daily report) and for the daily report's day. Limits, caps, budgets, hourly slots and stored times stay UTC. Set it from the console's Settings → Time zone card. (0055) |
 
 ## Discovery
 
@@ -389,7 +390,6 @@ Residential proxy (DataImpulse) for the VOD lane only, added 2026-11-18 (migrati
 
 | Key | Default | Meaning |
 |---|---|---|
-| `reports.timezone` | `"UTC"` | Report timezone. |
 | `reports.ypp_targets` | `{"subscribers": 1000, "shorts_views_90d": 10000000}` | YouTube Partner Program targets shown in reports. |
 | `reports.top_clips` | `3` | Daily report: number of top clips listed. (M13) |
 | `stats.post_lookback_d` | `7` | Stats: posts published in the last this many days get their numbers refreshed. (M13) |

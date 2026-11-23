@@ -175,10 +175,23 @@ def stats_collect() -> JSONResponse:
 def reports_daily(
     format: Literal["telegram", "json"] = Query("json"),  # noqa: A002
     day: Annotated[date | None, Query()] = None,
+    due: Annotated[bool, Query()] = False,
 ) -> JSONResponse:
-    """The daily report of the day that just ended (or of `day`, as YYYY-MM-DD).
-    `format=telegram` answers `{"text": "<HTML-safe text>"}`."""
+    """The daily report of the day that just ended in `app.timezone` (or of `day`, as YYYY-MM-DD).
+    `format=telegram` answers `{"text": "<HTML-safe text>"}`.
+
+    `due=1` (WF06, every hour) answers `{"due": false}` until a new local day has ended, then the
+    report of that day once, with `"due": true`."""
+    if due:
+        claimed = report_view.claim_due_day()
+        if claimed is None:
+            return JSONResponse({"due": False})
+        day = claimed
     data = guardian_service.daily_report(day)
     if format == "telegram":
-        return JSONResponse({"text": report_view.render_telegram(data)})
-    return JSONResponse(jsonable_encoder(data))
+        body: dict[str, Any] = {"text": report_view.render_telegram(data)}
+    else:
+        body = jsonable_encoder(data)
+    if due:
+        body["due"] = True
+    return JSONResponse(body)

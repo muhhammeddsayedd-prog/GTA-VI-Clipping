@@ -373,7 +373,7 @@ def test_a_source_that_keeps_failing_is_reported_once_with_error_and_fix() -> No
         "discovery.source_failing",
     )
     assert notice.title == "Discovery source youtube_search keeps failing"
-    assert "3 passes in a row since 2026-11-17 12:00 UTC" in notice.body
+    assert "3 passes in a row since 2026-11-17 14:00 Cairo (2026-11-17 12:00 UTC)" in notice.body
     assert "RemoteDisconnected('Remote end closed connection without response')" in notice.body
     assert "PROXY_URL" in notice.body
     assert state["youtube_search"]["failures"] == 6 and state["youtube_search"]["notified"] is True

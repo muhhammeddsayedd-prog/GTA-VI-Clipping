@@ -13,7 +13,7 @@ import { AccountCard } from "@/components/domain/AccountCard";
 import { Avatar, Badge, Btn, Card, CardHead, ErrorState, Grid, KV, PageHead, Plat, RefreshBtn, Seg, SkeletonCards, Dash } from "@/components/kit/primitives";
 import { POLL, useApi } from "@/lib/api/client";
 import type { Overview, QueueItem } from "@/lib/api/types";
-import { fmtClock, fmtDay, fmtDuration, fmtNum, fmtTime, fmtUsd, series } from "@/lib/format";
+import { fmtClock, fmtDay, fmtDuration, fmtNum, fmtTime, fmtUsd, series, zonedHour, zoneLabel } from "@/lib/format";
 
 const PROVIDER: Record<string, string> = { anthropic: "Anthropic", transcription: "Transcribe", openai: "Transcribe", groq: "Transcribe", apify: "Apify", youtube: "YouTube", upload_post: "Upload-Post" };
 
@@ -23,7 +23,7 @@ export function OverviewView() {
   if (!q.data) return <><PageHead title="Overview" sub="Loading live status…" /><SkeletonCards n={4} /><div className="mt2"><SkeletonCards n={4} h={120} /></div></>;
   const o = q.data;
   const hourLabels = o.posts_24h.by_hour.map((_, i) => {
-    const h = (new Date(o.now).getUTCHours() - 23 + i + 24) % 24;
+    const h = (zonedHour(o.now) - 23 + i + 24) % 24;
     return h % 3 === 0 ? String(h) : "";
   });
   const queueTotal = o.queue.hourly + o.queue.spike;
@@ -33,7 +33,7 @@ export function OverviewView() {
     <>
       <PageHead
         title="Overview"
-        sub={<>Live status of the VI Stars Clippy pipeline · {fmtDay(o.now)} · {fmtTime(o.now)} UTC</>}
+        sub={<>Live status of the VI Stars Clippy pipeline · {fmtDay(o.now)} · {fmtTime(o.now)} {zoneLabel()}</>}
         actions={<><RefreshBtn onClick={() => q.refetch()} spinning={q.isFetching} /><Btn kind="p" href="/reports" icon={<FileText size={15} />}>Today’s report</Btn></>}
       />
 

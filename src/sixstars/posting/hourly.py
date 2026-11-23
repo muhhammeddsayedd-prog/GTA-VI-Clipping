@@ -16,6 +16,7 @@ from datetime import datetime, timedelta
 
 from sixstars import db, jobs
 from sixstars.clients.upload_post import UploadPostClient
+from sixstars.clock import DATE_TIME, fmt_local
 from sixstars.logging import get_logger
 from sixstars.posting.captions import build_upload_request, idempotency_key
 from sixstars.posting.gate import Mode, posting_mode
@@ -230,7 +231,7 @@ def run_hourly_slot(
         store.notify(
             "warn",
             "Hourly queue empty",
-            f"No clip could be posted in the last two hourly slots (latest {slot.isoformat()}).",
+            f"No clip could be posted in the last two hourly slots (latest {fmt_local(slot, DATE_TIME)}).",
         )
     results = Publisher(client, store, clock).publish_all(post_ids)
     return SlotRun(slot, mode, plan, tuple(post_ids), tuple(dry_ids), results)

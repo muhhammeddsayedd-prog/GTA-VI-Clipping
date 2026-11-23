@@ -306,3 +306,8 @@ textarea,.ta{width:100%;border:1px solid var(--line2);border-radius:14px;padding
 .mbar a{width:48px;height:42px;border-radius:999px;display:grid;place-items:center;color:#BDBDD0}
 .mbar a.on{background:var(--p);color:#fff}
 
+.hclock{display:flex;align-items:baseline;gap:6px;height:40px;padding:0 12px;border:1px solid var(--line2);border-radius:13px;background:#fff;color:var(--ink);font:inherit;cursor:pointer;flex:none}
+.hclock:hover{border-color:var(--mute2)}
+.hclock-main{font-size:13px;font-weight:700;align-self:center}
+.hclock-zone{font-size:11px;font-weight:600;color:var(--ink2);align-self:center}
+.hclock-utc{font-size:11px;color:var(--mute);align-self:center;padding-left:6px;border-left:1px solid var(--line2)}
