@@ -110,7 +110,7 @@ def test_applies_the_best_surviving_candidate(world: dict[str, Any]) -> None:
     ]
     run = world["runs"][0]
     assert run["prior_title"] == ROW["title"]
-    assert run["facts"]["numbers"] == {"hours_into_stream": 5.6}  # 20000 s into a Twitch VOD
+    assert run["facts"]["numbers"] == {"hours_into_stream": 6.0}  # 20000 s into a Twitch VOD
     assert run["facts"]["event"].startswith("A cyclist rams")
     assert run["features"]["title_pattern"] == "stakes"
     assert world["log"][0][0] == "title"
@@ -132,10 +132,8 @@ def test_falls_back_after_two_failed_rounds(world: dict[str, Any]) -> None:
     client = FakeAnthropicClient({"p11_title_writer": [BAD, BAD]})
     outcome = service.retitle(CLIP, apply=True, client=client)
     assert outcome.source == "fallback"
-    assert outcome.title == "Kai Cenat's Streamer Argues With Cyclist in GTA 6 😭"
-    assert (
-        outcome.caption == "Kai Cenat's Streamer Argues With Cyclist in GTA 6"
-    )  # the bad caption is replaced
+    assert outcome.title == "Kai Cenat Argues With Cyclist in GTA 6 😭"
+    assert outcome.caption == "Kai Cenat Argues With Cyclist in GTA 6"  # the bad caption is replaced
     assert world["events"][0][0] == "clip.title_fallback"
 
 

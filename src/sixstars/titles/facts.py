@@ -293,11 +293,11 @@ def spoken_numbers(text: str) -> dict[str, float]:
 
 
 def hours_into_stream(offset_s: float | None) -> float | None:
-    """Hours since the stream started, to one decimal, when it is at least an hour (a smaller number is no
-    stake)."""
+    """Whole hours since the stream started, when it is at least an hour (a smaller number is no stake).
+    Whole hours because the model copied "8.9 Hours" into titles despite the rule to round."""
     if offset_s is None or offset_s < MIN_HOURS_INTO_STREAM * 3600:
         return None
-    return round(offset_s / 3600.0, 1)
+    return float(round(offset_s / 3600.0))
 
 
 def chat_words(messages: Iterable[str], limit: int = CHAT_WORDS_MAX) -> tuple[str, ...]:

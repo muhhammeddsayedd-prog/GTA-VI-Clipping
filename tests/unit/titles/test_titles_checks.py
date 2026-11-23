@@ -174,7 +174,7 @@ def test_explore_is_stable_and_near_the_share() -> None:
 
 def test_fallback_title_passes_the_shape_checks() -> None:
     title = checks.fallback_title(FACTS, "streamer-argues-with-cyclist")
-    assert title == "Kai Cenat's Streamer Argues With Cyclist in GTA 6 😭"
+    assert title == "Kai Cenat Argues With Cyclist in GTA 6 😭"
     reasons = failed(title)
     assert not [r for r in reasons if r.split(":")[0] in ("name_first", "gta", "length", "emoji", "caps")]
     assert checks.fallback_title(FACTS, None) == "Kai Cenat in GTA 6 😭"
@@ -204,3 +204,34 @@ def test_features_record_the_traits() -> None:
         "explored": True,
         "source": "v2",
     }
+
+
+# Regressions found by the staging comparison on 2026-11-23.
+
+
+def test_digits_inside_a_streamer_name_are_not_numbers() -> None:
+    book = NameBook(
+        (Person("Quin69", ("quin69", "quin"), "B"), Person("Rostislav 999", ("rostislav 999",), "C"))
+    )
+    facts = TitleFacts("Quin69", "B", "Quin gets shot on a rooftop", other_streamers=("Rostislav 999",))
+    assert checks.check_title("Quin69 Walks Onto a Cartel Rooftop Unprepared in GTA 6 😭", facts, book) == []
+    assert (
+        checks.check_title("Quin69 and Rostislav 999 Storm a Cartel Rooftop in GTA 6 😭", facts, book) == []
+    )
+    reasons = checks.check_title("Quin69 Walks Onto a Rooftop After 52 Hours in GTA 6 😭", facts, book)
+    assert any("number 52" in r for r in reasons)
+
+
+def test_an_all_caps_name_of_two_words_is_not_a_caps_word() -> None:
+    assert checks.caps_words("LRU ROSE Finds a Mess in the Sink in GTA 6", ["LRU ROSE"]) == []
+
+
+def test_fallback_for_a_topic_that_is_not_about_the_streamer() -> None:
+    assert (
+        checks.fallback_title(FACTS, "police-chase-boat-crash")
+        == "Kai Cenat's Police Chase Boat Crash in GTA 6 😭"
+    )
+
+
+def test_this_happens_is_banned() -> None:
+    assert any(r.startswith("banned") for r in failed("Kai Cenat Is 6 Hours Into GTA 6 When This Happens 😭"))

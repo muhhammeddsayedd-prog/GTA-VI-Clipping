@@ -32,6 +32,7 @@ BANNED_PHRASES = (
     "off the rails",
     "takes a turn",
     "this moment",
+    "this happens",
     "you won't believe",
     "wait for it",
     "insane",
@@ -107,7 +108,7 @@ def emoji_only_at_end(title: str) -> bool:
 def caps_words(title: str, names: Iterable[str] = ()) -> list[str]:
     """Words written in ALL CAPS (two letters or more), not counting the allowed acronyms, words with a
     digit ("10K", "N3ON") or a streamer name written the way it is spelled (`names`)."""
-    allowed = CAPS_ALLOWED | {name.upper() for name in names if name.isupper()}
+    allowed = CAPS_ALLOWED | {word.upper() for name in names for word in name.split() if word.isupper()}
     found: list[str] = []
     for token in words(title):
         core = re.sub(r"(?:'s|’s)$", "", token.strip(".,!:;\"'“”‘’()"))
@@ -150,9 +151,17 @@ def _value(token: str) -> float | None:
         return None
 
 
-def title_numbers(title: str) -> list[float]:
-    """Every number in the title except the 6 of "GTA 6"."""
-    text = _GTA_NUMBER.sub(" ", title)
+def without_names(text: str, names: Iterable[str]) -> str:
+    """`text` with every given name or alias removed (any case), so the digits of "Quin69" or "N3on" are
+    not read as numbers."""
+    for name in sorted({n for n in names if n}, key=len, reverse=True):
+        text = re.sub(r"(?<![\w])" + re.escape(name) + r"(?![\w])", " ", text, flags=re.IGNORECASE)
+    return text
+
+
+def title_numbers(title: str, names: Iterable[str] = ()) -> list[float]:
+    """Every number in the title except the 6 of "GTA 6" and the digits inside streamer names."""
+    text = _GTA_NUMBER.sub(" ", without_names(title, names))
     found = (_value(match.group()) for match in _NUMBER.finditer(text))
     return [value for value in found if value is not None]
 
@@ -177,12 +186,12 @@ def _evidence_text(facts: TitleFacts) -> str:
     return _norm(" ".join([facts.event, facts.peak_line or "", " ".join(facts.chat_words)]))
 
 
-def unsupported_claims(title: str, facts: TitleFacts) -> list[str]:
+def unsupported_claims(title: str, facts: TitleFacts, names: Iterable[str] = ()) -> list[str]:
     """Numbers and claim words ("first", "only", "record", "beat", "finish") in the title that the facts do
-    not support."""
+    not support. `names` (streamer names and aliases) are left out before numbers are read."""
     problems: list[str] = []
     allowed = evidence_numbers(facts)
-    for value in title_numbers(title):
+    for value in title_numbers(title, names):
         if value not in allowed:
             problems.append(f"number {value:g} is not in the facts")
     evidence = _evidence_text(facts)
@@ -255,7 +264,7 @@ def check_title(title: str, facts: TitleFacts, book: NameBook) -> list[str]:
     plain = strip_emoji(text)
     if len(plain) >= 2 and plain[0] in _QUOTES and plain[-1] in _QUOTES:
         failed.append("format: only a quote")
-    failed.extend("facts: " + problem for problem in unsupported_claims(text, facts))
+    failed.extend("facts: " + problem for problem in unsupported_claims(text, facts, [*lead, *_names(facts)]))
     failed.extend(f"names: {name} is not in the clip" for name in unknown_names(text, facts, book))
     if facts.spoiler:
         hints = [word for word, pattern in _SPOILER_RES if pattern.search(text)]
@@ -326,11 +335,27 @@ def choose(checked: Sequence[Checked], *, exploring: bool) -> Choice | None:
     return Choice(survivors[0], False)
 
 
+def _names(facts: TitleFacts) -> list[str]:
+    return [facts.streamer, *facts.other_streamers]
+
+
+# A topic slug that starts with one of these is about the streamer: "streamer-falls-off-roof".
+_TOPIC_SUBJECTS = frozenset({"streamer", "player"})
+
+
 def fallback_title(facts: TitleFacts, topic: str | None) -> str:
-    """When no candidate passes twice: "<Streamer>'s <Topic Words> in GTA 6 😭", or "<Streamer> in GTA 6 😭"
-    without a topic. Kept within the length limits."""
-    noun = " ".join(word.capitalize() for word in (topic or "").replace("_", "-").split("-") if word)
-    head = f"{facts.streamer}'s {noun}" if noun else facts.streamer
+    """When no candidate passes twice: the topic slug as a sentence, "<Streamer> Falls Off Roof in GTA 6 😭"
+    for a slug about the streamer, "<Streamer>'s Police Chase Boat Crash in GTA 6 😭" otherwise, and
+    "<Streamer> in GTA 6 😭" without a topic. Kept within the length limits."""
+    parts = [word for word in (topic or "").replace("_", "-").split("-") if word]
+    about_streamer = bool(parts) and parts[0].lower() in _TOPIC_SUBJECTS
+    if about_streamer:
+        parts = parts[1:]
+    noun = " ".join(word.capitalize() for word in parts)
+    if not noun:
+        head = facts.streamer
+    else:
+        head = f"{facts.streamer} {noun}" if about_streamer else f"{facts.streamer}'s {noun}"
     title = f"{head} in {facts.gta_label} 😭"
     while (len(words(title)) > MAX_WORDS or len(title) > MAX_CHARS) and " " in head:
         head = head.rsplit(" ", 1)[0]
@@ -379,7 +404,7 @@ def features(
         pattern=pattern,
         word_count=len(words(title)),
         char_count=len(title),
-        has_number=bool(title_numbers(title)),
+        has_number=bool(title_numbers(title, [*_names(facts), *book.aliases_of(facts.streamer)])),
         has_stake=pattern == "stakes" or bool(STAKE_WORDS.search(title)),
         emoji_count=emoji_count(title),
         caps_words=len(caps_words(title, [facts.streamer, *facts.other_streamers])),
