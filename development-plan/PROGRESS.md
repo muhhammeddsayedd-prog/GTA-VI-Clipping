@@ -682,7 +682,7 @@ Production audit 2026-11-21: `youtube_main` had been lowered to the learned-cap 
 
 ## Clipping campaigns PR 2 — sourcing (2026-11-23)
 
-**Branch:** `clipcamp-2` (on top of `clipcamp-1`). Migration `0041_campaign_sourcing.sql`.
+**Branch:** `clipcamp-2` (on top of `clipcamp-1`). Migration `0051_campaign_sourcing.sql`.
 
 ### What was built
 
