@@ -59,6 +59,11 @@ RUN mkdir -p /out/mediapipe \
     && curl -fsSL --retry 5 --retry-all-errors -o /out/mediapipe/face_landmarker.task \
       "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task" \
     && echo "${FACE_LANDMARKER_SHA256}  /out/mediapipe/face_landmarker.task" | sha256sum -c -
+# MediaPipe selfie segmenter (Apache 2.0): the streamer cut-out of the moment-led cover.
+ARG SELFIE_SEGMENTER_SHA256=191ac9529ae506ee0beefa6b2c945a172dab9d07d1e802a290a4e4038226658b
+RUN curl -fsSL --retry 5 --retry-all-errors -o /out/mediapipe/selfie_segmenter.tflite \
+      "https://storage.googleapis.com/mediapipe-models/image_segmenter/selfie_segmenter/float16/latest/selfie_segmenter.tflite" \
+    && echo "${SELFIE_SEGMENTER_SHA256}  /out/mediapipe/selfie_segmenter.tflite" | sha256sum -c -
 
 # ── Runtime image ────────────────────────────────────────────────────────────────────────────────────────
 FROM python:3.12-slim-bookworm AS runtime
@@ -77,7 +82,9 @@ ENV TZ=UTC \
     HF_HOME=/models/huggingface \
     PANNS_DATA_DIR=/models/panns \
     PANNS_CHECKPOINT_PATH="/models/panns/Cnn14_mAP=0.431.pth" \
-    SIXSTARS_FACE_LANDMARKER=/models/mediapipe/face_landmarker.task
+    SIXSTARS_FACE_LANDMARKER=/models/mediapipe/face_landmarker.task \
+    SIXSTARS_SELFIE_SEGMENTER=/models/mediapipe/selfie_segmenter.tflite \
+    PLAYWRIGHT_BROWSERS_PATH=/models/ms-playwright
 
 # libicu72: TwitchDownloaderCLI (.NET globalization). fontconfig: font lookup for libass and drawtext.
 # The service user has uid/gid 1000, the same as `deploy` on the servers, so the bind-mounted /data and
@@ -89,7 +96,7 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/* \
     && groupadd --gid 1000 sixstars \
     && useradd --uid 1000 --gid 1000 --create-home --home-dir /home/sixstars --shell /usr/sbin/nologin sixstars \
-    && install -d -o sixstars -g sixstars /app /data /models /models/panns /models/huggingface
+    && install -d -o sixstars -g sixstars /app /data /models /models/panns /models/huggingface /models/ms-playwright
 
 COPY --from=ffmpeg /ffmpeg /ffprobe /usr/local/bin/
 COPY --from=uv /uv /usr/local/bin/uv
@@ -114,6 +121,14 @@ RUN ln -s /models/panns /home/sixstars/panns_data
 # Dependencies first (cached until pyproject.toml or uv.lock change).
 COPY --chown=sixstars:sixstars pyproject.toml uv.lock README.md ./
 RUN uv sync --frozen --no-dev --no-install-project --compile-bytecode
+
+# Cover compositor (docs/29a stage 4): Chromium's headless shell for Playwright, and the system libraries
+# it needs (installed as root).
+USER root
+RUN /app/.venv/bin/python -m playwright install-deps chromium \
+    && rm -rf /var/lib/apt/lists/*
+USER sixstars
+RUN python -m playwright install --only-shell chromium
 
 # PyTorch, CPU build. panns-inference and torchlibrosa import torch but do not declare it, so uv.lock has no
 # torch at all. Until pyproject.toml declares it with the CPU index (see PROGRESS.md, M11), install it here.
@@ -142,7 +157,8 @@ RUN python -c "import sys; from faster_whisper import WhisperModel; WhisperModel
 # Cover engine (docs/29a): the face landmarker loads from /models, and RapidOCR fetches its PP-OCR models into
 # the virtualenv now, so the workers never download them at run time.
 RUN python -c "import os; from mediapipe.tasks.python import vision; from mediapipe.tasks.python.core.base_options import BaseOptions; vision.FaceLandmarker.create_from_options(vision.FaceLandmarkerOptions(base_options=BaseOptions(model_asset_path=os.environ['SIXSTARS_FACE_LANDMARKER']), output_face_blendshapes=True)).close(); print('landmarker ok')" \
-    && python -c "from rapidocr import RapidOCR; RapidOCR(); print('rapidocr ok')"
+    && python -c "from rapidocr import RapidOCR; RapidOCR(); print('rapidocr ok')" \
+    && python -c "from playwright.sync_api import sync_playwright; p = sync_playwright().start(); p.chromium.launch().close(); p.stop(); print('chromium ok')"
 
 # Application code last. --inexact keeps packages installed above that are not in uv.lock (torch).
 COPY --chown=sixstars:sixstars src ./src

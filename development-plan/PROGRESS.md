@@ -959,3 +959,22 @@ Four layout C clips were run through the miner, with the rendered file standing 
 
 - The C3 acceptance (blind top-vs-random pairs on 30 staging clips, `docs/reports/covers-c3.md`) needs the staging deploy, after the final merge.
 - A localised death screen ("МЕРТВА") can be a top gameplay frame: the C6 QA must reject non-English text.
+
+## Cover engine C4 and C5 — cover line and compositor (2026-11-23)
+
+### C4
+
+- Prompt P12 `ai/prompts/p12_cover_hookline.md` holds the owner's text. The JSON example is described in words, because the repo's prompt test forbids literal braces in a system prompt.
+- `ai.calls.write_cover_lines` (fast model, `ai.model.p12_cover_hookline` override) and the `CoverLines` schema.
+- `covers/hookline.py` checks in code: words, capitals, wrap, emoji, `?!`, banned words plus the title writer's outcome words, overlap with the title, source in the transcript (fuzzy ≥ 0.8), recent lines. Profanity is masked F*CK-style.
+- `sixstars covers eval-lines --limit 50` runs the C4 eval.
+- **Deviation:** the prompt's own example "OH MY GOD I DID IT" has 6 words, against its 1–5 rule. The rule (5) is kept.
+- **Open:** the eval did not run. Staging's `ai.daily_budget_usd` ($5) was used up on 23 Nov, and the budget guard stopped every call. It runs after 00:00 UTC; it was neither forced nor raised.
+
+### C5
+
+- `covers/compose/` (Python preparation plus Playwright) and the four templates. Details in docs/CHANGELOG-scoring.md and `docs/reports/covers-c5.md` (an early local sheet; the acceptance sheet comes after the staging deploy).
+- **Deviations:**
+  - The moment-led cut-out uses MediaPipe's selfie segmenter (already a dependency, 250 KB) instead of rembg/BiRefNet, which would bring numba, scikit-image and a 170 MB model for the same mask.
+  - The four template files share `cover.css`/`cover.js`.
+  - The Real-ESRGAN upscale (`cover.upscale_enabled`, off) is not built: face-led falls back to split for a facecam crop under 400 px. Building the upscaler is left for when the flag is wanted.

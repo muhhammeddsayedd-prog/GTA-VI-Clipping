@@ -32,6 +32,8 @@ dependencies = [
     "rapidocr",
     "onnxruntime",
     "opencv-contrib-python-headless",
+    # Cover compositor (docs/29a stage 4): HTML/CSS templates rendered by headless Chromium.
+    "playwright",
 ]
 
 [project.scripts]
@@ -87,7 +89,7 @@ module = ["faster_whisper", "faster_whisper.*"]
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
-module = ["mediapipe", "mediapipe.*", "rapidocr", "rapidocr.*"]
+module = ["mediapipe", "mediapipe.*", "rapidocr", "rapidocr.*", "playwright", "playwright.*"]
 ignore_missing_imports = true
 
 # OpenCV ships partial stubs that strict mode cannot use; treat it as untyped.
