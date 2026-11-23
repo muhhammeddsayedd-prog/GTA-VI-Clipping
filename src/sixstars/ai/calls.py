@@ -19,7 +19,8 @@ Models come from `ai.model_writer` and `ai.model_fast`; P9V uses the one `ai.vis
 (`"fast"` or `"writer"`). Tokens and cost are recorded by the client in
 `api_usage` with `operation` = the prompt id. Calls made for the VOD lane (`lane="vod"`, the default)
 stop with `BudgetExceededError` once today's spend reaches `ai.daily_budget_usd`; express calls
-(`lane="express"`) and takedown classification always run.
+(`lane="express"`), takedown classification and permission reads always run. A permission read costs about
+a tenth of a cent, and a creator without one cannot be clipped (AI cost plan A7, 2026-11-23).
 
 Errors a caller should expect: `BudgetExceededError`, `InvalidModelOutput` (the reply was still invalid after
 the repair retries), `AnthropicRefusal` (the model declined) and `AnthropicError` (API failure). All are
@@ -974,8 +975,8 @@ def read_permission(
     ref_id: str | None = None,
     client: AnthropicClient | None = None,
 ) -> PermissionVerdict:
-    """P6 (discovery, VOD budget): the creator's clipping permission tier from their public text."""
-    _guard(P6, "vod")
+    """P6 (discovery): the creator's clipping permission tier from their public text. Never blocked by the
+    budget: over the cap a failed check left creators unclippable for a day (AI cost plan A7)."""
     shown = [f"- {_one_line(title)}" for title in titles[:PERMISSION_TITLES_MAX] if title.strip()]
     values: dict[str, object] = {
         "name": _one_line(name) or "(unknown)",

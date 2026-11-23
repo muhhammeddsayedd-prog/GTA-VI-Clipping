@@ -137,6 +137,17 @@ def test_over_budget_pauses_the_vod_lane_until_the_spend_is_back_under(world: No
     assert len(titles("warn")) == 2 and event_types("vod.") == ["vod.paused"]
 
 
+def test_a_proxy_budget_of_zero_means_no_limit(world: None) -> None:
+    """`vod/proxy.budget_reached` reads 0 as no limit; the guardian raises no daily incident for it."""
+    settings.set("proxy.daily_budget_usd", 0)
+    usage.record("DataImpulse", "download", cost_usd=4.0)
+    over = health.check_spend(datetime.now(UTC), incidents.open_keys())
+    assert over["proxy"] is False
+    assert titles("warn") == []
+    settings.set("proxy.daily_budget_usd", 3)
+    assert health.check_spend(datetime.now(UTC), incidents.open_keys())["proxy"] is True
+
+
 def test_the_emergency_stop_is_not_touched_by_health_checks(world: None) -> None:
     settings.set("control.emergency_stop", True)
     all_alive()

@@ -597,6 +597,20 @@ def test_the_express_path_is_never_stopped_by_the_daily_ai_budget(
     assert live_session.handle_spike(spike()) is not None
 
 
+def test_over_the_ai_budget_an_hourly_only_spike_is_closed_before_p1(
+    world: World, live_session: LiveSession
+) -> None:
+    """AI cost plan A7: no P1 is paid for a spike whose hourly render the budget would stop anyway."""
+    settings.set("ai.daily_budget_usd", 0)
+    assert live_session.handle_spike(spike("A")) is None
+    assert world.ai.calls == []
+    stored = db.fetch_one("select status, claude_reason from spikes")
+    assert stored is not None and stored["status"] == "rejected"
+    assert stored["claude_reason"].startswith("budget_skipped: ")
+    assert db.fetch_all("select 1 from jobs") == []
+    assert len(events_of("live.spike_budget_skipped")) == 1
+
+
 def test_a_spike_claude_calls_noise_is_rejected_without_a_cut_or_a_job(
     world: World, live_session: LiveSession
 ) -> None:

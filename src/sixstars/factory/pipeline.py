@@ -1615,12 +1615,47 @@ def _defer(job: jobs.Job) -> None:
     )
 
 
+def budget_deferrable(item: RenderInput) -> bool:
+    """Whether a render stopped by the daily AI budget can wait for the reset. A live render reads a cut of
+    the session buffer, which is gone by 00:00 UTC: 402 of 425 such deferrals failed on a missing file
+    (production, 11-19 to 11-22). Section files of a video stay until the video is cleaned up. Pure."""
+    return item.source_type != "live"
+
+
+BUDGET_SKIPPED = "budget_skipped"
+
+
+def _skip_for_budget(item: RenderInput, job: jobs.Job) -> None:
+    """Close a live render the budget stopped: the clip row (if one was made) is rejected as
+    `budget_skipped: ...`, the spike as rejected, and a `clip.budget_skipped` event says so."""
+    reason = f"{BUDGET_SKIPPED}: ai.daily_budget_usd is used up and a live cut cannot wait for the reset"
+    row = find_clip(item)
+    if row is not None:
+        _reject(row.id, item, reason)
+    elif item.spike_id is not None:
+        db.execute(
+            "update spikes set status = 'rejected' where id = %s and status in ('confirmed', 'rendering')",
+            (item.spike_id,),
+        )
+    events.emit(
+        "clip.budget_skipped",
+        level="warn",
+        entity_type="clip" if row is not None else "job",
+        entity_id=row.id if row is not None else job.id,
+        message=reason,
+        data={"spike_id": item.spike_id, "lane": item.lane, "job_id": job.id},
+    )
+
+
 def _handle(job: jobs.Job, default_mode: str) -> None:
     item = RenderInput.from_payload(job.payload, default_mode=default_mode)
     try:
         clip_id = render_clip(item)
     except BudgetExceededError:
-        _defer(job)
+        if budget_deferrable(item):
+            _defer(job)
+        else:
+            _skip_for_budget(item, job)
         return
     except Exception as exc:
         if job.attempts >= job.max_attempts:

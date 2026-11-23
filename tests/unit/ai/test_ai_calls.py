@@ -236,6 +236,7 @@ def test_vod_calls_stop_over_budget_and_express_calls_continue(ai_settings: dict
             calls.P1: verdict_reply(),
             calls.P2: writing_reply(),
             calls.P7: {"is_takedown": False, "kind": "not_takedown"},
+            calls.P6: {"tier": "auto", "evidence": None},
         }
     )
     with pytest.raises(BudgetExceededError):
@@ -249,14 +250,14 @@ def test_vod_calls_stop_over_budget_and_express_calls_continue(ai_settings: dict
     with pytest.raises(BudgetExceededError):
         calls.visual_check([frame()], client=fake)
     with pytest.raises(BudgetExceededError):
-        calls.read_permission("desc", "name", [], client=fake)
-    with pytest.raises(BudgetExceededError):
         calls.translate_segments([Segment(0, 1, "hola")], "es", client=fake)
     assert fake.calls == []
 
     assert calls.confirm_spikes([spike()], lane="express", client=fake)[0].is_moment
     assert calls.write_clip(clip_context(now=NOW), lane="express", client=fake).score == 8
     assert not calls.classify_takedown("a@b.test", "hi", "hello", client=fake).is_takedown
+    # P6 is never budget-blocked (AI cost plan A7): a creator without a check cannot be clipped
+    assert calls.read_permission("desc", "name", [], client=fake).tier == "auto"
 
 
 def test_under_budget_vod_calls_run(ai_settings: dict[str, Any]) -> None:
