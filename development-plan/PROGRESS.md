@@ -655,7 +655,7 @@ Read-only production analysis, 11-17 to 11-22:
   - `factory/throttle.py` logs `would_skip` / `keep` per hourly candidate to `scoring_log`; nothing is enforced.
   - **Effective queue:** approved hourly clips that the busiest hourly account (at its 24-hour pace) reaches before `posting.max_clip_age_h`.
   - **Candidate rank:** chat percentile × spike bonus × freshness, compared with the queue median.
-- **A2** (migration 0040)
+- **A2** (migration 0042)
   - Adaptive P9V: further samples are asked only when the first score is from 1 below the hourly pass line up to the line.
   - The frames get a cache breakpoint when more than one sample may be asked.
   - The posting rank starts from the writer's score (`posting.rank_uses_visual_score` false). The gate still uses P9V.
