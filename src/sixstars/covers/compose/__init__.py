@@ -279,7 +279,14 @@ class Renderer:
         from playwright.sync_api import sync_playwright
 
         self._playwright = sync_playwright().start()
-        self._browser = self._playwright.chromium.launch(args=["--disable-gpu", "--font-render-hinting=none"])
+        try:
+            self._browser = self._playwright.chromium.launch(
+                args=["--disable-gpu", "--font-render-hinting=none"]
+            )
+        except Exception:
+            # Stop Playwright's event loop again, or the next asyncio user in this process finds it running.
+            self._playwright.stop()
+            raise
 
     def close(self) -> None:
         self._browser.close()
