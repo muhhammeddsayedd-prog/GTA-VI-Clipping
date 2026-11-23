@@ -31,7 +31,7 @@ import statistics
 from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import Protocol
+from typing import Any, Protocol
 
 from pydantic import BaseModel
 
@@ -311,13 +311,16 @@ def _ask[T: BaseModel](
     ref_id: str | None = None,
     extra_note: str | None = None,
     tag: str | None = None,
+    cache_content: bool = False,
 ) -> T:
     """Render the prompt and ask the client. `tag` names a special call in `api_usage.detail`."""
     prompt = prompt_files.load(prompt_id)
     user = prompt.render_user(user_values)
     if extra_note:
         user = f"{user}\n\n{extra_note}"
-    tagged: dict[str, str] = {"tag": tag} if tag else {}
+    tagged: dict[str, Any] = {"tag": tag} if tag else {}
+    if cache_content:
+        tagged["cache_content"] = True
     return _client(client).complete_json(
         prompt_id,
         prompt.render_system(_system_values()),
@@ -717,6 +720,15 @@ def score_clip_visual(
     return scored
 
 
+def needs_more_samples(first: int, pass_line: float | None, margin: float) -> bool:
+    """Adaptive P9V (AI cost plan A2): ask again only when the first score is from `margin` below the pass
+    line up to the line itself, where the median of more asks can change pass or fail. Without a pass line
+    every sample is asked. Pure."""
+    if pass_line is None:
+        return True
+    return pass_line - margin <= first <= pass_line
+
+
 def score_clip_visual_samples(
     clip: RenderedClip,
     frames: Sequence[bytes],
@@ -725,6 +737,8 @@ def score_clip_visual_samples(
     samples: int = 1,
     lane: BudgetKind = "vod",
     client: AnthropicClient | None = None,
+    pass_line: float | None = None,
+    margin: float = 1.0,
 ) -> tuple[VisualClipScore, list[int]]:
     """P9V: score the rendered clip from `frames` (JPEG, in time order, taken at `frame_times_s` of clip
     time), its hook, its subtitle lines and the chat reaction, on the same scales as the clip writer.
@@ -735,7 +749,11 @@ def score_clip_visual_samples(
     family when a call fails (`BudgetExceededError` for a VOD clip over the daily budget); the caller
     keeps the clip writer's score then.
 
-    Also returns each ask's own (bounded) score, in the order asked, so the gate can store them."""
+    Also returns each ask's own (bounded) score, in the order asked, so the gate can store them.
+
+    With a `pass_line` (adaptive sampling) the further samples are asked only when the first score is within
+    `margin` below or at the line (`needs_more_samples`). When more than one sample may be asked, the frames
+    and text are cached with the first ask, so the others read them from the prompt cache."""
     if samples < 1:
         raise ValueError("samples must be at least 1")
     if not frames:
@@ -763,8 +781,20 @@ def score_clip_visual_samples(
         "chat": _reaction_block(clip.chat),
     }
     asked: list[VisualClipScore] = []
-    for _ in range(samples):
-        reply = _ask(P9V, VisualClipScore, model, values, client, images=images, ref_id=clip.clip_id)
+    cache = samples > 1
+    for index in range(samples):
+        if index == 1 and not needs_more_samples(asked[0].score, pass_line, margin):
+            break
+        reply = _ask(
+            P9V,
+            VisualClipScore,
+            model,
+            values,
+            client,
+            images=images,
+            ref_id=clip.clip_id,
+            cache_content=cache,
+        )
         asked.append(reply.model_copy(update={"score": bounded_score(reply)}))
     scored = median_visual_score(asked)
     _log.info(

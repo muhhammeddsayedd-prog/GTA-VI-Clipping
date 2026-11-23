@@ -365,6 +365,7 @@ class AnthropicClient:
         effort: Effort | None = DEFAULT_EFFORT,
         ref_id: str | None = None,
         tag: str | None = None,
+        cache_content: bool = False,
     ) -> T:
         """Ask `model` for JSON matching `schema` and return the validated object.
 
@@ -384,12 +385,18 @@ class AnthropicClient:
         Every request is one `api_usage` row with its attempt number and outcome (`ok`, `invalid` with the
         failing check, `refusal`, `http_error`); `tag` marks a call made for a special reason (for example
         `title_retry`) in the row's `detail`.
+
+        `cache_content` also caches the user content (images and text; prompt-caching breakpoint on its last
+        block), for a prompt that is sent again unchanged soon (the samples of P9V): the next ask reads the
+        frames from the cache instead of paying for them again.
         """
         content: list[dict[str, Any]] = [image_block(image) for image in images or ()]
         if isinstance(user_content, str):
             content.append({"type": "text", "text": user_content})
         else:
             content.extend(user_content)
+        if cache_content and content:
+            content[-1] = {**content[-1], "cache_control": {"type": "ephemeral"}}
         limit = max(max_tokens, MIN_MAX_TOKENS)
         name = _schema_name(schema)
         response_format: dict[str, Any] | None
