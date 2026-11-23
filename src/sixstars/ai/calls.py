@@ -309,11 +309,14 @@ def _ask[T: BaseModel](
     images: Sequence[bytes] | None = None,
     ref_id: str | None = None,
     extra_note: str | None = None,
+    tag: str | None = None,
 ) -> T:
+    """Render the prompt and ask the client. `tag` names a special call in `api_usage.detail`."""
     prompt = prompt_files.load(prompt_id)
     user = prompt.render_user(user_values)
     if extra_note:
         user = f"{user}\n\n{extra_note}"
+    tagged: dict[str, str] = {"tag": tag} if tag else {}
     return _client(client).complete_json(
         prompt_id,
         prompt.render_system(_system_values()),
@@ -325,6 +328,7 @@ def _ask[T: BaseModel](
         cache_system=True,
         effort=EFFORT[prompt_id],
         ref_id=ref_id,
+        **tagged,
     )
 
 
@@ -447,7 +451,9 @@ def _title_retry[T: ClipWriting](
     note = titles.correction_note(reply.title or "", problem)
     try:
         _guard(P2, lane)
-        retry = _ask(P2, schema, _writer_model(), values, client, ref_id=clip_id, extra_note=note)
+        retry = _ask(
+            P2, schema, _writer_model(), values, client, ref_id=clip_id, extra_note=note, tag="title_retry"
+        )
     except Exception as exc:  # noqa: BLE001 - the first reply is still usable
         _log.warning("title_retry_failed", clip_id=clip_id, error=str(exc)[:300])
         return reply
@@ -703,6 +709,22 @@ def score_clip_visual(
     lane: BudgetKind = "vod",
     client: AnthropicClient | None = None,
 ) -> VisualClipScore:
+    """P9V: the median visual score (see `score_clip_visual_samples`)."""
+    scored, _ = score_clip_visual_samples(
+        clip, frames, frame_times_s, samples=samples, lane=lane, client=client
+    )
+    return scored
+
+
+def score_clip_visual_samples(
+    clip: RenderedClip,
+    frames: Sequence[bytes],
+    frame_times_s: Sequence[float],
+    *,
+    samples: int = 1,
+    lane: BudgetKind = "vod",
+    client: AnthropicClient | None = None,
+) -> tuple[VisualClipScore, list[int]]:
     """P9V: score the rendered clip from `frames` (JPEG, in time order, taken at `frame_times_s` of clip
     time), its hook, its subtitle lines and the chat reaction, on the same scales as the clip writer.
 
@@ -710,7 +732,9 @@ def score_clip_visual(
     `p9_visual_score`; the median is returned (`median_visual_score`). The returned `score` obeys the
     rubric's limits (`bounded_score`). Raises `ValueError` for unusable input and the `AnthropicError`
     family when a call fails (`BudgetExceededError` for a VOD clip over the daily budget); the caller
-    keeps the clip writer's score then."""
+    keeps the clip writer's score then.
+
+    Also returns each ask's own (bounded) score, in the order asked, so the gate can store them."""
     if samples < 1:
         raise ValueError("samples must be at least 1")
     if not frames:
@@ -753,7 +777,7 @@ def score_clip_visual(
         payoff=scored.score_parts.payoff,
         clarity=scored.score_parts.clarity,
     )
-    return scored
+    return scored, [item.score for item in asked]
 
 
 def median_visual_score(scores: Sequence[VisualClipScore]) -> VisualClipScore:

@@ -35,7 +35,7 @@ Source of truth: `supabase/migrations/0001_init.sql` (schema) and `0002_seed_set
 | `jobs` | Work queue | queue, type, payload, priority, status, run_after, dedupe_key | everyone |
 | `events` | Audit log | level, type, entity, data | everyone |
 | `notify_outbox` | Telegram alerts waiting to be sent | severity, title, sent_at | notify |
-| `api_usage` | Spend tracking | provider, operation, cost_usd | every client |
+| `api_usage` | Spend tracking | provider, operation, cost_usd; model calls also stop_reason, attempt, outcome (ok/invalid/refusal/http_error), cache_read_tokens, cache_write_tokens, detail (migration 0037) | every client |
 | `heartbeats` | Liveness + trigger tracking | name, last_seen | every service, API routes |
 
 ## 3. Important rules
