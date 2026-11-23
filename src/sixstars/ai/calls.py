@@ -36,7 +36,7 @@ from typing import Any, Protocol
 from pydantic import BaseModel
 
 from sixstars import settings
-from sixstars.ai import prompt_files, titles
+from sixstars.ai import prompt_files, shadow, titles
 from sixstars.ai.images import prepare_jpeg
 from sixstars.ai.schemas import (
     ClipScore,
@@ -324,7 +324,7 @@ def _fast_model() -> str:
     return settings.get_str("ai.model_fast")
 
 
-def _system_values() -> dict[str, object]:
+def system_values() -> dict[str, object]:
     """Values every system prompt may use. They change only when a setting changes, so the cached
     prompt prefix stays stable."""
     return {
@@ -355,7 +355,7 @@ def _ask[T: BaseModel](
         tagged["cache_content"] = True
     return _client(client).complete_json(
         prompt_id,
-        prompt.render_system(_system_values()),
+        prompt.render_system(system_values()),
         user,
         schema,
         model,
@@ -562,6 +562,15 @@ def write_clip(
         ctx.story_max_s,
     )
     reply = _ask(P2, schema, model_for(P2), values, client, ref_id=ctx.clip_id)
+    shadow.maybe_enqueue(
+        P2,
+        lane=lane,
+        ref_id=ctx.clip_id,
+        values=values,
+        reply_model=schema,
+        primary_model=model_for(P2),
+        primary_output=reply,
+    )
     reply = _title_retry(reply, schema, values, lane, client, ctx.clip_id)
     writing = enforce_policy(reply, now, block_until)
     samples = settings.get_int("ai.score_samples", 1)
@@ -741,6 +750,25 @@ def _visual_role_model() -> str:
     raise ValueError(f"ai.visual_score_model must be 'fast' or 'writer', not {role!r}")
 
 
+def visual_values(clip: RenderedClip, frame_times_s: Sequence[float]) -> dict[str, object]:
+    """The values of the P9V user prompt for `clip` with one frame at each of `frame_times_s`. Pure."""
+    lines = "\n".join(f"{_seconds(line.start_s)}-{_seconds(line.end_s)} | {line.text}" for line in clip.lines)
+    return {
+        "length_s": f"{clip.length_s:.0f}",
+        "hook": _one_line(clip.hook) or "(none)",
+        "commentary": _one_line(clip.commentary) if clip.commentary else "(none)",
+        "count": len(frame_times_s),
+        "frame_times": ", ".join(f"{time_s:.1f}" for time_s in frame_times_s),
+        "lines": lines or "(nobody speaks)",
+        "chat_summary": (
+            audience_summary(clip.audience)
+            if clip.chat is None and clip.audience is not None
+            else chat_summary(clip.chat)
+        ),
+        "chat": _reaction_block(clip.chat),
+    }
+
+
 def score_clip_visual(
     clip: RenderedClip,
     frames: Sequence[bytes],
@@ -802,21 +830,7 @@ def score_clip_visual_samples(
     model = model_for(P9V)
     _guard(P9V, lane)
     images = [prepare_jpeg(frame, max_side=VISUAL_SCORE_MAX_SIDE_PX).data for frame in frames]
-    lines = "\n".join(f"{_seconds(line.start_s)}-{_seconds(line.end_s)} | {line.text}" for line in clip.lines)
-    values: dict[str, object] = {
-        "length_s": f"{clip.length_s:.0f}",
-        "hook": _one_line(clip.hook) or "(none)",
-        "commentary": _one_line(clip.commentary) if clip.commentary else "(none)",
-        "count": len(images),
-        "frame_times": ", ".join(f"{time_s:.1f}" for time_s in frame_times_s),
-        "lines": lines or "(nobody speaks)",
-        "chat_summary": (
-            audience_summary(clip.audience)
-            if clip.chat is None and clip.audience is not None
-            else chat_summary(clip.chat)
-        ),
-        "chat": _reaction_block(clip.chat),
-    }
+    values = visual_values(clip, frame_times_s)
     asked: list[VisualClipScore] = []
     cache = samples > 1
     for index in range(samples):
