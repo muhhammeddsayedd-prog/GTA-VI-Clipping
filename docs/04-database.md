@@ -36,6 +36,7 @@ Source of truth: `supabase/migrations/0001_init.sql` (schema) and `0002_seed_set
 | `events` | Audit log | level, type, entity, data | everyone |
 | `notify_outbox` | Telegram alerts waiting to be sent | severity, title, sent_at | notify |
 | `api_usage` | Spend tracking | provider, operation, cost_usd; model calls also stop_reason, attempt, outcome (ok/invalid/refusal/http_error), cache_read_tokens, cache_write_tokens, detail (migration 0037) | every client |
+| `ai_shadow` | Shadow answers of cheaper models next to the production model (AI cost plan B1, migration 0041) | prompt_id, ref_id, primary_model, shadow_model, primary_output, shadow_output, valid_json, cost_usd, latency_ms, error | `ai/shadow.py` |
 | `heartbeats` | Liveness + trigger tracking | name, last_seen | every service, API routes |
 | `clip_campaigns` | Clipping campaigns, D118 (migration 0050) | slug (unique), status draft/active/paused/ended, platforms, rate_per_1k, min/max_payout, budget_left, ends_at, render_profile, caption_rules, brief_rules, quota, priority, required_game, version | `campaigns.service.apply_change` only |
 | `clip_campaign_creators` | The streamers of a campaign | campaign_id + creator_id | `campaigns.service` |

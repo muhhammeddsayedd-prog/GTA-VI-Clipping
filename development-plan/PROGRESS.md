@@ -692,6 +692,66 @@ See docs/30 "Differences from the brief": spoiler rule kept, two brief examples 
 - Staging: enable `titles.v2`, run `sixstars titles compare --limit 30 --status approved --status rejected --status posted` (staging has only one posted clip), owner reviews old vs new.
 - Production: only after owner approval: flag on, then `sixstars titles queue --apply`. The comparison on production's 30 most recent posted clips needs a production read (not done from this machine).
 - Learning Loop L2 reads `clip_titles.features` where `applied`.
+
+## AI cost plan — A0, A7, A5a, A5b, A2, A3 (2026-11-23)
+
+**Decision:** D117. **Branches / PRs:** `ai-cost-a0` (#72, merged), `ai-cost-a5` (#73, merged), `ai-cost-a2` (#75: A2 + A3).
+**Plan:** `C:\Users\iway\.claude\plans\i-want-you-to-hashed-lobster-of-0fcb1a9b-5ea6-48e4-adf0-323c29ab0857.md` (owner-approved with changes). The production analysis and every query are in the `-agent-*.md` files next to it.
+
+### Why
+
+Read-only production analysis, 11-17 to 11-22:
+- **Spend:** capped at about $26 a day; the cap was hit every day between 14:49 and 22:25 UTC.
+- **Waste:** 90% of Anthropic spend went to clips that never post.
+- **Queue:** the hourly queue holds 4–5× what posting uses, and about 33 clips expire each day.
+- **P9V:** the visual score did not predict views on approved clips (ρ 0.04).
+- **Budget fallout:** budget deferrals of live spikes failed 402 of 425 times because the cut file was gone. P6 checks failed over the cap.
+
+### What was built
+
+- **A0** (migration 0037)
+  - `api_usage` gains `stop_reason`, `attempt`, `outcome` (`ok` / `invalid` / `refusal` / `http_error`), `cache_read_tokens`, `cache_write_tokens` and `detail`.
+  - The client writes one row per request after validation. P2 title retries are tagged `title_retry`.
+  - P9V stores its sample scores in `score_parts.visual.asked`.
+  - `usage.record` falls back to the old insert when the columns are missing.
+- **A7**
+  - P6 is never budget-blocked.
+  - A live render stopped by the budget is closed as `budget_skipped`; VOD renders still defer.
+  - Over the budget, a live spike that can only become hourly is closed before P1.
+  - The guardian treats a proxy budget of 0 as no limit.
+- **A5a** (migration 0038, `factory.pre_p2_checks`, seeded off)
+  - `factory/precheck.py` runs the gate's own `check_creator` / `check_music` with the gate's own settings before P2.
+  - Music uses the lowest ratio any cut of the padded window could have.
+  - A spike-lane clip is rejected only when both the express and the hourly profile fail.
+  - The daily cap is skipped in the last 30 minutes before 00:00 UTC.
+- **A5b** (migration 0039, `factory.pre_p2_throttle` = `"log"`, `factory.pre_p2_queue_min` = 40)
+  - `factory/throttle.py` logs `would_skip` / `keep` per hourly candidate to `scoring_log`; nothing is enforced.
+  - **Effective queue:** approved hourly clips that the busiest hourly account (at its 24-hour pace) reaches before `posting.max_clip_age_h`.
+  - **Candidate rank:** chat percentile × spike bonus × freshness, compared with the queue median.
+- **A2** (migration 0042)
+  - Adaptive P9V: further samples are asked only when the first score is from 1 below the hourly pass line up to the line.
+  - The frames get a cache breakpoint when more than one sample may be asked.
+  - The posting rank starts from the writer's score (`posting.rank_uses_visual_score` false). The gate still uses P9V.
+- **A3**
+  - `ai.model.<prompt_id>` (`"anthropic:<model>"`) overrides a prompt's role model.
+  - No rows are seeded.
+
+### Deviations
+
+- **A5b effective queue:** the plan said "per account"; the code takes the busiest hourly account's reach. A clip stays queued for the other platforms after one posts it (D116), so the busiest account bounds how much of the queue can still post.
+- **Clips without a percentile:** only live spikes store a chat percentile. Replay and transcript clips in today's queue have none, so they are unranked and never throttled. Each new candidate's percentile is written to its throttle row, so the queue becomes rankable over time.
+- **A5a "no speech":** the factory already skips a window with no words before P2, so no new check was needed. The gate's later no-speech rejects concern the final cut.
+- **A3 rows:** no `ai.model.*` rows are seeded, so changing `ai.model_writer` keeps working as before.
+
+### Open issues / next
+
+- **Staging:** turn on `factory.pre_p2_checks`, and set `ai.model.p3_vod_moment_picker`, `ai.model.p8_translate_lines` and `ai.model.p4_layout_detect` to `anthropic:claude-haiku-5-5`. Check the outputs, then propose the production rows.
+- **Production:** the owner decides on turning on `factory.pre_p2_checks` and on `proxy.daily_budget_usd` (proposal: $6).
+- **A5b:** after 2–3 days, show the owner the would-skip table (what those clips became) before `enforce`.
+- **A6:** after 2 days of A0 data, group the failing P2 validators.
+- **Budget re-set:** after 3 days at the new spend, propose `ai.daily_budget_usd` at 1.3× the new average.
+- **B1:** Haiku shadow on P2 and P9V (async, own budget, sample rate 0.2).
+- **After B1:** TikTok (L0).
 ## Clipping campaigns PR 1 — registry and lanes (2026-11-23)
 
 **Branch:** `clipcamp-1` (from `main` 874d640, so production gets campaign work without develop's L0/L1). Plan: "6 Stars Clips — Lanes & Clipping Campaigns Plan" (Plan and Operating flows tabs), decision **D118** (supersedes D05).

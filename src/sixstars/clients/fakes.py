@@ -548,6 +548,7 @@ class FakeAnthropicClient(_Recorder, AnthropicClient):
         effort: Effort | None = "low",
         ref_id: str | None = None,
         tag: str | None = None,
+        cache_content: bool = False,
     ) -> T:
         self._record(
             "complete_json",

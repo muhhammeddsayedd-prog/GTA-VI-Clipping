@@ -120,12 +120,12 @@ def recover_stale_jobs() -> list[jobs.RecoveredJob]:
     return recovered
 
 
-def _new_rank(row: dict[str, Any], now: datetime, params: PostingParams) -> float:
+def _new_rank(row: dict[str, Any], now: datetime, params: PostingParams, use_visual: bool = True) -> float:
     reference = row["approved_at"]
     if row["source_type"] == "live" and row["spike_wall"] is not None:
         reference = row["spike_wall"]
     rank = ranking.rank_score(
-        float(row["score"]),
+        ranking.rank_input_score(float(row["score"]), row.get("score_parts"), use_visual),
         row["source_type"],
         row["spike_tier"],
         row["creator_tier"] in ("campaign", "preferred"),
@@ -145,9 +145,10 @@ def refresh_ranking(now: datetime | None = None) -> int:
     """
     now = now or utcnow()
     params = DbStore().load_params()
+    use_visual = settings.get_bool(ranking.RANK_USES_VISUAL_SETTING, True)
     rows = db.fetch_all(
         """
-        select c.id::text as id, c.score, c.rank_score, c.source_type, c.approved_at,
+        select c.id::text as id, c.score, c.score_parts, c.rank_score, c.source_type, c.approved_at,
                s.tier as spike_tier, s.spike_wall, cr.tier as creator_tier,
                c.lane = 'hourly' and exists (
                  select 1 from events e
@@ -162,7 +163,7 @@ def refresh_ranking(now: datetime | None = None) -> int:
     ids: list[str] = []
     ranks: list[float] = []
     for row in rows:
-        rank = _new_rank(row, now, params)
+        rank = _new_rank(row, now, params, use_visual)
         old = row["rank_score"]
         if old is None or abs(float(old) - rank) > RANK_EPSILON:
             ids.append(row["id"])

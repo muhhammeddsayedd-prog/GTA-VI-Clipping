@@ -24,6 +24,25 @@ def freshness(age_h: float, half_life: float) -> float:
     return float(0.5 ** (max(0.0, age_h) / half_life))
 
 
+RANK_USES_VISUAL_SETTING = "posting.rank_uses_visual_score"
+
+
+def rank_input_score(score: float, score_parts: object, use_visual: bool) -> float:
+    """The score the posting rank starts from. When the stored score came from the visual judge (P9V) and
+    `use_visual` is off, the clip writer's score takes its place, keeping any points added on top of the
+    stored score (the first-time boost). The P9V score did not predict views (AI cost plan A2, D117). Pure."""
+    if use_visual or not isinstance(score_parts, dict) or score_parts.get("source") != "visual":
+        return score
+    writer = score_parts.get("writer")
+    visual = score_parts.get("visual")
+    if not isinstance(writer, dict) or not isinstance(visual, dict):
+        return score
+    writer_score, visual_score = writer.get("score"), visual.get("score")
+    if not isinstance(writer_score, int | float) or not isinstance(visual_score, int | float):
+        return score
+    return score - float(visual_score) + float(writer_score)
+
+
 def rank_score(
     score: float,
     source_type: str,
