@@ -1099,7 +1099,7 @@ def claim_clip(item: RenderInput, *, force: bool = False) -> ClipRow:
                 )
                 return replace(existing, status="rendering")
             return existing
-        tag = tagging.tag_for(item.creator_id, item.lane, datetime.now(UTC))  # D117: campaign lane
+        tag = tagging.tag_for(item.creator_id, item.lane, datetime.now(UTC))  # D118: campaign lane
         row = db.fetch_one(
             """
             insert into clips

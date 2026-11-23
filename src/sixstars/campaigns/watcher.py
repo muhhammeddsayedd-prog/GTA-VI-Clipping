@@ -1,4 +1,4 @@
-"""The campaign watcher (D117, PR 2). It asks each platform directly about the streamers of active
+"""The campaign watcher (D118, PR 2). It asks each platform directly about the streamers of active
 campaigns, by id, instead of hoping they show up in trending discovery (which reads only the top 300
 GTA VI streams). Runs in the scheduler service every `campaigns.watch_interval_s` (60 s), so live
 detection keeps working when n8n is down.
@@ -490,9 +490,8 @@ def run_once(
     youtube = youtube or YouTubeClient()
     watched = load_watched(now)
     summary: dict[str, Any] = {"watched": len(watched)}
-    if not watched:
-        db.heartbeat(HEARTBEAT, summary)
-        return summary
+    # No early return when nobody is watched: sessions of a campaign that was just paused or ended still
+    # have to be untagged. The platform passes make no calls without watched streamers.
     previous = previous_live()
     live_youtube_ids = {
         row["creator_id"]: row["stream_id"]

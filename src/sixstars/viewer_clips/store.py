@@ -143,7 +143,7 @@ def taken_ranges(video_ids: Collection[str]) -> dict[str, list[Range]]:
     taken: dict[str, list[Range]] = {}
     for row in rows:
         taken.setdefault(str(row["video_id"]), []).append((float(row["start_s"]), float(row["end_s"])))
-    # D117 moment dedupe: moments the live lane clipped from the same broadcast (stored under the stream,
+    # D118 moment dedupe: moments the live lane clipped from the same broadcast (stored under the stream,
     # not the archive id) count as taken too.
     sessions = db.fetch_all(
         "select vod_source_id, clipped_ranges, started_at from live_sessions "
@@ -157,7 +157,7 @@ def taken_ranges(video_ids: Collection[str]) -> dict[str, list[Range]]:
 
 
 def campaign_broadcasters() -> list[str]:
-    """Twitch user ids of the streamers of active campaigns (D117), best priority first."""
+    """Twitch user ids of the streamers of active campaigns (D118), best priority first."""
     rows = db.fetch_all(
         """
         select c.channel_id, max(k.priority) as priority

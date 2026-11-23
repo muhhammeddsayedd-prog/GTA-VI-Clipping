@@ -1,4 +1,4 @@
-"""Which campaign a new clip belongs to (D117, PR 2). A clip is tagged when its row is created: the
+"""Which campaign a new clip belongs to (D118, PR 2). A clip is tagged when its row is created: the
 creator's active campaign with the highest priority (one clip goes to one campaign only), and for a spike
 clip only inside campaign hours: a night spike nobody can submit within 30 minutes is posted as Normal
 (`brand`). Hourly-lane clips are always tagged; posting holds them until campaign hours (PR 4).

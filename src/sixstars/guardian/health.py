@@ -174,7 +174,7 @@ def check_services(now: datetime, open_now: set[str]) -> list[ServiceHealth]:
 
 
 def campaign_watcher_stale(age_s: float | None, active_campaigns: int, stale_after_s: float) -> bool:
-    """D117: the watcher matters only while a campaign is active; then a missing or old beat is stale."""
+    """D118: the watcher matters only while a campaign is active; then a missing or old beat is stale."""
     return active_campaigns > 0 and is_stale(age_s, stale_after_s)
 
 

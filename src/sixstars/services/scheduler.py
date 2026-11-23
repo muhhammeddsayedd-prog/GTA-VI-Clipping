@@ -7,7 +7,7 @@ M11 tasks:
 - recovery of jobs left `running` by a dead worker, every minute (`jobs.requeue_stale`), with the
   threshold `guardian.heartbeat_stale_s`;
 - the ranking refresh (docs/11 section 5), every 10 minutes: `rank_score` of every approved clip.
-- the campaign watcher (D117), every `campaigns.watch_interval_s`: live campaign streams get their slots;
+- the campaign watcher (D118), every `campaigns.watch_interval_s`: live campaign streams get their slots;
 
 M13 tasks (the rules live in `sixstars.guardian`):
 
@@ -314,7 +314,7 @@ _campaign_watch_at: float | None = None
 
 
 def watch_campaigns(clock: float | None = None) -> dict[str, Any] | None:
-    """D117: one campaign watcher pass every `campaigns.watch_interval_s` (read each tick, so a change
+    """D118: one campaign watcher pass every `campaigns.watch_interval_s` (read each tick, so a change
     applies without a restart). Returns the pass summary, or None when it is not due."""
     global _campaign_watch_at
     clock = time.monotonic() if clock is None else clock

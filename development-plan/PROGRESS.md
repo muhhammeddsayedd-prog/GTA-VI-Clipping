@@ -679,3 +679,56 @@ Production audit 2026-11-21: `youtube_main` had been lowered to the learned-cap 
   - cross-lane moment dedupe.
 - Settle first: multi-day live sessions without a forced restart.
 - Disk: merged worktrees m03/m04/m05/m10/m11/media/styles/console were removed (13 GB free on D:). `6stars-wt-m06` (unmerged) and `6stars-wt-tz` (uncommitted work holding an untracked `0034_app_timezone.sql`) were kept.
+
+## Clipping campaigns PR 2 — sourcing (2026-11-23)
+
+**Branch:** `clipcamp-2` (on top of `clipcamp-1`). Migration `0041_campaign_sourcing.sql`.
+
+### What was built
+
+- **Campaign watcher** (`campaigns/watcher.py`):
+  - Runs in the scheduler service (task `campaign_watch`, every `campaigns.watch_interval_s`).
+  - Twitch: Get Streams by user id, one request for up to 100 streamers. YouTube: channel RSS every `campaigns.watch_youtube_s`, plus `videos.list` for new or live ids.
+  - Writes `creator_live_status` and the heartbeat `campaign:watcher`.
+- **Slot plan** (`plan`, pure):
+  - A live campaign stream of the campaign's game (`required_game`, null = any) takes a slot, up to `live.campaign_slots`, ranked by rate × budget left × viewers.
+  - A full lane releases its weakest trending session for it.
+  - A trending session of a campaign streamer is re-tagged, not restarted.
+  - A session whose campaign stopped, or whose stream left the game, is untagged and falls back to trending rules.
+- **Discovery:** `assign.plan_slots` never releases a campaign-tagged session for its score; the watcher owns it.
+- **VODs:**
+  - Campaign VODs and replays of campaign sessions run at `campaigns.vod_priority` (35).
+  - A Twitch campaign streamer who goes offline without a slot gets their archive queued.
+  - YouTube campaign streams are queued from the feed when they end (YouTube refuses live recording).
+  - `videos.campaign_id` is copied from the session.
+- **Clip tag** (`campaigns/tagging.py`):
+  - Set when the clip row is created (`factory/pipeline.render_clip`): the creator's active campaign with the highest priority, and its render profile.
+  - A spike clip is tagged only inside `lanes.campaign_hours_utc`.
+  - Story cuts inherit their parent's tag.
+- **Viewer clips:**
+  - With `twitch_clips.campaign_first`, clips are read per campaign broadcaster and go first, inside the same cap.
+  - **Moment dedupe:** a viewer clip of a moment the live lane already clipped is now refused. Live clips are stored under the stream id, not the archive id, so before this the same moment could post twice.
+- **Guardian:** incident `heartbeat:campaign-watcher` when the watcher is older than `campaigns.watcher_stale_s` while a campaign is active.
+- **Clients:** `TwitchClient.get_streams_by_user` and `get_clips_by_broadcaster` (Helix Get Streams `user_id`, Get Clips `broadcaster_id`), both with fakes.
+- **Tests:**
+  - `tests/unit/campaigns/test_campaign_watcher.py`.
+  - A new case in `tests/unit/discovery/test_discovery_assign.py`.
+  - `tests/integration/test_campaign_sourcing.py`: slot, preempt, re-tag, wrong game, offline archive at priority 35, untag on pause, clip tag, live-range dedupe.
+
+### Deviations
+
+- The campaign tag is decided per clip at insert time, not carried from spike to clip. `spikes.campaign_id` exists but is not written.
+- YouTube uploads that were never live are not queued (campaign streamers are taken from their streams).
+- Several live campaign streamers beyond `live.campaign_slots` are not recorded. They are taken from their VOD after the stream, as the Operating flows tab says.
+
+### Open issues / next
+
+- Not yet verified: a multi-day session (a 120 h marathon) without a forced restart.
+- PR 3: render profiles, disclosure line, logo and overlay, streamer-on-screen rule, `brief_match`, fallback to Normal.
+- PR 4 notes from the Upload-Post docs (checked 23 Nov):
+  - TikTok: `brand_content_toggle`, or the cross-network `paid_partnership`, which is refused with `SELF_ONLY` privacy, so staging cannot test it.
+  - YouTube: `hasPaidProductPlacement` (may need the Studio toggle; Upload-Post warns).
+  - Instagram: no API field; the label must be set in the app.
+- PR 5 notes:
+  - WF08 can be live in only one environment (one bot webhook).
+  - Warn alerts are rate-limited per title, so each reminder needs its own title.

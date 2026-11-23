@@ -524,7 +524,7 @@ def vod_job_payload(video_id: str, item: Scored) -> dict[str, Any]:
 
 def queue_video(item: Scored, priority: int = VOD_JOB_PRIORITY, campaign_id: str | None = None) -> str | None:
     """Insert the `videos` row (status `new`) and its `vod.process` job in one transaction. Returns the
-    video id, or None when the video was already there. A campaign VOD (D117) carries its campaign and a
+    video id, or None when the video was already there. A campaign VOD (D118) carries its campaign and a
     higher priority."""
     candidate = item.candidate
     with db.transaction():

@@ -26,7 +26,7 @@ class Session:
     below_cutoff_since: datetime | None = None
     identity: str = ""  # normalised creator handle, see `identity()`
     creator_tier: str = "auto"
-    campaign_id: str | None = None  # D117: a campaign session is held by the campaign watcher
+    campaign_id: str | None = None  # D118: a campaign session is held by the campaign watcher
 
 
 @dataclass(frozen=True)
@@ -96,7 +96,7 @@ def plan_slots(
             continue
         seen = by_source.get((session.platform, session.source_id))
         if session.campaign_id is not None:
-            # D117: the campaign watcher owns this slot (it untags the session when the campaign or the
+            # D118: the campaign watcher owns this slot (it untags the session when the campaign or the
             # game no longer applies); the trend cutoff does not release it.
             plan.keep.append(Keep(session.id, None if seen is None else seen.score, None))
             busy.add(session.identity)

@@ -43,7 +43,7 @@ ERROR_CHARS: Final = 300
 # of the VOD lane, so it does not count against `twitch_clips.max_backlog` for ever.
 ORPHAN_GRACE_KEY: Final = "vod.orphan_grace_s"
 ORPHAN_GRACE_DEFAULT_S: Final = 300.0
-CAMPAIGN_FIRST_KEY: Final = "twitch_clips.campaign_first"  # D117
+CAMPAIGN_FIRST_KEY: Final = "twitch_clips.campaign_first"  # D118
 
 _log = get_logger("discovery")
 

@@ -145,7 +145,7 @@ def room(config: ClipsConfig, queued_last_24h: int, waiting: int) -> int:
 
 
 def merge_clips(game_clips: Sequence[TwitchClip], extra: Sequence[TwitchClip]) -> list[TwitchClip]:
-    """The game-wide clips plus clips read per campaign streamer (D117), each clip once."""
+    """The game-wide clips plus clips read per campaign streamer (D118), each clip once."""
     seen = {clip.id for clip in game_clips}
     merged = list(game_clips)
     for clip in extra:
@@ -156,7 +156,7 @@ def merge_clips(game_clips: Sequence[TwitchClip], extra: Sequence[TwitchClip]) -
 
 
 def campaign_first(ranked: Sequence[Ranked], campaign_broadcasters: Collection[str]) -> list[Ranked]:
-    """D117: clips of campaign streamers first (each group keeps its rank order), inside the same cap."""
+    """D118: clips of campaign streamers first (each group keeps its rank order), inside the same cap."""
     if not campaign_broadcasters:
         return list(ranked)
     return sorted(ranked, key=lambda item: item.clip.broadcaster_id not in campaign_broadcasters)

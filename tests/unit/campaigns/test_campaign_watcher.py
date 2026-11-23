@@ -1,4 +1,4 @@
-"""Campaign watcher rules (D117, PR 2): reserved live slots, re-tagging, preemption, game check, and the
+"""Campaign watcher rules (D118, PR 2): reserved live slots, re-tagging, preemption, game check, and the
 clip tag (campaign hours for spikes). Pure, no database."""
 
 from datetime import UTC, datetime

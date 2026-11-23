@@ -1,4 +1,4 @@
--- Clipping campaigns PR 2 (2026-11-23): sourcing for campaign streamers (D117).
+-- Clipping campaigns PR 2 (2026-11-23): sourcing for campaign streamers (D118).
 -- The campaign watcher (scheduler service) asks Twitch and YouTube about campaign streamers by id; live
 -- campaign streams get reserved live slots; their VODs and viewer clips jump the queue; a new clip is
 -- tagged with its streamer's active campaign. Additive and idempotent.

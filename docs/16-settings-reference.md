@@ -413,3 +413,11 @@ Campaign lanes, decision D118 (migration 0050). The campaigns themselves live in
 |---|---|---|
 | `lanes.campaign_share` | `{"youtube_main": 6, "instagram_main": 18, "tiktok_main": 6}` | Posts a day per account that all campaigns together may take, inside `cap_24h`. The Normal lane gets the rest (`lane_quotas` row `normal`), which also holds the spike reserve. A save whose campaign quotas add up to more is refused. |
 | `lanes.campaign_max_per_day` | `{"youtube": 3, "instagram": 10, "tiktok": 3}` | Most posts one campaign may get per platform and day; a quota above it is refused. |
+| `lanes.campaign_hours_utc` | `{"default": [8..21], "youtube": [8..17]}` | UTC hours for campaign posts: 10:00–24:00 Cairo, YouTube 10:00–20:00. A spike clip made outside them is a Normal (`brand`) clip; hourly-lane campaign clips are held for these hours by posting (PR 4). |
+| `live.campaign_slots` | `4` | Live slots (of `live.max_slots`) that live campaign streams may take. When the lane is full, the weakest trending session is released for one. Unused slots stay with trending streams. |
+| `campaigns.watch_interval_s` | `60` | Seconds between campaign watcher passes (scheduler service). Each pass makes one Twitch Get Streams call by user id for up to 100 streamers. |
+| `campaigns.watch_youtube_s` | `180` | Seconds between reads of a YouTube campaign streamer's channel feed (free). New or live videos cost 1 quota unit per 50. |
+| `campaigns.feed_lookback_h` | `48` | YouTube feed entries younger than this are checked for live or finished streams. |
+| `campaigns.vod_priority` | `35` | Job priority of a campaign VOD and of a campaign session's replay (normal VODs 30, replays 25). |
+| `campaigns.watcher_stale_s` | `300` | The guardian alerts when the `campaign:watcher` heartbeat is older than this while a campaign is active. |
+| `twitch_clips.campaign_first` | `true` | Viewer clips of campaign streamers are read per broadcaster and come before the game-wide list, inside `twitch_clips.daily_cap`. |

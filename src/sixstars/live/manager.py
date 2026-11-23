@@ -60,7 +60,7 @@ def utcnow() -> datetime:
 
 
 def replay_priority(session_id: str) -> int:
-    """D117: the replay of a campaign session runs at campaign VOD priority, others at REPLAY_PRIORITY."""
+    """D118: the replay of a campaign session runs at campaign VOD priority, others at REPLAY_PRIORITY."""
     row = db.fetch_one("select campaign_id from live_sessions where id = %s", (session_id,))
     if row is None or row["campaign_id"] is None:
         return REPLAY_PRIORITY

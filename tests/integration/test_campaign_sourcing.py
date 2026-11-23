@@ -1,4 +1,4 @@
-"""Campaign sourcing against the real schema (D117, PR 2): the watcher gives a live campaign stream a slot
+"""Campaign sourcing against the real schema (D118, PR 2): the watcher gives a live campaign stream a slot
 (preempting the weakest trending session when the lane is full), re-tags instead of restarting, queues the
 archive at campaign priority when a streamer without a slot goes offline, and new clips get their
 campaign tag."""
@@ -61,7 +61,8 @@ def activate(slug: str, creator_id: str, game: str | None = None) -> str:
 
 def add_session(creator_id: str, source_id: str, score: float, campaign_id: str | None = None) -> str:
     row = db.fetch_one(
-        "insert into live_sessions (creator_id, platform, source_id, channel_login, url, status, trend_score, "
+        "insert into live_sessions (creator_id, platform, source_id, channel_login, url, status, "
+        "trend_score, "
         "campaign_id) values (%s, 'twitch', %s, %s, 'https://twitch.tv/x', 'recording', %s, %s) "
         "returning id::text as id",
         (creator_id, source_id, source_id, score, campaign_id),
@@ -174,7 +175,8 @@ def test_one_moment_once_viewer_clips_see_live_clipped_ranges() -> None:
     creator = add_creator("user0", "streamer0")
     db.execute(
         "insert into live_sessions (creator_id, platform, source_id, channel_login, url, status, started_at, "
-        "vod_source_id, clipped_ranges) values (%s, 'twitch', 'stream0', 'streamer0', 'u', 'replay_done', %s, "
+        "vod_source_id, clipped_ranges) "
+        "values (%s, 'twitch', 'stream0', 'streamer0', 'u', 'replay_done', %s, "
         "'video0', %s::jsonb)",
         (
             creator,

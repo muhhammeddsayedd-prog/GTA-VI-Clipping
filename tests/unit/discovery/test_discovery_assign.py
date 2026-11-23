@@ -238,7 +238,7 @@ def test_low_hourly_queue_widens_the_run() -> None:
 
 
 def test_a_campaign_session_is_never_released_for_its_score() -> None:
-    """D117: the campaign watcher owns a tagged session; discovery keeps it and fills the other slots."""
+    """D118: the campaign watcher owns a tagged session; discovery keeps it and fills the other slots."""
     weak = live("camp", 10)
     tagged = replace(session(weak, since=NOW - timedelta(hours=2)), campaign_id="k1")
     result = plan([tagged], [weak, live("b", 90), live("c", 80)], max_slots=2)
