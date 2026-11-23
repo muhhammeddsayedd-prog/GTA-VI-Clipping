@@ -493,6 +493,48 @@ def test_handler_closes_the_clip_after_the_last_attempt(
     assert outbox is not None and outbox["severity"] == "warn" and str(row["id"]) in outbox["body"]
 
 
+def test_the_pre_p2_checks_close_a_clip_the_gate_would_reject_before_p2(
+    source_30s: Path, creator_id: str, data_dir: Path
+) -> None:
+    """AI cost plan A5a: an auto creator at the daily cap is closed before the clip writer is paid for."""
+    settings.set("factory.pre_p2_checks", True)
+    settings.set("gate.auto_creator_daily_cap", 0)
+    deps = make_deps(p2_reply(5.0, 27.0))
+    clip_id = pipeline.render_clip(render_input(source_30s, creator_id), deps=deps)
+    row = clip_row(clip_id)
+    assert row["status"] == "rejected" and row["reject_reason"].startswith("pre_p2: hourly: ")
+    assert isinstance(deps.ai_client, FakeAnthropicClient)
+    assert [call for call in deps.ai_client.calls if call[1]["prompt_id"] == "p2_clip_writer"] == []
+    logged = db.fetch_one("select decision, reason from scoring_log where stage = 'factory.pre_p2'")
+    assert logged is not None and logged["decision"] == "reject"
+
+
+def test_with_the_pre_p2_checks_off_the_writer_is_always_asked(
+    source_30s: Path, creator_id: str, data_dir: Path
+) -> None:
+    settings.set("factory.pre_p2_checks", False)
+    settings.set("gate.auto_creator_daily_cap", 0)
+    deps = make_deps(p2_reply(5.0, 27.0))
+    clip_id = pipeline.render_clip(render_input(source_30s, creator_id), deps=deps)
+    assert clip_row(clip_id)["status"] == "gating"
+
+
+def test_the_throttle_in_log_mode_records_its_decision_and_changes_nothing(
+    source_30s: Path, creator_id: str, data_dir: Path
+) -> None:
+    """AI cost plan A5b: `log` writes a scoring_log row and the clip goes on to the writer."""
+    settings.set("factory.pre_p2_throttle", "log")
+    spike_id = make_spike(creator_id, score_z=3.0)
+    deps = make_deps(p2_reply(5.0, 27.0))
+    clip_id = pipeline.render_clip(render_input(source_30s, creator_id, spike_id=spike_id), deps=deps)
+    assert clip_row(clip_id)["status"] == "gating"
+    logged = db.fetch_one(
+        "select decision, reason, sub_scores from scoring_log where stage = 'factory.pre_p2_throttle'"
+    )
+    assert logged is not None and logged["decision"] == "keep"
+    assert logged["sub_scores"]["mode"] == "log" and logged["sub_scores"]["tier"] == "A"
+
+
 def test_handler_defers_a_job_stopped_by_the_ai_budget(
     creator_id: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -509,6 +551,37 @@ def test_handler_defers_a_job_stopped_by_the_ai_budget(
     assert queued[0]["run_after"] == pipeline.next_budget_reset(queued[0]["created_at"])
     event = db.fetch_one("select level, entity_id from events where type = 'clip.render_deferred'")
     assert event is not None and event["level"] == "warn" and event["entity_id"] == str(job.id)
+
+
+def test_a_live_render_stopped_by_the_ai_budget_is_closed_not_deferred(
+    creator_id: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """AI cost plan A7: the live cut is gone by the budget reset, so the render is closed (budget_skipped)."""
+
+    def over_budget(item: pipeline.RenderInput, **_: object) -> str:
+        pipeline.claim_clip(item)
+        raise BudgetExceededError("p2_clip_writer: ai.daily_budget_usd is used up for today")
+
+    monkeypatch.setattr(pipeline, "render_clip", over_budget)
+    spike_id = make_spike(creator_id, mode="live")
+    item = render_input(tmp_path / "a.mp4", creator_id, source_type="live", spike_id=spike_id)
+    job = claimed_job("clip.render", item.to_payload())
+    pipeline.handle_clip_render(job)
+    assert db.fetch_all("select id from jobs where status = 'queued'") == []
+    clip = db.fetch_one("select status, reject_reason from clips where spike_id = %s", (spike_id,))
+    assert clip is not None and clip["status"] == "rejected"
+    assert clip["reject_reason"].startswith("budget_skipped: ")
+    spike = db.fetch_one("select status from spikes where id = %s", (spike_id,))
+    assert spike is not None and spike["status"] == "rejected"
+    assert db.fetch_one("select 1 from events where type = 'clip.budget_skipped'") is not None
+    assert db.fetch_one("select 1 from events where type = 'clip.render_deferred'") is None
+
+
+def test_only_a_live_render_is_closed_for_the_budget(tmp_path: Path) -> None:
+    live = pipeline.RenderInput(tmp_path / "a.mp4", 0, 30, "c", source_type="live")
+    vod = pipeline.RenderInput(tmp_path / "a.mp4", 0, 30, "c", source_type="vod")
+    assert not pipeline.budget_deferrable(live)
+    assert pipeline.budget_deferrable(vod)
 
 
 def test_handler_runs_the_registered_next_step_for_a_rendered_clip(

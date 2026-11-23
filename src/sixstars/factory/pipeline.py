@@ -32,7 +32,20 @@ from sixstars.ai.schemas import ClipWriting, SpikeVerdict
 from sixstars.clients.anthropic_client import AnthropicClient, BudgetKind
 from sixstars.clients.transcribe import Mode, Transcriber
 from sixstars.config import env
-from sixstars.factory import anchor, cards, effects, facecam, montage, music, thumbs, tools, variants, writer
+from sixstars.factory import (
+    anchor,
+    cards,
+    effects,
+    facecam,
+    montage,
+    music,
+    precheck,
+    throttle,
+    thumbs,
+    tools,
+    variants,
+    writer,
+)
 from sixstars.factory import transcript as transcripts
 from sixstars.factory.assets import FactoryAssets, load_assets
 from sixstars.factory.audio import SfxTrack, parse_loudnorm_report
@@ -98,6 +111,11 @@ LANES = ("spike", "hourly")
 MODES = ("normal", "express")
 SOURCE_TYPES = ("live", "vod")
 PLATFORMS = ("twitch", "youtube")
+
+
+# Gets a function that measures the music of the padded window (None: could not be measured) and returns
+# a reason to skip the clip before the writer, or None.
+BeforeWriter = Callable[[Callable[[], music.MusicAnalysis | None]], str | None]
 
 
 class ClipSkippedError(RuntimeError):
@@ -833,6 +851,7 @@ def produce(
     style: StyleRules | None = None,
     style_id: str = "",
     choose_style: StyleChooser | None = None,
+    before_writer: BeforeWriter | None = None,
 ) -> Produced:
     """Transcribe, write, trim, analyse and render one clip. Touches no database table itself.
 
@@ -841,6 +860,8 @@ def produce(
     before the render starts. Raises `ClipSkippedError` when there is no speech or the writer rejects.
     `style` is the design style of this render (`style_id` its catalogue id); None means `cfg.style`.
     `choose_style`, when given, picks the style after the writer and the layout detection instead.
+    `before_writer`, when given, is called before the clip writer with a function that measures the music
+    of the padded window, and returns a reason to skip the clip, or None.
     """
     style = style or cfg.style
     timings: dict[str, int] = {}
@@ -876,6 +897,28 @@ def produce(
     timed("transcribe", started)
     if not transcript.words:
         raise ClipSkippedError("no_speech")
+    if before_writer is not None:
+        started = time.monotonic()
+
+        def measure_window_music() -> music.MusicAnalysis | None:
+            if deps.skip_music:
+                return None
+            try:
+                return music.analyse(
+                    item.source_path,
+                    padded,
+                    detector=deps.music_detector,
+                    has_audio=media.has_audio,
+                    ffmpeg=deps.ffmpeg,
+                )
+            except music.MusicDetectorUnavailableError as exc:
+                get_logger("factory").warning("music_detector_unavailable", error=str(exc)[:200])
+                return None
+
+        skip = before_writer(measure_window_music)
+        timed("precheck", started)
+        if skip is not None:
+            raise ClipSkippedError(skip)
 
     lines = group_lines(transcript.words)
     floor = item.spike_floor_s if item.spike_floor_s is not None else proposed.start_s
@@ -1475,6 +1518,58 @@ def upload_clip(clip_id: str, *, storage: clip_storage.ClipStorage | None = None
     return key
 
 
+def _pre_p2(item: RenderInput, clip_id: str, measure: Callable[[], music.MusicAnalysis | None]) -> str | None:
+    """The checks before the clip writer: `factory.precheck` (AI cost plan A5a, when on) and the queue
+    throttle (`factory.throttle`, A5b). Returns the reason to skip the clip, or None. A failing check never
+    costs the clip: it is logged and the clip goes on to the writer."""
+    now = datetime.now(UTC)
+    if precheck.enabled():
+        reason = _gate_precheck(item, clip_id, measure(), now)
+        if reason is not None:
+            return reason
+    return throttle.assess(
+        clip_id=clip_id,
+        spike_id=item.spike_id,
+        creator_id=item.creator_id,
+        source_type=item.source_type,
+        lane=item.lane,
+        now=now,
+    )
+
+
+def _gate_precheck(
+    item: RenderInput, clip_id: str, window_music: music.MusicAnalysis | None, now: datetime
+) -> str | None:
+    """`factory.precheck` for this clip: the reason the gate is certain to reject it, or None."""
+    profile = "express" if item.lane == "spike" else "hourly"
+    try:
+        reason = precheck.check(
+            profile,
+            item.creator_id,
+            clip_id,
+            window_music.frames if window_music is not None else None,
+            window_music.frame_s if window_music is not None else music.FRAME_S,
+            now,
+        )
+    except Exception as exc:  # noqa: BLE001 - see `_pre_p2`
+        get_logger("factory").warning("pre_p2_check_failed", error=f"{type(exc).__name__}: {exc}"[:300])
+        return None
+    scoring_log.record(
+        "factory.pre_p2",
+        decision="reject" if reason else "pass",
+        clip_id=clip_id,
+        spike_id=item.spike_id,
+        creator_id=item.creator_id,
+        reason=reason,
+        sub_scores={
+            "profile": profile,
+            "music_measured": window_music is not None,
+            "window_music_ratio": round(window_music.ratio, 4) if window_music is not None else None,
+        },
+    )
+    return reason
+
+
 def render_clip(item: RenderInput, *, deps: Deps | None = None, force: bool = False) -> str:
     """Make the clip for `item` and return its clip id.
 
@@ -1516,6 +1611,9 @@ def render_clip(item: RenderInput, *, deps: Deps | None = None, force: bool = Fa
         def choose_writing(writer_input: writer.WriterInput) -> ClipWriting:
             return writer.write(writer_input, lane=ai_lane, client=deps.ai_client)
 
+        def before_writer(measure: Callable[[], music.MusicAnalysis | None]) -> str | None:
+            return _pre_p2(item, row.id, measure)
+
         def choose_layout(media: tools.MediaInfo, time_s: float) -> Layout:
             return facecam.get_layout(
                 item.creator_id,
@@ -1543,6 +1641,7 @@ def render_clip(item: RenderInput, *, deps: Deps | None = None, force: bool = Fa
                 on_writing=lambda writing, transcript: _store_writing(row.id, writing, transcript),
                 clip_id=row.id,
                 choose_style=choose_style,
+                before_writer=before_writer if precheck.enabled() or throttle.mode() != "off" else None,
             )
         except ClipSkippedError as skipped:
             log.info("clip_skipped", reason=skipped.reason)
@@ -1615,12 +1714,47 @@ def _defer(job: jobs.Job) -> None:
     )
 
 
+def budget_deferrable(item: RenderInput) -> bool:
+    """Whether a render stopped by the daily AI budget can wait for the reset. A live render reads a cut of
+    the session buffer, which is gone by 00:00 UTC: 402 of 425 such deferrals failed on a missing file
+    (production, 11-19 to 11-22). Section files of a video stay until the video is cleaned up. Pure."""
+    return item.source_type != "live"
+
+
+BUDGET_SKIPPED = "budget_skipped"
+
+
+def _skip_for_budget(item: RenderInput, job: jobs.Job) -> None:
+    """Close a live render the budget stopped: the clip row (if one was made) is rejected as
+    `budget_skipped: ...`, the spike as rejected, and a `clip.budget_skipped` event says so."""
+    reason = f"{BUDGET_SKIPPED}: ai.daily_budget_usd is used up and a live cut cannot wait for the reset"
+    row = find_clip(item)
+    if row is not None:
+        _reject(row.id, item, reason)
+    elif item.spike_id is not None:
+        db.execute(
+            "update spikes set status = 'rejected' where id = %s and status in ('confirmed', 'rendering')",
+            (item.spike_id,),
+        )
+    events.emit(
+        "clip.budget_skipped",
+        level="warn",
+        entity_type="clip" if row is not None else "job",
+        entity_id=row.id if row is not None else job.id,
+        message=reason,
+        data={"spike_id": item.spike_id, "lane": item.lane, "job_id": job.id},
+    )
+
+
 def _handle(job: jobs.Job, default_mode: str) -> None:
     item = RenderInput.from_payload(job.payload, default_mode=default_mode)
     try:
         clip_id = render_clip(item)
     except BudgetExceededError:
-        _defer(job)
+        if budget_deferrable(item):
+            _defer(job)
+        else:
+            _skip_for_budget(item, job)
         return
     except Exception as exc:
         if job.attempts >= job.max_attempts:

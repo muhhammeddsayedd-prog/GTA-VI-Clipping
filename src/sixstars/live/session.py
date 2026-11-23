@@ -42,6 +42,7 @@ from sixstars.ai.calls import ChatLine, SpikeContext
 from sixstars.ai.schemas import SpikeVerdict
 from sixstars.chat.models import ChatMessage, ChatSourceError, Platform
 from sixstars.chat.net import cookies_file, proxy_for, proxy_refusal
+from sixstars.clients import anthropic_client
 from sixstars.clients.anthropic_client import AnthropicClient
 from sixstars.factory.pipeline import JOB_CLIP_RENDER, JOB_EXPRESS_RENDER, RenderInput
 from sixstars.factory.story import StoryRules
@@ -287,6 +288,18 @@ class _SpikeHandle:
     cancelled: threading.Event = field(default_factory=threading.Event)
     job_id: int | None = None
     merged_into: str | None = None
+
+
+BUDGET_SKIP_REASON: Final = (
+    "budget_skipped: ai.daily_budget_usd is used up; only possible S spikes are confirmed"
+)
+
+
+def skip_for_budget(tier: str, fast_path: bool, budget_left: bool) -> bool:
+    """True when a live spike should be closed before P1 because the daily AI budget is used up: it can only
+    become an hourly clip (provisional tier not S and no fast path to S), and the hourly render would stop at
+    the budget guard anyway (AI cost plan A7). Pure."""
+    return not budget_left and tier != "S" and not fast_path
 
 
 def fast_path_reason(spike: DetectedSpike, strength: Strength, flag: Mapping[str, Any] | None) -> str | None:
@@ -656,6 +669,10 @@ class LiveSession:
         strength = spike_percentile(self.row.creator_id, spike.score_z, spike_id)
         fast_flag = scoring_config.flag("fastpath.live")
         fast_why = fast_path_reason(spike, strength, fast_flag)
+        if skip_for_budget(spike.tier, fast_why is not None, anthropic_client.budget_ok("vod")):
+            store.close_spike(spike_id, "rejected", BUDGET_SKIP_REASON, event="live.spike_budget_skipped")
+            self._log.info("live_spike_budget_skipped", tier=spike.tier)
+            return None
         context = spike_context(spike_id, spike, self.row.handle, self.row.platform, self.row.title)
         verdict = calls.confirm_spikes([context], lane="express", client=self.deps.ai_client)[0]
         timings.confirm_ms = int((time.monotonic() - started) * 1000)
