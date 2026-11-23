@@ -81,15 +81,11 @@ def test_invalid_boxes_are_rejected() -> None:
             Box(*args)
 
 
-def test_scale_filters_plain_and_zoomed() -> None:
-    assert scale_filters(1080, 1150, 10.0, zoom=False) == ["scale=w=1080:h=1150", "setsar=1"]
-    zoomed = scale_filters(1080, 1150, 10.0, zoom=True)
-    factor = "(1+0.08*clip((t-6)/4\\,0\\,1))"
-    assert zoomed == [
-        f"scale=w=2*trunc(1080*{factor}/2):h=2*trunc(1150*{factor}/2):eval=frame",
-        f"crop=w=1080:h=1150:x=max(0\\,(2*trunc(1080*{factor}/2)-1080)/2):y=max(0\\,(2*trunc(1150*{factor}/2)-1150)/2)",
-        "setsar=1",
-    ]
+def test_scale_filters_are_static_and_name_the_scaler() -> None:
+    assert scale_filters(1080, 1150) == ["scale=w=1080:h=1150:flags=bicubic", "setsar=1"]
+    assert scale_filters(1080, 1150, scaler="lanczos") == ["scale=w=1080:h=1150:flags=lanczos", "setsar=1"]
+    with pytest.raises(ValueError):
+        scale_filters(1080, 1150, scaler="nearest;drawtext")
 
 
 def test_layout_a_chains() -> None:
@@ -99,41 +95,38 @@ def test_layout_a_chains() -> None:
         source_h=1080,
         geometry=GEOMETRY,
         fps=30,
-        duration_s=10.0,
-        zoom=False,
     )
     assert chains == [
         "[0:v]fps=fps=30,split=2[v_game_in][v_face_in]",
-        "[v_game_in]crop=w=1014:h=1080:x=426:y=0,scale=w=1080:h=1150,setsar=1[v_game]",
-        "[v_face_in]crop=w=480:h=342:x=1440:y=728,scale=w=1080:h=770,setsar=1[v_face]",
+        "[v_game_in]crop=w=1014:h=1080:x=426:y=0,scale=w=1080:h=1150:flags=bicubic,setsar=1[v_game]",
+        "[v_face_in]crop=w=480:h=342:x=1440:y=728,scale=w=1080:h=770:flags=bicubic,setsar=1[v_face]",
         "[v_game][v_face]vstack=inputs=2[v_layout]",
     ]
 
 
 def test_layout_b_chains() -> None:
-    chains = layout_filters(
-        LayoutB(), source_w=1920, source_h=1080, geometry=GEOMETRY, fps=30, duration_s=10.0, zoom=False
-    )
+    chains = layout_filters(LayoutB(), source_w=1920, source_h=1080, geometry=GEOMETRY, fps=30)
     assert chains == [
         "[0:v]fps=fps=30,split=2[v_bg_in][v_game_in]",
         "[v_bg_in]scale=w=270:h=480:force_original_aspect_ratio=increase,crop=w=270:h=480,"
         "boxblur=luma_radius=8:luma_power=3,drawbox=color=black@0.3:thickness=fill,"
         "scale=w=1080:h=1920:flags=bilinear,setsar=1[v_bg]",
-        "[v_game_in]crop=w=864:h=1080:x=528:y=0,scale=w=1080:h=1350,setsar=1[v_game]",
+        "[v_game_in]crop=w=864:h=1080:x=528:y=0,scale=w=1080:h=1350:flags=bicubic,setsar=1[v_game]",
         "[v_bg][v_game]overlay=x=0:y=285[v_layout]",
     ]
 
 
-def test_layout_zoom_applies_to_gameplay_only() -> None:
+def test_layout_scales_every_panel_with_the_chosen_scaler() -> None:
     chains = layout_filters(
         LayoutA(Box(1440, 720, 480, 360)),
         source_w=1920,
         source_h=1080,
         geometry=GEOMETRY,
         fps=30,
-        duration_s=10.0,
+        scaler="lanczos",
     )
-    assert "eval=frame" in chains[1] and "eval=frame" not in chains[2]
+    assert "flags=lanczos" in chains[1] and "flags=lanczos" in chains[2]
+    assert not any("eval=frame" in chain for chain in chains)
 
 
 # ---------------------------------------------------------------------------------------------------------

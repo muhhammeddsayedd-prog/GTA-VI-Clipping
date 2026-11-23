@@ -179,12 +179,10 @@ def test_the_news_card_crop_keeps_the_facecam() -> None:
 
 def test_layouts_h_and_p_pad_one_crop_into_the_frame() -> None:
     g = Geometry.for_canvas(1080, 1920)
-    chains = layout_filters(
-        LayoutCard(facecam_box=CAM), source_w=1920, source_h=1080, geometry=g, fps=30, duration_s=10.0
-    )
+    chains = layout_filters(LayoutCard(facecam_box=CAM), source_w=1920, source_h=1080, geometry=g, fps=30)
     assert len(chains) == 1 and f"pad=w=1080:h=1920:x=0:y={H_VIDEO_Y}:color=black" in chains[0]
     assert chains[0].endswith("[v_layout]")
-    pov = layout_filters(LayoutPov(), source_w=1920, source_h=1080, geometry=g, fps=30, duration_s=10.0)
+    pov = layout_filters(LayoutPov(), source_w=1920, source_h=1080, geometry=g, fps=30)
     assert "pad=w=1080:h=1920:x=0:y=240:color=black" in pov[0] and "h=1440" in pov[0]
 
 

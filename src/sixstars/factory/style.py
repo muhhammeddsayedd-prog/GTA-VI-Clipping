@@ -1,9 +1,12 @@
 """The editing style of a clip: the setting `factory.style` (docs/09 section 10, docs/27).
 
 The look is modelled on short-form clips that reached millions of views (docs/27): captions of one or two
-words in heavy capitals that pop in on the seam, the hook as a title bar over the first seconds,
-hard punch-ins to a full-frame facecam on the loudest reactions, a step zoom on the gameplay every few
-seconds, sound effects on every cut and on the payoff, and dense compressed audio.
+words in heavy capitals that pop in on the seam, the hook as a title bar over the first seconds, sound
+effects on the payoff, and dense compressed audio.
+
+Render v2 (D119) removed every zoom: the tail zoom, the step zoom cuts and the punch-ins to a full-frame
+facecam are gone, with their rules (`RETIRED_KEYS`). A setting that still carries them renders the same as
+one without them; the first such setting is logged once.
 
 A missing or malformed setting gives `StyleRules.classic()`, the look of the clip before this setting
 existed, so a database without migration 0021 renders exactly as before.
@@ -14,6 +17,7 @@ from dataclasses import dataclass
 from typing import Literal
 
 from sixstars.factory.escape import parse_hex_color
+from sixstars.logging import get_logger
 
 HookMode = Literal["box", "title_bar"]
 Frame = Literal["auto", "headline_card", "pov", "montage"]
@@ -28,6 +32,28 @@ _TITLE_LOOKS: tuple[TitleLook, ...] = ("bar", "question")
 
 MAX_FOLLOW_OVERLAY_S = 5.0  # the follow line covers at most the last 5 seconds
 
+# Rules of the zoom and punch-in effects removed by Render v2 (D119, migration 0043). Ignored when present.
+RETIRED_KEYS: tuple[str, ...] = (
+    "punchin_max",
+    "punchin_zoom",
+    "punchin_len_s",
+    "punchin_min_gap_s",
+    "punchin_db",
+    "zoomcut_every_s",
+    "zoomcut_scale",
+    "cut_sfx",
+)
+_retired_logged = False
+
+
+def _note_retired_keys(raw: Mapping[str, object]) -> None:
+    """Log once per process that a style setting still holds retired rules (they are ignored)."""
+    global _retired_logged
+    found = sorted(key for key in RETIRED_KEYS if key in raw)
+    if found and not _retired_logged:
+        _retired_logged = True
+        get_logger("factory").warning("style_retired_keys_ignored", keys=found)
+
 
 @dataclass(frozen=True, slots=True)
 class StyleRules:
@@ -39,14 +65,8 @@ class StyleRules:
       on the 1080x1920 canvas, and whether captions are upper case.
     * `hook_mode`: `box` draws the hook as a subtitle box, `title_bar` as a TikTok-style bar; both
       show it for the first `factory.hook_seconds`.
-    * `punchin_max` / `punchin_zoom` / `punchin_len_s` / `punchin_min_gap_s` / `punchin_db`: up to
-      `punchin_max` hard cuts to a full-frame close-up (the facecam in layout A, the centre of the source in
-      layout B), `punchin_len_s` long, where the audio is `punchin_db` dB louder than the clip's median, at
-      least `punchin_min_gap_s` apart. 0 switches punch-ins off.
-    * `zoomcut_every_s` / `zoomcut_scale`: the gameplay alternates between 100% and `zoomcut_scale` every
-      `zoomcut_every_s` seconds (0: the classic slow zoom over the last 40% of the clip).
-    * `sfx_gain_db`: level of every sound effect. `cut_sfx`: whoosh and impact on each punch-in.
-      `payoff_fx`: emoji and bass hit at the payoff the clip writer names.
+    * `sfx_gain_db`: level of every sound effect. `payoff_fx`: emoji and bass hit at the payoff the clip
+      writer names.
     * `compress`: a compressor before loudness normalisation, for the dense sound of the references.
     * `facecam_top`: with a facecam, draw it on top and the gameplay below (layout C, decision D112)
       instead of gameplay on top (layout A).
@@ -74,15 +94,7 @@ class StyleRules:
     caption_size: int = 78
     caption_caps: bool = False
     hook_mode: HookMode = "box"
-    punchin_max: int = 0
-    punchin_zoom: float = 1.0
-    punchin_len_s: float = 1.2
-    punchin_min_gap_s: float = 2.5
-    punchin_db: float = 8.0
-    zoomcut_every_s: float = 0.0
-    zoomcut_scale: float = 1.0
     sfx_gain_db: float = -12.0
-    cut_sfx: bool = False
     payoff_fx: bool = False
     compress: bool = False
     facecam_top: bool = False
@@ -130,12 +142,6 @@ class StyleRules:
             raise ValueError(f"follow_overlay_s must be within 0..{MAX_FOLLOW_OVERLAY_S:g}")
         if self.caption_active_color:
             parse_hex_color(self.caption_active_color)
-        if self.punchin_max < 0 or self.punchin_len_s <= 0 or self.punchin_min_gap_s < 0:
-            raise ValueError("punch-in counts and lengths must not be negative")
-        if not 1.0 <= self.punchin_zoom <= 3.0 or not 1.0 <= self.zoomcut_scale <= 1.5:
-            raise ValueError("zoom factors are out of range")
-        if self.zoomcut_every_s < 0:
-            raise ValueError("zoomcut_every_s must not be negative")
 
     @classmethod
     def classic(cls) -> "StyleRules":
@@ -147,20 +153,14 @@ class StyleRules:
         """Captions in short chunks instead of whole highlighted lines."""
         return self.caption_words > 0
 
-    @property
-    def punchins(self) -> bool:
-        return self.punchin_max > 0 and self.punchin_zoom >= 1.0
-
-    @property
-    def zoomcuts(self) -> bool:
-        return self.zoomcut_every_s > 0 and self.zoomcut_scale > 1.0
-
     @classmethod
     def from_setting(cls, raw: object) -> "StyleRules":
         """Build the rules from the JSON object of the setting. A missing or malformed value (or one that
-        fails validation) gives the classic look; a missing key keeps its classic value."""
+        fails validation) gives the classic look; a missing key keeps its classic value. Retired keys
+        (`RETIRED_KEYS`) are ignored."""
         if not isinstance(raw, Mapping):
             return cls.classic()
+        _note_retired_keys(raw)
         base = cls.classic()
 
         def number(key: str, fallback: float) -> float:
@@ -193,15 +193,7 @@ class StyleRules:
                 caption_size=integer("caption_size", base.caption_size),
                 caption_caps=flag("caption_caps", base.caption_caps),
                 hook_mode=hook_mode if hook_mode in _HOOK_MODES else base.hook_mode,
-                punchin_max=integer("punchin_max", base.punchin_max),
-                punchin_zoom=number("punchin_zoom", base.punchin_zoom),
-                punchin_len_s=number("punchin_len_s", base.punchin_len_s),
-                punchin_min_gap_s=number("punchin_min_gap_s", base.punchin_min_gap_s),
-                punchin_db=number("punchin_db", base.punchin_db),
-                zoomcut_every_s=number("zoomcut_every_s", base.zoomcut_every_s),
-                zoomcut_scale=number("zoomcut_scale", base.zoomcut_scale),
                 sfx_gain_db=number("sfx_gain_db", base.sfx_gain_db),
-                cut_sfx=flag("cut_sfx", base.cut_sfx),
                 payoff_fx=flag("payoff_fx", base.payoff_fx),
                 compress=flag("compress", base.compress),
                 facecam_top=flag("facecam_top", base.facecam_top),
@@ -231,15 +223,7 @@ VIRAL_STYLE: dict[str, object] = {
     "caption_size": 150,
     "caption_caps": True,
     "hook_mode": "title_bar",
-    "punchin_max": 4,
-    "punchin_zoom": 1.25,
-    "punchin_len_s": 1.2,
-    "punchin_min_gap_s": 2.5,
-    "punchin_db": 5,
-    "zoomcut_every_s": 2.5,
-    "zoomcut_scale": 1.08,
     "sfx_gain_db": -10,
-    "cut_sfx": True,
     "payoff_fx": True,
     "compress": True,
 }
@@ -255,24 +239,18 @@ CAM_TOP_TITLE: dict[str, object] = {
     "title_whole_clip": True,
     "title_source": "title_line",
     "facecam_top": True,
-    "punchin_max": 0,
-    "zoomcut_every_s": 0,
-    "cut_sfx": False,
     "payoff_fx": False,
     "compress": True,
     "sfx_gain_db": -10,
 }
 # Phase B (development-plan/M18): the calm styles of the references R05 (question), R08 (POV) and R09 (news
-# card). None has spoken captions, punch-ins or zoom cuts; each shows one of the writer's texts for the
+# card). None has spoken captions; each shows one of the writer's texts for the
 # whole clip.
 _CALM: dict[str, object] = {
     "caption_words": 0,
     "captions": False,
     "hook_mode": "title_bar",
     "title_whole_clip": True,
-    "punchin_max": 0,
-    "zoomcut_every_s": 0,
-    "cut_sfx": False,
     "payoff_fx": False,
     "compress": True,
     "sfx_gain_db": -10,
@@ -320,9 +298,6 @@ HYPE_MONTAGE: dict[str, object] = {
     "caption_caps": True,
     "show_title": False,
     "hook_mode": "title_bar",
-    "punchin_max": 0,
-    "zoomcut_every_s": 0,
-    "cut_sfx": True,
     "payoff_fx": True,
     "compress": True,
     "sfx_gain_db": -12,

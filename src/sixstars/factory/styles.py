@@ -34,8 +34,9 @@ LANES = ("spike", "hourly")
 
 # The catalogue of migration 0027; `config.OFFLINE_DEFAULTS` and the tests use it.
 DEFAULT_STYLES: dict[str, object] = {
+    # Off since Render v2 R0 (D119, migration 0043): it was built on punch-ins and zoom cuts.
     "cam_top_viral": {
-        "enabled": True,
+        "enabled": False,
         "weight": 1,
         "lanes": list(LANES),
         "accounts": ALL_ACCOUNTS,

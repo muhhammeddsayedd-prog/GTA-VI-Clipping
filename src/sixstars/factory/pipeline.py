@@ -58,6 +58,7 @@ from sixstars.factory.layout import (
     B_GAMEPLAY_Y,
     C_QUESTION_GAP,
     C_TITLE_OVERLAP,
+    DEFAULT_SCALER,
     H_HEADER_TOP,
     HOOK_BOTTOM,
     HOOK_TOP,
@@ -73,8 +74,6 @@ from sixstars.factory.layout import (
     LayoutCard,
     LayoutMontage,
     LayoutPov,
-    PunchIns,
-    ZoomCut,
 )
 from sixstars.factory.lines import Line, clip_lines, group_lines
 from sixstars.factory.params import FactoryParams
@@ -82,7 +81,6 @@ from sixstars.factory.presets import RenderMode, uses_nvenc
 from sixstars.factory.render import (
     RenderSpec,
     SourceInfo,
-    build_envelope_command,
     build_loudnorm_measure_command,
     build_render_command,
 )
@@ -312,6 +310,8 @@ class RenderJob:
     texts: Mapping[str, str] = field(default_factory=dict)
     # Layout M (Phase E): the footage around the clip (file time) the B-roll may come from.
     broll_from: ClipWindow | None = None
+    # The ffmpeg scaler of every crop (`factory.layout_v2.scaler`, D119).
+    scaler: str = DEFAULT_SCALER
 
 
 def framed_layout(layout: Layout, style: StyleRules) -> Layout:
@@ -423,23 +423,6 @@ def _measurer(assets: FactoryAssets) -> TextMeasurer:
 def _caption_measurer(assets: FactoryAssets) -> TextMeasurer:
     font = assets.caption_font_file
     return pillow_measurer(font) if font is not None else _measurer(assets)
-
-
-def _punch_spans(spec: RenderSpec, job: RenderJob, payoff_s: float | None, ffmpeg: str) -> tuple[Span, ...]:
-    """docs/27 punch-ins at the loudest moments of the clip's source audio. An envelope that cannot be
-    measured means no punch-ins, never a failed render."""
-    if not job.style.punchins or not job.media.has_audio:
-        return ()
-    try:
-        result = tools.run(
-            build_envelope_command(spec, ffmpeg=ffmpeg), timeout_s=tools.RENDER_TIMEOUT_S, what="envelope"
-        )
-    except tools.FfmpegError as exc:
-        get_logger("factory").warning("punchin_envelope_failed", error=str(exc)[:200])
-        return ()
-    envelope = effects.parse_momentary(result.stderr.decode("utf-8", errors="replace"))
-    avoid = () if payoff_s is None else (payoff_s,)
-    return effects.select_punchins(envelope, spec.clip_duration_s, job.style, avoid_s=avoid)
 
 
 def _title_bar(job: RenderJob, live_badge: bool) -> TitleBar | None:
@@ -629,6 +612,7 @@ def render_file(job: RenderJob, *, ffmpeg: str = "ffmpeg", ffprobe: str = "ffpro
         sfx_path=job.assets.sfx_pop,
         logo_path=job.assets.logo,
         hook_shown=bool(job.hook),
+        scaler=job.scaler,
     )
     duration = spec.clip_duration_s
     live_badge = job.lane == "spike"
@@ -639,19 +623,17 @@ def render_file(job: RenderJob, *, ffmpeg: str = "ffmpeg", ffprobe: str = "ffpro
     payoff_s = job.payoff_s
     if not style.payoff_fx or payoff_s is None or not 0 <= payoff_s < duration:
         payoff_s = None
-    punch_spans = _punch_spans(spec, job, payoff_s, ffmpeg)
     broll = _montage_broll(job, duration, payoff_s if payoff_s is not None else job.payoff_s, ffmpeg)
-    # The montage's cuts get the punch-in sounds (whoosh, impact); they are not punch-ins on screen.
-    sfx_spans = punch_spans or tuple(Span(at, at + length) for _start, at, length in broll)
+    # The montage's B-roll cuts get a whoosh and an impact.
+    cut_spans = tuple(Span(at, at + length) for _start, at, length in broll)
     cues = effects.plan_sfx(
-        duration_s=duration, keyword_times=pop_times, punchins=sfx_spans, payoff_s=payoff_s, rules=style
+        duration_s=duration, keyword_times=pop_times, cuts=cut_spans, payoff_s=payoff_s, rules=style
     )
     sfx_times = tuple(cue.time_s for cue in cues if cue.kind == "pop")
     log.info(
         "clip_edit_effects",
         style_id=job.style_id,
         layout=job.layout.kind,
-        punchins=[[span.start_s, span.end_s] for span in punch_spans],
         broll=[list(cut) for cut in broll],
         payoff_s=payoff_s,
         sfx={
@@ -694,12 +676,6 @@ def render_file(job: RenderJob, *, ffmpeg: str = "ffmpeg", ffprobe: str = "ffpro
         sfx_tracks=_sfx_tracks(cues, job.assets),
         sfx_gain_db=style.sfx_gain_db,
         compress=style.compress,
-        zoom_cut=ZoomCut(style.zoomcut_every_s, style.zoomcut_scale) if style.zoomcuts else None,
-        punch_ins=(
-            PunchIns(tuple((s.start_s, s.end_s) for s in punch_spans), style.punchin_zoom)
-            if punch_spans
-            else None
-        ),
         hook_shown=bool(job.hook) and not title_bar and not cam_top and not own_place,
         watermark=style.watermark,
         watermark_y=watermark_y,
@@ -1068,6 +1044,7 @@ def produce(
         style_id=style_id,
         texts=writing.style_texts(),
         broll_from=padded,
+        scaler=cfg.scaler,
     )
     outcome = render_file(job, ffmpeg=deps.ffmpeg, ffprobe=deps.ffprobe)
     timed("render", started)

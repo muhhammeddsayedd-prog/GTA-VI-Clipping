@@ -247,11 +247,9 @@ def _seconds(value: float) -> str:
     return f"{value:.3f}".rstrip("0").rstrip(".") or "0"
 
 
-def seam_filter(
-    geometry: Geometry, accent_color: str, *, enable: str | None = None, y: int | None = None
-) -> str:
+def seam_filter(geometry: Geometry, accent_color: str, *, y: int | None = None) -> str:
     """Seam of layouts A and C: accent line across the frame where gameplay meets facecam (at row `y`, by
-    default the layout A seam), drawn while `enable` (an ffmpeg expression) is non-zero, or always."""
+    default the layout A seam)."""
     options = [
         ("x", "0"),
         ("y", str(geometry.a_seam_y if y is None else y)),
@@ -260,8 +258,6 @@ def seam_filter(
         ("color", ffmpeg_color(accent_color)),
         ("thickness", "fill"),
     ]
-    if enable:
-        options.append(("enable", enable))
     return render_filter("drawbox", options)
 
 
@@ -342,10 +338,9 @@ def progress_filters(
     source: str,
     out: str,
     y: int | None = None,
-    enable: str | None = None,
 ) -> list[str]:
     """Progress bar: an accent strip that slides in from the left over the clip, at y=1500 unless `y`
-    is given; shown while `enable` (an ffmpeg expression) is non-zero, or always."""
+    is given."""
     length = _seconds(duration_s)
     bar = render_filter(
         "color",
@@ -362,7 +357,6 @@ def progress_filters(
             ("x", f"-w+w*t/{length}"),
             ("y", str(geometry.progress_y if y is None else y)),
             ("eof_action", "pass"),
-            *([("enable", enable)] if enable else []),
         ],
     )
     return [f"{bar}[{out}_bar]", f"[{source}][{out}_bar]{overlay}[{out}]"]

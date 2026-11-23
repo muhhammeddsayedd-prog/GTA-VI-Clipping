@@ -431,6 +431,7 @@ def _render_one(
             style_id=style_id,
             texts={str(k): str(v) for k, v in dict(recipe.get("texts") or {}).items() if v},
             broll_from=ClipWindow(0.0, media.duration_s) if recipe.get("broll") else None,
+            scaler=cfg.scaler,
         )
         outcome = render_file(job)
         kind = framed_layout(job.layout, entry.rules).kind
