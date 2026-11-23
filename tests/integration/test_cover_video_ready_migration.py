@@ -47,8 +47,8 @@ def test_load_rules_when_on(test_database_url: str) -> None:
     with psycopg.connect(test_database_url, autocommit=True) as conn:
         conn.execute(MIGRATION.read_bytes())
         conn.execute(
-            "update scoring_config set value = value || '{\"enabled\": true, \"facecam_h\": 800}' where key = %s",
-            (coverready.FLAG,),
+            "update scoring_config set value = value || %s::jsonb where key = %s",
+            ('{"enabled": true, "facecam_h": 800}', coverready.FLAG),
         )
     scoring_config.invalidate()
     rules = coverready.load_rules()
