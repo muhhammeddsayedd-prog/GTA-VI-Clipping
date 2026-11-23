@@ -90,6 +90,12 @@ ignore_missing_imports = true
 module = ["mediapipe", "mediapipe.*", "rapidocr", "rapidocr.*"]
 ignore_missing_imports = true
 
+# OpenCV ships partial stubs that strict mode cannot use; treat it as untyped.
+[[tool.mypy.overrides]]
+module = ["cv2", "cv2.*"]
+ignore_missing_imports = true
+follow_imports = "skip"
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"

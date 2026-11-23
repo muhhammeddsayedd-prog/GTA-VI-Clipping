@@ -13,6 +13,7 @@ writer work in seconds from the start of the padded window ("window time"); subt
 stored transcript are in seconds from the first frame of the clip ("clip time").
 """
 
+import json
 import os
 import shutil
 import time
@@ -394,6 +395,8 @@ class Produced:
     # Where the padded window starts in the file, and the writer's input: a story cut reuses both.
     offset_s: float = 0.0
     writer_input: writer.WriterInput | None = None
+    # The clip's peak in clip time (`coverready.choose_peak`), for the cover engine's frame miner.
+    peak_s: float | None = None
 
 
 WritingChooser = Callable[[writer.WriterInput], ClipWriting]
@@ -640,6 +643,48 @@ def _story_cover(job: RenderJob, window: ClipWindow) -> coverready.CoverVideo | 
     if job.cover is None or rules is None:
         return None
     return coverready.shifted(job.cover, rules, job.window.start_s - window.start_s, window.duration_s)
+
+
+def _capture_cover(clip_id: str, produced: Produced, deps: Deps) -> None:
+    """Hand the clip to the cover engine (`covers.miner.capture`): keep its source span and queue the
+    frame miner when `cover.enabled` is on. Never raises."""
+    job = produced.job
+    if job is None:
+        return
+    from sixstars.covers import miner
+
+    layout = job.layout
+    facecam = (
+        layout.facecam_box if isinstance(layout, LayoutA | LayoutCard | LayoutPov | LayoutMontage) else None
+    )
+    gameplay = layout.gameplay_box if isinstance(layout, LayoutA) else None
+    folder = variants.variants_dir(clip_id)
+    offset = 0.0
+    try:
+        recipe = json.loads((folder / variants.RECIPE_NAME).read_text(encoding="utf-8"))
+        offset = float(recipe.get("window_start_s") or 0.0)
+    except (OSError, ValueError):
+        pass
+    duration = produced.outcome.clip_duration_s
+    miner.capture(
+        clip_id,
+        source=job.source_path,
+        window=ClipWindow(job.window.start_s, job.window.start_s + duration),
+        duration_s=duration,
+        has_audio=job.media.has_audio,
+        source_w=job.media.width,
+        source_h=job.media.height,
+        facecam=facecam,
+        gameplay=gameplay,
+        peak_s=produced.peak_s,
+        moment_type=produced.writing.moment_type,
+        lane=job.lane,
+        rendered_path=produced.outcome.output_path,
+        facecam_h=None if job.cover is None else job.cover.facecam_h,
+        variants_source=folder / variants.SOURCE_NAME,
+        variants_offset_s=offset,
+        ffmpeg=deps.ffmpeg,
+    )
 
 
 def render_file(job: RenderJob, *, ffmpeg: str = "ffmpeg", ffprobe: str = "ffprobe") -> RenderOutcome:
@@ -1076,14 +1121,20 @@ def produce(
             assets = load_assets(cfg.params.font, caption_font=_caption_fonts(cfg, style))
 
     started = time.monotonic()
+    anchor_s = None if cut_anchor is None else cut_anchor.t_s - window_w.start_s
+    payoff_s = None if writing.payoff_s is None else writing.payoff_s - window_w.start_s
+    chat_times = tuple(line.t_s - window_w.start_s for line in window_chat)
+    peak_s, _peak_source = coverready.choose_peak(
+        window.duration_s, anchor_s=anchor_s, payoff_s=payoff_s, chat_times=chat_times
+    )
     cover = _plan_cover(
         item,
         media,
         window,
         layout,
-        anchor_s=None if cut_anchor is None else cut_anchor.t_s - window_w.start_s,
-        payoff_s=None if writing.payoff_s is None else writing.payoff_s - window_w.start_s,
-        chat_times=tuple(line.t_s - window_w.start_s for line in window_chat),
+        anchor_s=anchor_s,
+        payoff_s=payoff_s,
+        chat_times=chat_times,
         ffmpeg=deps.ffmpeg,
     )
     timed("cover", started)
@@ -1127,6 +1178,7 @@ def produce(
         job=job,
         offset_s=offset,
         writer_input=writer_input,
+        peak_s=peak_s,
     )
 
 
@@ -1536,6 +1588,9 @@ def render_story(
             ffmpeg=deps.ffmpeg,
         )
         _prepare_variants(row.id, story_item, plan, story, deps, cfg)
+        _capture_cover(
+            row.id, replace(story, peak_s=None if story_job.cover is None else story_job.cover.peak_s), deps
+        )
         jobs.enqueue("normal", JOB_GATE, {"clip_id": row.id}, dedupe_key=f"{JOB_GATE}:{row.id}")
         events.emit(
             "clip.story_rendered",
@@ -1654,6 +1709,7 @@ def render_clip(item: RenderInput, *, deps: Deps | None = None, force: bool = Fa
         _finish(row.id, item, cfg, produced)
         if planned:
             _prepare_variants(row.id, item, planned[-1], produced, deps, cfg)
+        _capture_cover(row.id, produced, deps)
         if produced.writing.has_story and wants_story(item, cfg):
             render_story(row.id, item, cfg, produced, deps)
         # The console's frame of the clip, made before the gate so a rejected clip has one too. Never

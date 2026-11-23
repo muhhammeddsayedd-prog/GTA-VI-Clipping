@@ -139,7 +139,7 @@ def check_times(duration_s: float, peak_s: float | None) -> list[tuple[Literal["
 # ── IO ────────────────────────────────────────────────────────
 
 
-def _frame(path: Path, t_s: float, ffmpeg: str) -> tuple[int, int, bytes]:
+def frame_rgb(path: Path, t_s: float, ffmpeg: str) -> tuple[int, int, bytes]:
     command = [ffmpeg, "-v", "error", "-ss", f"{t_s:.3f}", "-i", str(path), "-frames:v", "1"]
     command += ["-vf", f"scale={REF_WIDTH}:{REF_HEIGHT}", "-f", "rawvideo", "-pix_fmt", "rgb24", "-"]
     result = tools.run(command, timeout_s=30, what="cover check frame")
@@ -151,7 +151,7 @@ def _crop_rows(frame: tuple[int, int, bytes], top: int, bottom: int) -> tuple[in
     return width, bottom - top, data[top * width * 3 : bottom * width * 3]
 
 
-def _ocr_lines(engine: Any, frame: tuple[int, int, bytes]) -> list[str]:
+def ocr_lines(engine: Any, frame: tuple[int, int, bytes]) -> list[str]:
     """Caption-sized text lines OCR'd from the caption band."""
     import numpy as np
 
@@ -198,7 +198,7 @@ def check_clip(row: Mapping[str, Any], engine: Any, *, out_dir: Path, ffmpeg: st
     frames: list[FrameCheck] = []
     raw = []
     for window, t in check_times(expected or media.duration_s, peak):
-        frame = _frame(path, t, ffmpeg)
+        frame = frame_rgb(path, t, ffmpeg)
         raw.append((window, t, frame))
         _save_jpeg(frame, out_dir / clip_id / f"{window}_{t:05.2f}.jpg")
     try:
@@ -206,7 +206,7 @@ def check_clip(row: Mapping[str, Any], engine: Any, *, out_dir: Path, ffmpeg: st
     except coverready.FaceDetectorUnavailableError as exc:
         return ClipCheck(clip_id, (), length_ok, media.duration_s, expected, (str(exc),))
     for (window, t, frame), face in zip(raw, faces, strict=True):
-        tokens = tuple(token for line in _ocr_lines(engine, frame) for token in line.split())
+        tokens = tuple(token for line in ocr_lines(engine, frame) for token in line.split())
         frames.append(
             FrameCheck(
                 window=window,
