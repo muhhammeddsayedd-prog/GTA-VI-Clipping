@@ -83,16 +83,19 @@ def test_the_plan_covers_the_enabled_accounts_and_skips_their_last_style(staging
     assert cfg.director.multiplier("discovery", "headline_card") == 3.0
 
     creator = add_creator()
-    earlier = add_clip(creator, status="posted", style_id="cam_top_viral")
+    earlier = add_clip(creator, status="posted", style_id="cam_top_title")
     db.execute(
         "insert into posts (clip_id, account_id, platform, lane, status, idempotency_key) "
         "values (%s, 'tiktok_main', 'tiktok', 'hourly', 'published', 'k1')",
         (earlier,),
     )
-    assert variants.recent_styles(["tiktok_main", "youtube_main"], 1) == {"tiktok_main": ["cam_top_viral"]}
+    assert variants.recent_styles(["tiktok_main", "youtube_main"], 1) == {"tiktok_main": ["cam_top_title"]}
 
     plan = variants.plan_for("11111111-1111-1111-1111-111111111111", "hourly", cfg)
-    assert plan.by_account["tiktok_main"] == "cam_top_title", "the last tiktok clip was cam_top_viral"
+    assert plan.by_account["tiktok_main"] != "cam_top_title", "the last tiktok clip was cam_top_title"
+    # Migration 0043 (Render v2 R0, D119): the zoom style is off and never planned.
+    assert not cfg.catalog.get("cam_top_viral").enabled  # type: ignore[union-attr]
+    assert "cam_top_viral" not in plan.by_account.values()
     assert set(plan.by_account) == {"instagram_main", "tiktok_main", "youtube_main"}
     assert plan.reference_account == "instagram_main"
 
