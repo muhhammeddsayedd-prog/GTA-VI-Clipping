@@ -519,6 +519,22 @@ def test_with_the_pre_p2_checks_off_the_writer_is_always_asked(
     assert clip_row(clip_id)["status"] == "gating"
 
 
+def test_the_throttle_in_log_mode_records_its_decision_and_changes_nothing(
+    source_30s: Path, creator_id: str, data_dir: Path
+) -> None:
+    """AI cost plan A5b: `log` writes a scoring_log row and the clip goes on to the writer."""
+    settings.set("factory.pre_p2_throttle", "log")
+    spike_id = make_spike(creator_id, score_z=3.0)
+    deps = make_deps(p2_reply(5.0, 27.0))
+    clip_id = pipeline.render_clip(render_input(source_30s, creator_id, spike_id=spike_id), deps=deps)
+    assert clip_row(clip_id)["status"] == "gating"
+    logged = db.fetch_one(
+        "select decision, reason, sub_scores from scoring_log where stage = 'factory.pre_p2_throttle'"
+    )
+    assert logged is not None and logged["decision"] == "keep"
+    assert logged["sub_scores"]["mode"] == "log" and logged["sub_scores"]["tier"] == "A"
+
+
 def test_handler_defers_a_job_stopped_by_the_ai_budget(
     creator_id: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
