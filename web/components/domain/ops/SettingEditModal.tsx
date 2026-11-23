@@ -7,6 +7,7 @@ import { Modal, useToast } from "@/components/kit/overlays";
 import { Badge, Banner, Btn, KV, Mono } from "@/components/kit/primitives";
 import { useControl } from "@/lib/api/client";
 import type { Json, Setting } from "@/lib/api/types";
+import { fmtFull, isValidZone } from "@/lib/format";
 import { jsonKind, kindAllowed, lineDiff } from "./diff";
 
 export interface EditRequest { setting: Setting; proposed?: Json }
@@ -32,6 +33,7 @@ function EditFlow({ req, onClose }: { req: EditRequest; onClose: () => void }) {
     try {
       const v = JSON.parse(text) as Json;
       if (!kindAllowed(s.value, v)) return { ok: false, error: `${s.key} is a JSON ${jsonKind(s.value)}; this is a ${jsonKind(v)}.` };
+      if (s.key === "app.timezone" && !isValidZone(v)) return { ok: false, error: "Not a time zone. Use an IANA name such as \"Africa/Cairo\" or \"UTC\"." };
       return { ok: true, value: v };
     } catch (e) {
       return { ok: false, error: `Not valid JSON: ${(e as Error).message}` };
@@ -64,7 +66,7 @@ function EditFlow({ req, onClose }: { req: EditRequest; onClose: () => void }) {
             aria-invalid={!parsed.ok} aria-describedby="setting-err" rows={Math.min(14, Math.max(2, text.split("\n").length + 1))} />
         )}
         {!parsed.ok && <div id="setting-err" className="err-text" role="alert">{parsed.error}</div>}
-        <p className="muted xs" style={{ marginTop: 10 }}>Updated {new Date(s.updated_at).toUTCString()}. Clips already approved are not re-checked.</p>
+        <p className="muted xs" style={{ marginTop: 10 }}>Updated {fmtFull(s.updated_at)}. Clips already approved are not re-checked.</p>
       </Modal>
     );
   }

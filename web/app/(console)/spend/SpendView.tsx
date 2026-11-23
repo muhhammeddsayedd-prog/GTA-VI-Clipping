@@ -10,7 +10,7 @@ import { DataTable, type Col } from "@/components/kit/data";
 import { Banner, Card, CardHead, ErrorState, Grid, KV, Mono, PageHead, Prog, RefreshBtn, Seg, SkeletonCards } from "@/components/kit/primitives";
 import { POLL, useApi } from "@/lib/api/client";
 import type { Usage } from "@/lib/api/types";
-import { fmtCompact, fmtNum, fmtUsd } from "@/lib/format";
+import { fmtCompact, fmtNum, fmtUsd, utcHourInZone } from "@/lib/format";
 import { useListParams } from "@/lib/use-list";
 
 const COLORS: Record<string, string> = { anthropic: "#5A4AF4", openai: "#9F94FF", groq: "#9F94FF", transcription: "#9F94FF", apify: "#D27A06", DataImpulse: "#0E8A9A" };
@@ -73,7 +73,7 @@ export function SpendView() {
 
   return (
     <>
-      <PageHead title="Spend" sub="API spend from api_usage · over budget pauses the VOD lane until 00:00 UTC; express keeps running"
+      <PageHead title="Spend" sub={`API spend from api_usage · budgets are per UTC day: over budget pauses the VOD lane until 00:00 UTC (${utcHourInZone(0)}); express keeps running`}
         actions={<><Seg label="Range" value={range} onChange={(v) => lp.set("range", v)} items={[{ value: "today", label: "Today" }, { value: "7d", label: "7 days" }, { value: "month", label: "Month" }]} />
           <RefreshBtn onClick={() => { q.refetch(); month.refetch(); }} spinning={q.isFetching} /></>} />
 

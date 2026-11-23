@@ -20,7 +20,7 @@ from sixstars.posting.gate import Mode, posting_mode
 from sixstars.posting.hourly import QUIET_SKIPS, record_decision
 from sixstars.posting.models import Action, Decision
 from sixstars.posting.precedence import plan_spikes
-from sixstars.posting.publisher import Publisher, PublishResult
+from sixstars.posting.publisher import DeliverHooks, Publisher, PublishResult
 from sixstars.posting.store import DbStore, utcnow
 
 
@@ -138,7 +138,7 @@ def try_post_spike(
         codes={d.account_id: d.code.value for d in decisions},
         demoted=demoted,
     )
-    publisher = Publisher(client, store, clock)
+    publisher = Publisher(client, store, clock, covers=DeliverHooks())
     results = publisher.publish_all(post_ids)
     posted = False
     for planned in planned_clips:

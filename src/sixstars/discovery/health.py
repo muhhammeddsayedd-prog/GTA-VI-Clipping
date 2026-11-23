@@ -26,6 +26,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any, Final
 
 from sixstars import events, notify, settings
+from sixstars.clock import DATE_TIME, fmt_local
 from sixstars.logging import get_logger
 
 STATE_KEY: Final = "discovery.source_health"
@@ -141,7 +142,7 @@ def step(
         entry["notified"] = True
         started = _time(entry.get("since")) or now
         body = (
-            f"{entry['passes']} passes in a row since {started:%Y-%m-%d %H:%M} UTC. "
+            f"{entry['passes']} passes in a row since {fmt_local(started, DATE_TIME)}. "
             f"Error: {entry.get('error') or 'unknown'}. Fix: {FIXES.get(source, DEFAULT_FIX)}"
         )
         title = f"Discovery source {source} keeps failing"
@@ -169,7 +170,8 @@ def step(
             if entry.get("notified"):
                 started = _time(entry.get("since")) or now
                 passes = int(entry.get("passes") or entry.get("failures") or 0)
-                body = f"Working again after {passes} passes (failing since {started:%Y-%m-%d %H:%M} UTC)."
+                since = fmt_local(started, DATE_TIME)
+                body = f"Working again after {passes} passes (failing since {since})."
                 title = f"Discovery source {source} recovered"
                 notices.append(Notice("info", source, title, body, "discovery.source_recovered"))
             del new[source]

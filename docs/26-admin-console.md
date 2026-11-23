@@ -31,7 +31,7 @@ Browser ──► Next.js on Vercel (web/, one project per environment)
 
 ## Read API contract (`GET /v1/admin/*`)
 
-All routes are `GET`, read only and authenticated with a bearer token. Times are ISO-8601 UTC strings. Money is a float in USD.
+All routes are `GET`, read only and authenticated with a bearer token. Times are ISO-8601 UTC strings; the console converts them for display to `app.timezone` (default Africa/Cairo; header clock, Settings → Time zone) and shows the UTC instant on hover. Money is a float in USD.
 
 ### Lists
 

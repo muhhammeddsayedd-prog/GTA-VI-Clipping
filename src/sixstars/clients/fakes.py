@@ -28,6 +28,7 @@ from sixstars.clients.upload_post import (
     UploadStatus,
 )
 from sixstars.clients.youtube import FeedEntry, YouTubeChannel, YouTubeClient, YouTubeVideoStatus
+from sixstars.clients.youtube_analytics import VideoAnalytics, YouTubeAnalyticsClient
 
 Call = tuple[str, dict[str, Any]]
 
@@ -136,6 +137,24 @@ class FakeTwitchClient(_Recorder, TwitchClient):
         self._record("get_streams", game_id=game_id, max_items=max_items)
         return [stream for stream in self.streams if stream.game_id == game_id][:max_items]
 
+    def get_streams_by_user(self, user_ids: Sequence[str]) -> list[TwitchStream]:
+        self._record("get_streams_by_user", user_ids=list(user_ids))
+        wanted = set(user_ids)
+        return [stream for stream in self.streams if stream.user_id in wanted]
+
+    def get_clips_by_broadcaster(
+        self, broadcaster_id: str, started_at: datetime, ended_at: datetime | None = None, max_items: int = 20
+    ) -> list[TwitchClip]:
+        self._record("get_clips_by_broadcaster", broadcaster_id=broadcaster_id, started_at=started_at)
+        found = [
+            clip
+            for clip in self.clips
+            if clip.broadcaster_id == broadcaster_id
+            and clip.created_at >= started_at
+            and (ended_at is None or clip.created_at <= ended_at)
+        ]
+        return sorted(found, key=lambda clip: -clip.view_count)[:max_items]
+
     def get_videos_by_game(
         self,
         game_id: str,
@@ -203,6 +222,24 @@ class FakeTwitchClient(_Recorder, TwitchClient):
             for user_id in dict.fromkeys(ids)
         ]
 
+    def get_users_by_login(self, logins: Sequence[str]) -> list[TwitchUser]:
+        """Every login exists except ones starting with "missing"; the user id is "id_<login>"."""
+        self._record("get_users_by_login", logins=list(logins))
+        found = [login.lower().removeprefix("@") for login in dict.fromkeys(logins)]
+        return [
+            TwitchUser(
+                id=f"id_{login}",
+                login=login,
+                display_name=login.capitalize(),
+                description=f"Bio of {login}",
+                profile_image_url=f"https://example.test/avatar/{login}.png",
+                broadcaster_type="partner",
+                created_at=FIXED_TIME,
+            )
+            for login in found
+            if not login.startswith("missing")
+        ]
+
     def get_followers_total(self, broadcaster_id: str) -> int | None:
         self._record("get_followers_total", broadcaster_id=broadcaster_id)
         return self.followers.get(broadcaster_id, 100_000)
@@ -242,6 +279,18 @@ class FakeYouTubeClient(_Recorder, YouTubeClient):
         return [
             self.channels.get(channel_id, _fake_channel_item(channel_id)) for channel_id in dict.fromkeys(ids)
         ]
+
+    def channel_for_handle(
+        self, handle: str, parts: Sequence[str] = ("snippet", "statistics")
+    ) -> dict[str, Any] | None:
+        """Handles starting with "missing" do not exist; others map to channel "UC_<handle>"."""
+        self._record("channel_for_handle", handle=handle)
+        name = handle.removeprefix("@")
+        if name.startswith("missing"):
+            return None
+        item = dict(_fake_channel_item(f"UC_{name}"))
+        item.setdefault("snippet", {})["customUrl"] = f"@{name}"
+        return item
 
     def search_list(
         self,
@@ -595,14 +644,31 @@ class FakeUploadPostClient(_Recorder, UploadPostClient):
         self.deleted: list[tuple[str, str, str]] = []
         self.upload_error: Exception | None = None
         self.platform_results: dict[str, PlatformResult] = {}
+        self.post_metrics: dict[str, Any] = {}  # request id -> post_metrics in the real shape
         self.analytics: dict[str, Any] = {
             "tiktok": {"followers": 1200, "views": 45000},
             "instagram": {"followers": 800, "reach": 9000, "views": 20000},
             "youtube": {"followers": 300, "views": 15000},
         }
         self._by_key: dict[str, str] = {}
+        # Cover engine: thumbnails set per video id; `thumbnail_pending` answers 202 that many times first;
+        # `thumbnail_error` is raised once.
+        self.thumbnails: dict[str, str] = {}
+        self.thumbnail_pending: int = 0
+        self.thumbnail_error: Exception | None = None
 
     def is_configured(self) -> bool:
+        return True
+
+    def set_youtube_thumbnail(self, user: str, video_id: str, thumbnail_url: str) -> bool:
+        self._record("set_youtube_thumbnail", user=user, video_id=video_id, thumbnail_url=thumbnail_url)
+        if self.thumbnail_error is not None:
+            error, self.thumbnail_error = self.thumbnail_error, None
+            raise error
+        if self.thumbnail_pending > 0:
+            self.thumbnail_pending -= 1
+            return False
+        self.thumbnails[video_id] = thumbnail_url
         return True
 
     def upload_video(
@@ -681,7 +747,7 @@ class FakeUploadPostClient(_Recorder, UploadPostClient):
         if request_id not in self.uploads:
             return {"success": False, "platforms": {}}
         result = self._result(request_id)
-        metrics = {"views": 1000, "likes": 50, "comments": 5, "shares": 2}
+        metrics = self.post_metrics.get(request_id, {"views": 1000, "likes": 50, "comments": 5, "shares": 2})
         return {
             "success": True,
             "post": {"request_id": request_id, "profile_username": self.uploads[request_id]["user"]},
@@ -728,3 +794,19 @@ class FakeProxyProbe(_Recorder, ProxyProbe):
     def probe(self, proxy_url: str) -> ProbeResult:
         self._record("probe", proxy_url=proxy_url)
         return self.result
+
+
+class FakeYouTubeAnalyticsClient(_Recorder, YouTubeAnalyticsClient):
+    """`reports[video_id]` answers `video_report`; `configured` says whether OAuth exists."""
+
+    def __init__(self, configured: bool = True) -> None:
+        self.calls = []
+        self.configured = configured
+        self.reports: dict[str, VideoAnalytics] = {}
+
+    def is_configured(self) -> bool:
+        return self.configured
+
+    def video_report(self, video_ids: Sequence[str], start: Any, end: Any) -> dict[str, VideoAnalytics]:
+        self._record("video_report", video_ids=list(video_ids), start=start, end=end)
+        return {v: self.reports[v] for v in video_ids if v in self.reports}

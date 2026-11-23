@@ -16,12 +16,13 @@ from datetime import datetime, timedelta
 
 from sixstars import db, jobs
 from sixstars.clients.upload_post import UploadPostClient
+from sixstars.clock import DATE_TIME, fmt_local
 from sixstars.logging import get_logger
 from sixstars.posting.captions import build_upload_request, idempotency_key
 from sixstars.posting.gate import Mode, posting_mode
 from sixstars.posting.models import Account, Action, Clip, Decision, Reason
 from sixstars.posting.params import PostingParams
-from sixstars.posting.publisher import RECOVERY_DELAY_S, Publisher, PublishResult
+from sixstars.posting.publisher import RECOVERY_DELAY_S, DeliverHooks, Publisher, PublishResult
 from sixstars.posting.selection import SlotPlan, empty_slots_alert, plan_hourly_slot
 from sixstars.posting.slots import SLOT_LENGTH, check_slot, fire_at, slot_start
 from sixstars.posting.store import DbStore, clips_only, dry_run_key, utcnow
@@ -92,7 +93,19 @@ def plan_slot(
     queue = clips_only(store.load_hourly_queue(posted_since))
     spikes = clips_only(store.load_spike_clips())
     history = store.load_history(now, [clip.id for clip in (*queue, *spikes)])
-    plan = plan_hourly_slot(accounts, history, queue, slot_at, now, params, spike_clips=spikes)
+    loader = getattr(store, "load_campaign_lanes", None)  # D118
+    quotas, lane_rules = loader(now) if loader is not None else ({}, {})
+    plan = plan_hourly_slot(
+        accounts,
+        history,
+        queue,
+        slot_at,
+        now,
+        params,
+        spike_clips=spikes,
+        campaign_quotas=quotas,
+        lane_rules=lane_rules,
+    )
     return plan, {clip.id: clip for clip in queue}, {account.id: account for account in accounts}
 
 
@@ -218,7 +231,7 @@ def run_hourly_slot(
         store.notify(
             "warn",
             "Hourly queue empty",
-            f"No clip could be posted in the last two hourly slots (latest {slot.isoformat()}).",
+            f"No clip could be posted in the last two hourly slots (latest {fmt_local(slot, DATE_TIME)}).",
         )
-    results = Publisher(client, store, clock).publish_all(post_ids)
+    results = Publisher(client, store, clock, covers=DeliverHooks()).publish_all(post_ids)
     return SlotRun(slot, mode, plan, tuple(post_ids), tuple(dry_ids), results)

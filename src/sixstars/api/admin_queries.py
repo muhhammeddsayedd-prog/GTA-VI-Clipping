@@ -97,7 +97,7 @@ CLIP_STATUSES = (
     "expired",
 )
 POST_STATUSES = ("pending", "published", "failed", "skipped", "removed", "remove_failed")
-CREATOR_TIERS = ("preferred", "auto", "restricted", "blocked")
+CREATOR_TIERS = ("campaign", "preferred", "auto", "restricted", "blocked")
 SOURCE_TYPES = ("live", "vod")
 TAKEDOWN_STATUSES = ("open", "actioned", "partial", "ignored")
 SEVERITIES = ("info", "warn", "critical")

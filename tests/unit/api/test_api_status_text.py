@@ -109,7 +109,7 @@ def test_the_telegram_text_lists_everything_m11_asks_for() -> None:
         "Approved queue: spike 1 · hourly 14",
         "<b>Posts (last hour / 24 h)</b>",
         "• tiktok_main: 1 / 9 of 12",
-        "• youtube_main: 0 / 20 of 28 (paused until 2026-11-18T13:00:00+00:00, failed 2)",
+        "• youtube_main: 0 / 20 of 28 (paused until 2026-11-18 15:00 Cairo (2026-11-18 13:00 UTC), failed 2)",
         "Spend today: $4.50 of $25 AI budget (anthropic $4.20 · groq $0.30)",
         "Jobs: express 1 queued, 0 running, 0 failed · normal 7 queued, 2 running, 1 failed",
         "<b>Heartbeats</b>",
@@ -151,7 +151,7 @@ def test_the_telegram_text_in_dry_run_with_a_low_queue_and_nothing_else() -> Non
         )
     )
     assert "Posting: 🟡 dry run (nothing is published)" in text
-    assert "Launch at: 2026-11-18T11:00:00+00:00 · dry-run switch: on" in text
+    assert "Launch at: 2026-11-18 13:00 Cairo (2026-11-18 11:00 UTC) · dry-run switch: on" in text
     assert "Live sessions: 0 (recording 0)" in text
     assert "Approved queue: spike 0 · hourly 3 ⚠️ low" in text
     assert "• no accounts" in text

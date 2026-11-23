@@ -26,6 +26,7 @@ from typing import Any, Final
 
 from sixstars import events, notify, settings
 from sixstars.chat.net import PROXY_FIX, proxy_refusal
+from sixstars.clock import DATE_TIME, fmt_local
 from sixstars.logging import get_logger
 
 STATE_KEY: Final = "live.source_health"
@@ -127,7 +128,7 @@ def note_blocked(
         # A refusal of the proxy itself is fixed on the proxy account, not with a proxy or cookies.
         fix = PROXY_FIX if proxy_refusal(updated["error"]) else FIXES.get(platform, DEFAULT_FIX)
         body = (
-            f"{count} refused stream starts in a row since {started:%Y-%m-%d %H:%M} UTC. "
+            f"{count} refused stream starts in a row since {fmt_local(started, DATE_TIME)}. "
             f"Error: {updated['error'] or 'unknown'}. The live lane released the {platform} slots and "
             f"tries one stream again every {int(backoff_s // 60)} minutes. Fix: {fix}"
         )
@@ -149,7 +150,7 @@ def note_ok(
         started = _time(entry.get("since")) or now
         body = (
             f"Recording works again after {int(entry.get('blocks') or 0)} refused starts "
-            f"(blocked since {started:%Y-%m-%d %H:%M} UTC)."
+            f"(blocked since {fmt_local(started, DATE_TIME)})."
         )
         notices.append(
             Notice("info", platform, f"Live source {platform} recovered", body, "live.source_recovered")

@@ -535,6 +535,56 @@ FakeUploadPostClient()                 .uploads .deleted .upload_error .platform
 - The padded source copy for a montage variant is larger than a clip copy (up to about three minutes of near-lossless video, deleted after the variants); watch disk on staging.
 - M18 is complete. Before `develop` → `main`: run a day on staging with the five phases, check render time and disk, and decide whether production starts with every style enabled.
 
+## L0 — TikTok diagnosis and the delivery guard (2026-11-19)
+
+Spec: `docs/28-learning-and-growth.md` (learning loop + growth engine; owner amendments at the end). Branch `learn-l0`.
+
+### What was built
+
+- **Diagnosis** (`development-plan/progress-notes/L0-tiktok-diagnosis.md`): the 16 TikTok posts are public (oEmbed and the public page answer, `privateItem:false`) and have real post ids, yet TikTok itself shows `playCount: 0`. Not a privacy or moderation problem: TikTok isn't distributing the account (likely For You ineligibility). The owner approved stopping TikTok: production `tiktok_main.lanes` is now `{}` (undo in CHANGELOG-scoring).
+- **Delivery guard** `learning/delivery.py` (flag `learning.delivery_guard`, off): after each stats pass, an account whose last 5 posts ≥ 6 h old have median 0 views gets `hourly_paused_until` set (until resumed), the posts marked `delivery_suspect`, an `events` row and a critical Telegram alert. 0 views counts only once the post was read (`stats_updated_at`); a TikTok post without a post id after 6 h counts as 0.
+- Posting: `Account.hourly_paused_until`, new skip reason `hourly_paused` in `decide_hourly_account` (only the hourly lane; `paused_until` still pauses both).
+- `POST /v1/control/lane/resume` (`{"account_id"}` or `{"text": "/resume <id>"}`) and WF08 `/resume <account>` (WF08 now sends the whole message text for commands with arguments: `MESSAGE_BODY`).
+- Migration `0032_learning_delivery.sql`; flag `learning.exclude_tiktok` (on) for L2+.
+
+### Tests
+
+Unit: 3624 passed. Integration (throwaway postgres:17): new `test_delivery_guard.py` 5 passed, stats/posting/api/guardian suites pass, except 6 gate tests (`file_duration` rejections) that fail the same way on clean `develop` locally (environment, not this change).
+
+### Deviations / open
+
+- Migration numbers start at 0032 (0027–0031 are M18). The guard's pause is a far-future timestamp (2100-01-01), not `infinity` (psycopg can't read infinity into datetime).
+- WF08 must be re-applied (`build_workflows.py apply`) to get `/resume`; [STG] WF08 stays inactive, so test the route directly on staging.
+- The TikTok account restriction needs the owner: TikTok app → Account status / video Analytics.
+- TikTok Ads Manager shows the ad account currency is **EGP**: A1 stores a currency on money rows and converts the USD cap.
+
+## L1 — Fixed-age snapshots (2026-11-19)
+
+Branch `learn-l1` (on top of L0, PR #67 merged to develop and deployed to staging 06:02 UTC).
+
+### What was built
+
+- Migration `0033_learning_snapshots.sql`: table `post_metrics_snapshots` (insert only, unique per post and target age; missing fields null), flag `learning.snapshots` (off), setting `stats.job_budget_s` (240).
+- `learning/snapshots.py` (pure): due windows (1/3/6/24/72/168 h, accepted until `t + max(0.75 h, 0.25 t)`), youngest first; `parse_snapshot` for the real TikTok / Instagram / YouTube answers.
+- `stats/snapshot_pass.py`: runs **before** the totals refresh (owner amendment 3). YouTube: one Data API call for all due videos, plus one Analytics API call when `youtube_analytics` is true in the flag and OAuth exists. Others: Upload-Post, one call per post, paced by a token bucket (90, +0.3/s). Each reading also refreshes the post's totals; the totals pass skips those posts.
+- Overflow: readings left at the end of the inline budget queue the worker job `stats.collect` (dedupe key, `stats.job_budget_s`; `stats/handlers.py`). The job never queues itself.
+- `clients/youtube_analytics.py` (reports.query, `dimensions=video`, filters up to 200 ids) with `FakeYouTubeAnalyticsClient`; `FakeUploadPostClient.post_metrics` per request id.
+- WF05 builder: every 30 minutes.
+
+### Owner amendment 5 (checked on production, 19 Nov)
+
+Upload-Post's YouTube post analytics return only `views, likes, comments, favorites`: **no** `subscribers_gained` or `average_view_percentage`. Those need the YouTube Analytics API. Its docs accept the `youtube` scope we already request, but **no YouTube refresh token exists** in staging or production, so the owner must run `sixstars youtube auth` once (then set `YOUTUBE_OAUTH_REFRESH_TOKEN` and `youtube_analytics: true`). Instagram gives `avg_watch_seconds`, `reach`, `saves`, `shares` (no completion, no followers per post).
+
+### Tests
+
+Unit 3640 passed (25 new). Integration: `test_stats_snapshots.py` (4), plus stats, guard, db, api and guardian route suites pass on a throwaway postgres:17. `test_db` table count 24 → 25.
+
+### Deviations / open
+
+- `stats.collect_budget_s` stays 20 (not 25): the account step isn't budgeted, and 25 s risks the n8n 30 s timeout. Extra time comes from the job instead.
+- WF05 on staging/production must be re-applied by hand (`build_workflows.py apply --env staging`).
+- Paid split: `paid` is set from `posts.boosted`; `paid_views` / `paid_followers` stay null until the ads controller (A5) reads Zernio's split.
+
 ## YouTube lane tuning A — cap, hours, hourly gap (2026-11-21)
 
 **Branch:** `yt-lane-a` (from `main` at `a0bebe8`, so it can be released without the L0/L1 work on `develop`).
@@ -620,6 +670,29 @@ Production audit 2026-11-21: `youtube_main` had been lowered to the learned-cap 
 - The bandit judges a style on posts 48 h to 14 days old; read the twins against their originals after about two weeks of YouTube hourly posts.
 - Later: `posting.youtube_cap_ramp` (not built; after PR-A has run clean for 48 h).
 
+## Title writer v2 (2026-11-23)
+
+**Branch:** `titles-v2` (off `develop`). Reference: `docs/30-titles-v2.md`.
+
+### What was built
+
+- Migration `0040_titles_v2.sql` (additive): `creators.title_name` + `creators.title_aliases` (30 names seeded where empty), table `clip_titles` (facts, all candidates with failed checks, chosen title, caption, tags, explored, features, prior title, applied), scoring_config `titles.v2` (**disabled**).
+- Prompt `p11_title_writer.md` (brief Part 1 + spoiler rule), schema `TitleSet`, `ai.calls.write_titles` (fast model by default, low effort, cached system prompt).
+- `sixstars/titles/`: `facts` (name book, facts builder: P9V `seen` as the event, peak line, hours into stream, hours/percent/money said, chat words, other streamers), `checks` (Part 2 as pure functions, choice in pattern order, 20% exploration stable per clip id, features, fallback), `store`, `service` (one retry, fallback, apply only while not posted, scoring_log stage `title`, events `clip.retitled` / `clip.title_fallback`), `commands`.
+- Gate: `title_v2.after_approval` right after approval and before the spike handoff. Never raises; the P2 title stays on any failure.
+- CLI: `sixstars titles retitle|compare|queue`.
+- Tests: `tests/unit/titles/` (checks, facts, service with stubs).
+
+### Deviations
+
+See docs/30 "Differences from the brief": spoiler rule kept, two brief examples left out of the prompt (they break the banned-phrase rule), "GTA 6" counts as one word, `title_name` instead of `display_name`, no campaign concept, no per-line audio level, migration 0040 (0038/0039 are taken by `ai-cost-a5`), no ranking boost.
+
+### Open issues / next
+
+- Staging: enable `titles.v2`, run `sixstars titles compare --limit 30 --status approved --status rejected --status posted` (staging has only one posted clip), owner reviews old vs new.
+- Production: only after owner approval: flag on, then `sixstars titles queue --apply`. The comparison on production's 30 most recent posted clips needs a production read (not done from this machine).
+- Learning Loop L2 reads `clip_titles.features` where `applied`.
+
 ## AI cost plan — A0, A7, A5a, A5b, A2, A3 (2026-11-23)
 
 **Decision:** D117. **Branches / PRs:** `ai-cost-a0` (#72, merged), `ai-cost-a5` (#73, merged), `ai-cost-a2` (#75: A2 + A3).
@@ -651,7 +724,7 @@ Read-only production analysis, 11-17 to 11-22:
   - Music uses the lowest ratio any cut of the padded window could have.
   - A spike-lane clip is rejected only when both the express and the hourly profile fail.
   - The daily cap is skipped in the last 30 minutes before 00:00 UTC.
-- **A5b** (migration 0039, `factory.pre_p2_throttle` = `"log"`, `factory.pre_p2_queue_min` = 40)
+- **A5b** (migration 0044, `factory.pre_p2_throttle` = `"log"`, `factory.pre_p2_queue_min` = 40)
   - `factory/throttle.py` logs `would_skip` / `keep` per hourly candidate to `scoring_log`; nothing is enforced.
   - **Effective queue:** approved hourly clips that the busiest hourly account (at its 24-hour pace) reaches before `posting.max_clip_age_h`.
   - **Candidate rank:** chat percentile × spike bonus × freshness, compared with the queue median.
@@ -679,25 +752,533 @@ Read-only production analysis, 11-17 to 11-22:
 - **Budget re-set:** after 3 days at the new spend, propose `ai.daily_budget_usd` at 1.3× the new average.
 - **B1:** Haiku shadow on P2 and P9V (async, own budget, sample rate 0.2).
 - **After B1:** TikTok (L0).
-## Title writer v2 (2026-11-23)
+## Clipping campaigns PR 1 — registry and lanes (2026-11-23)
 
-**Branch:** `titles-v2` (off `develop`). Reference: `docs/30-titles-v2.md`.
+**Branch:** `clipcamp-1` (from `main` 874d640, so production gets campaign work without develop's L0/L1). Plan: "6 Stars Clips — Lanes & Clipping Campaigns Plan" (Plan and Operating flows tabs), decision **D118** (supersedes D05).
 
 ### What was built
 
-- Migration `0040_titles_v2.sql` (additive): `creators.title_name` + `creators.title_aliases` (30 names seeded where empty), table `clip_titles` (facts, all candidates with failed checks, chosen title, caption, tags, explored, features, prior title, applied), scoring_config `titles.v2` (**disabled**).
-- Prompt `p11_title_writer.md` (brief Part 1 + spoiler rule), schema `TitleSet`, `ai.calls.write_titles` (fast model by default, low effort, cached system prompt).
-- `sixstars/titles/`: `facts` (name book, facts builder: P9V `seen` as the event, peak line, hours into stream, hours/percent/money said, chat words, other streamers), `checks` (Part 2 as pure functions, choice in pattern order, 20% exploration stable per clip id, features, fallback), `store`, `service` (one retry, fallback, apply only while not posted, scoring_log stage `title`, events `clip.retitled` / `clip.title_fallback`), `commands`.
-- Gate: `title_v2.after_approval` right after approval and before the spike handoff. Never raises; the P2 title stays on any failure.
-- CLI: `sixstars titles retitle|compare|queue`.
-- Tests: `tests/unit/titles/` (checks, facts, service with stubs).
+- Migration `0050_clip_campaigns.sql` (additive, idempotent):
+  - Tables `clip_campaigns`, `clip_campaign_creators`, `clip_campaign_posts`, `render_profiles` (five seeded looks: `brand`, `clean-disclose`, `partner-logo`, `overlay-keep`, `brand-disclose`), `lane_quotas`, `creator_live_status`.
+  - Tier `campaign` in `creators_tier_check`, plus `creators.tier_before_campaign`.
+  - Nullable `campaign_id` on `live_sessions`, `videos`, `viewer_clips`, `spikes`, `clips`, `posts`, and `clips.render_profile`.
+  - Settings `lanes.campaign_share` and `lanes.campaign_max_per_day`; `normal`/`spike` quota rows for every account.
+- `src/sixstars/campaigns/`:
+  - `models.py`.
+  - `rules.py` (pure): transitions, save checks, quota fit, lane rows, tier moves, audit diff.
+  - `store.py`.
+  - `service.apply_change` is the one write path: it checks, saves with version + 1, rewrites lane quotas, moves streamers in and out of tier `campaign`, emits a `campaign.changed` event and sends a Telegram line.
+  - `lookup.py`: a streamer is found by Twitch login, YouTube @handle or channel id, never by name alone.
+  - `commands.py`.
+- CLI `sixstars campaign add|edit|activate|pause|resume|end|budget|list|show|lookup|quotas`.
+- Clients:
+  - `TwitchClient.get_users_by_login` (Helix Get Users `login=`).
+  - `YouTubeClient.channel_for_handle` (`channels.list?forHandle=`, 1 unit).
+  - Both have fakes.
+- Tier `campaign` is treated like `preferred` everywhere `preferred` was tested: the gate creator check, the express tier rule, the discovery preferred bonus, the ranking boost, and the console tier list.
+  - The P6 permission read never overwrites it.
+  - A P6 `restricted` verdict, or a block, still wins and pauses the streamer's active campaigns (`service.on_creator_forbidden`).
+- Tests:
+  - `tests/unit/campaigns/` (rules, lookup).
+  - New cases in `tests/unit/gate/test_gate_decision.py` and `tests/unit/discovery/test_discovery_sources.py`.
+  - `tests/integration/test_campaign_registry.py`.
 
 ### Deviations
 
-See docs/30 "Differences from the brief": spoiler rule kept, two brief examples left out of the prompt (they break the banned-phrase rule), "GTA 6" counts as one word, `title_name` instead of `display_name`, no campaign concept, no per-line audio level, migration 0040 (0038/0039 are taken by `ai-cost-a5`), no ranking boost.
+- Numbering: `develop` took D117 and migrations 0037-0040 (AI cost, titles v2) while this was built, so this is **D118** and the campaign migrations are **0050** (PR 1) and **0051** (PR 2), with room in between for other branches. Gaps are fine for `supabase db push --include-all`.
+
+- Naming (owner, 23 Nov): `clip_campaigns` / `clip_campaign_posts` / `lane_quotas`, and Telegram `/clipcamp …` later. This avoids the docs/28 `ad_campaigns` and `/campaign` and the existing `/resume`.
+- A campaign is a tag (`campaign_id`), not a new lane value: `clips.lane` / `posts.lane` stay `spike|hourly`.
+- Instagram campaign share is 18, not 20, because the account cap is 45, not 50.
+- Pausing or ending is never blocked by the save checks (a bare status change to paused/ended skips them), so the guardian can always stop a campaign.
+- The gate gave `campaign` no daily cap (like `preferred`).
+- The console Campaigns page moved to PR 6, as the Operating flows tab says. Until then, campaigns are added through the CLI.
+- **TikTok (owner, 23 Nov):** TikTok campaign posts are wanted. Production `tiktok_main.lanes` is `{}`; re-enabling it is asked for at the PR 4 release. `tiktok_live` has no real second account.
+
+### Staging (2026-11-23)
+
+- Merged to `develop` via #76 (staging branch `clipcamp-staging`); migration 0050 applied by the staging deploy of #80.
+- Definition of done met: staging campaign `staging-test-jerma` (Twitch `jerma985`, YouTube 1-2 and Instagram 1-4 a day, ends 2026-12-06) was added and activated. The streamer moved `auto -> campaign` (`tier_before_campaign = auto`), `lane_quotas` holds its two rows, and `campaign.changed` v2 was written. It stays active for the PR 2-4 staging checks.
+- Fix: the campaign CLI printed `→`/`—`, which a Windows console cannot encode. Its output is now ASCII, and stdout is set to `errors=replace`.
 
 ### Open issues / next
 
-- Staging: enable `titles.v2`, run `sixstars titles compare --limit 30 --status approved --status rejected --status posted` (staging has only one posted clip), owner reviews old vs new.
-- Production: only after owner approval: flag on, then `sixstars titles queue --apply`. The comparison on production's 30 most recent posted clips needs a production read (not done from this machine).
-- Learning Loop L2 reads `clip_titles.features` where `applied`.
+- PR 2 (sourcing):
+  - campaign watcher (Twitch `/streams?user_id=` every 60 s, YouTube RSS every 3 min);
+  - `live.campaign_slots`;
+  - VOD and Twitch-clip priority;
+  - spike tagging;
+  - cross-lane moment dedupe.
+- Settle first: multi-day live sessions without a forced restart.
+- Disk: merged worktrees m03/m04/m05/m10/m11/media/styles/console were removed (13 GB free on D:). `6stars-wt-m06` (unmerged) and `6stars-wt-tz` (uncommitted work holding an untracked `0034_app_timezone.sql`) were kept.
+
+## Clipping campaigns PR 2 — sourcing (2026-11-23)
+
+**Branch:** `clipcamp-2` (on top of `clipcamp-1`). Migration `0051_campaign_sourcing.sql`.
+
+### What was built
+
+- **Campaign watcher** (`campaigns/watcher.py`):
+  - Runs in the scheduler service (task `campaign_watch`, every `campaigns.watch_interval_s`).
+  - Twitch: Get Streams by user id, one request for up to 100 streamers. YouTube: channel RSS every `campaigns.watch_youtube_s`, plus `videos.list` for new or live ids.
+  - Writes `creator_live_status` and the heartbeat `campaign:watcher`.
+- **Slot plan** (`plan`, pure):
+  - A live campaign stream of the campaign's game (`required_game`, null = any) takes a slot, up to `live.campaign_slots`, ranked by rate × budget left × viewers.
+  - A full lane releases its weakest trending session for it.
+  - A trending session of a campaign streamer is re-tagged, not restarted.
+  - A session whose campaign stopped, or whose stream left the game, is untagged and falls back to trending rules.
+- **Discovery:** `assign.plan_slots` never releases a campaign-tagged session for its score; the watcher owns it.
+- **VODs:**
+  - Campaign VODs and replays of campaign sessions run at `campaigns.vod_priority` (35).
+  - A Twitch campaign streamer who goes offline without a slot gets their archive queued.
+  - YouTube campaign streams are queued from the feed when they end (YouTube refuses live recording).
+  - `videos.campaign_id` is copied from the session.
+- **Clip tag** (`campaigns/tagging.py`):
+  - Set when the clip row is created (`factory/pipeline.render_clip`): the creator's active campaign with the highest priority, and its render profile.
+  - A spike clip is tagged only inside `lanes.campaign_hours_utc`.
+  - Story cuts inherit their parent's tag.
+- **Viewer clips:**
+  - With `twitch_clips.campaign_first`, clips are read per campaign broadcaster and go first, inside the same cap.
+  - **Moment dedupe:** a viewer clip of a moment the live lane already clipped is now refused. Live clips are stored under the stream id, not the archive id, so before this the same moment could post twice.
+- **Guardian:** incident `heartbeat:campaign-watcher` when the watcher is older than `campaigns.watcher_stale_s` while a campaign is active.
+- **Clients:** `TwitchClient.get_streams_by_user` and `get_clips_by_broadcaster` (Helix Get Streams `user_id`, Get Clips `broadcaster_id`), both with fakes.
+- **Tests:**
+  - `tests/unit/campaigns/test_campaign_watcher.py`.
+  - A new case in `tests/unit/discovery/test_discovery_assign.py`.
+  - `tests/integration/test_campaign_sourcing.py`: slot, preempt, re-tag, wrong game, offline archive at priority 35, untag on pause, clip tag, live-range dedupe.
+
+### Deviations
+
+- The campaign tag is decided per clip at insert time, not carried from spike to clip. `spikes.campaign_id` exists but is not written.
+- YouTube uploads that were never live are not queued (campaign streamers are taken from their streams).
+- Several live campaign streamers beyond `live.campaign_slots` are not recorded. They are taken from their VOD after the stream, as the Operating flows tab says.
+
+### Staging (2026-11-23)
+
+- Merged via #84 (branch `clipcamp-staging-2`). #84 went in with a failed `ruff format --check` on `cli.py` (my merge command did not wait for green CI). #85 fixed it with CI green, and the staging deploy (14:05 UTC, run of #82) applied 0051.
+- First watcher pass on staging:
+  - `jerma985` live in Grand Theft Auto VI (7,134 viewers).
+  - His running trending session was re-tagged to `staging-test-jerma`, not restarted (`retagged: 1, started: 0`).
+  - The heartbeat beats every 60 s and `creator_live_status` is filled.
+- Still to see: the session moving `assigned -> recording` after the deploy restart, and the first clip carrying `campaign_id` / `render_profile`.
+
+### Open issues / next
+
+- Not yet verified: a multi-day session (a 120 h marathon) without a forced restart.
+- PR 3: render profiles, disclosure line, logo and overlay, streamer-on-screen rule, `brief_match`, fallback to Normal.
+- PR 4 notes from the Upload-Post docs (checked 23 Nov):
+  - TikTok: `brand_content_toggle`, or the cross-network `paid_partnership`, which is refused with `SELF_ONLY` privacy, so staging cannot test it.
+  - YouTube: `hasPaidProductPlacement` (may need the Studio toggle; Upload-Post warns).
+  - Instagram: no API field; the label must be set in the app.
+- PR 5 notes:
+  - WF08 can be live in only one environment (one bot webhook).
+  - Warn alerts are rate-limited per title, so each reminder needs its own title.
+
+## Clipping campaigns PR 3 — render profiles and brief_match (2026-11-23)
+
+**Branch:** `clipcamp-3` (on top of `clipcamp-2`). Migration `0052_campaign_render.sql` (`render_profiles.logo_png`, `clips.brief_result`).
+
+### What was built
+
+- `campaigns/profiles.py`:
+  - `apply(rules, profile)` (pure) turns a style's rules into the campaign version: watermark off/on, the disclosure line, the logo, no follow line, no POV crop.
+  - `styled(clip_id, rules)` applies the clip's own profile.
+  - A logo PNG is kept in its profile row and written to `$DATA_DIR/logos/<sha256>.png` when needed.
+- `campaigns/brief.py` (pure) and `campaigns/look.py`: `brief_match` runs in the factory's style step, where the face cam and the window length are known.
+  - A failed brief clears the clip's campaign tag, sets profile `brand` and writes `clips.brief_result` and a `campaign.brief_failed` event. The clip is drawn as a Normal clip: no re-render, never dropped.
+  - Applied to the reference render, the story cut and every per-account variant.
+- Renderer:
+  - `RenderSpec.disclosure_text/disclosure_s`, drawn by `overlays.disclosure_filter`: top left of the safe zone, dark box, first N seconds.
+  - `RenderSpec.campaign_logo/campaign_logo_pos`, drawn by `render.campaign_logo_filters`: 200 px reference width, a corner inside the safe zone.
+  - Both are set from the style rules in `pipeline.render_file`.
+- CLI: `sixstars campaign profile-add <id> --from partner-logo --logo file.png --pos bottom_right [--no-watermark] [--disclosure ...]` and `sixstars campaign profiles`.
+- Save checks: a logo profile without its logo is refused, and so is `overlay-keep`.
+- Tests:
+  - `tests/unit/factory/test_factory_campaign_look.py` includes a **real ffmpeg frame check**: the disclosure box is there at 0.5 s and gone at 2.2 s, and the logo pixels sit in the corner in both frames.
+  - `tests/integration/test_campaign_render.py`.
+
+### Deviations
+
+- `brief_match` runs before drawing, not as a gate check after it. The plan's gate check would have needed a re-render, and the source window may be gone by then. Its facts (face cam, length, streamer) are all known before drawing. Required tags are checked at caption time (PR 4).
+- `overlay-keep` is refused: today's crops cut the stream overlay, and a full-frame layout belongs to Render v2 (M19, another session).
+- The disclosure line is drawn on the frame. The platform paid-partnership labels come in PR 4.
+
+### Open issues / next
+
+- PR 4: allocation, captions, paid labels, base hashtags, TikTok re-enable (ask).
+- Staging: renders are deferred until 00:02 UTC because `ai.daily_budget_usd` ($5) was used up on 23 Nov. The first campaign-look clip on staging will appear after that.
+
+## M19 R0 — Render v2: no zoom, no punch-ins (D119) (2026-11-23)
+
+**Branch:** `render-v2` (worktree `../6stars-wt-render`) · **Plan:** `development-plan/M19-render-v2.md` · **Migration:** 0043
+
+### What was built
+
+- Deleted every effect that changed the framing over time: the tail zoom (100→108% over the last 40%), the step zoom cuts (`ZoomCut`), the full-frame punch-ins (`PunchIns`, `_punch_filters`, `effects.select_punchins`, `pipeline._punch_spans`, `render.build_envelope_command`) and the whoosh/impact on punch-ins. `window.ZOOM_MAX`, `ZOOM_TAIL_FRACTION`, `zoom_start_s` and `RenderSpec.zoom/zoom_cut/punch_ins` are gone; `layout_filters`, `_framed_filters` and `_montage_filters` lost their `zoom`/`duration_s` parameters. The seam and progress bar lost the `enable` that hid them during a punch-in.
+- `scale_filters(width, height, *, scaler)` is a plain scale that names its ffmpeg scaler (`layout.SCALERS`). The scaler comes from `factory.layout_v2.scaler` through `FactoryConfig.scaler` → `RenderJob.scaler` → `RenderSpec.scaler`; without the setting (until R1 seeds it) ffmpeg's default `bicubic`, so R0 alone changes nothing but the motion.
+- `StyleRules` lost `punchin_max`, `punchin_zoom`, `punchin_len_s`, `punchin_min_gap_s`, `punchin_db`, `zoomcut_every_s`, `zoomcut_scale`, `cut_sfx` and the `punchins`/`zoomcuts` properties. `from_setting` ignores these keys (`style.RETIRED_KEYS`, warning `style_retired_keys_ignored` once per process), so code and migration can ship in either order.
+- `effects.plan_sfx(cuts=...)`: whoosh + impact only on the montage's B-roll cuts (montage is retired in R1).
+- Migration `0043_render_v2_no_zoom.sql` (idempotent): strips the retired keys from `factory.style` and every `factory.styles` entry; `enabled: false` on `cam_top_viral` and `cam_top_viral_follow` (kept in the catalogue so planned clips still render, now still). `DEFAULT_STYLES` mirrors it.
+- Tests: `tests/unit/factory/test_no_zoom.py` (every catalogue style × every layout kind: no `eval=frame`, no `zoompan`, no time variable in a scale/crop argument, no timed overlay except the montage's B-roll; plus a check that the guard catches the old expressions); real-ffmpeg `test_framing_is_static_for_the_whole_clip` (still SMPTE+grid source through layouts C and B, frames at 0.5/3/5.5 s identical, sensitivity to a 2 px shift asserted). Zoom/punch-in tests removed or rewritten; filter snapshots regenerated (only the zoom expression → plain scale changed).
+- Docs: D119 in `docs/00-decisions.md`; removed effects marked in docs/09, 16, 27 (full rewrite in R7).
+
+### Results
+
+ruff, `ruff format --check`, `mypy --strict src/` clean. Unit: 3789 passed, 6 skipped. All migrations apply to Postgres 17; 0043 re-run is a no-op. Integration (local Postgres 17, ffmpeg 9.0.2): 59 failures, of which 57 also fail on unchanged develop 73347db in the same environment (gate `file_duration` rejects: the rendered files lack the 1.5 s end card locally; precheck, visual score, gate CLI, design styles) — pre-existing, environment-specific, not R0. The 2 R0-caused failures (0036 twin test expecting `cam_top_viral_follow` usable; config test asserting `punchins`) are fixed.
+
+### Deviations
+
+- Decision number D119 (D117 = AI cost plan, D118 = paid clipping campaigns, both landed first). Migration 0043 (0038–0040 landed on develop meanwhile, 0041/0042 held by `ai-cost-b1`).
+- Lanczos is not active until R1's settings migration adds `factory.layout_v2` (the prompt adds every new key in R1).
+- **Staging check not done:** "5 staging renders show identical framing" is open. SSH from the dev machine to staging times out (port 22), staging's `clip.render` queue had 6 jobs stuck since 07:19 UTC with nothing rendered since, and another session was changing staging settings; R0 was not deployed there. Owner to choose: deploy `render-v2` alone to staging (workflow_dispatch), merge to develop (then it rides the next develop→main release), or wait.
+
+### Open issues / next
+
+- Clips rendered before R0 keep their zoomed files and still post until R7 re-renders the queue.
+- Render time before/after not measured yet (no per-frame scale any more, so it can only drop).
+- Next: R1 (G/G0 geometry, settings migration with `factory.layout_v2`, `factory.text_v2`, `facecam.detect`, `gate.render_v2`).
+
+## Clipping campaigns PR 4 — allocation, captions, paid labels (2026-11-23)
+
+**Branch:** `clipcamp-4` (on top of `clipcamp-3`). Migration `0053_campaign_posting.sql` (`lanes.return_unused_at_utc` 18, `lanes.campaign_gap_s` 3600).
+
+### What was built
+
+- **`posting/campaign_lane.py`** (pure): orders each account's candidates in the slot (docs/11 R15).
+  - Campaigns below their minimum go first, then Normal (with room kept for open minimums until 18 UTC), then campaigns up to their maximum.
+  - Campaign hours per platform and the 60-minute same-campaign gap per account apply.
+  - A campaign clip is never posted as Normal.
+- **Wiring:**
+  - `selection.plan_hourly_slot` takes `campaign_quotas` / `lane_rules`.
+  - `DbStore.load_campaign_lanes` reads open lanes (active, started, not ended, budget left) and the `lanes.*` settings.
+  - `hourly.plan_slot` passes them on.
+- **Posts:** `posts.campaign_id` is set at insert from the clip. The history carries it, so quotas and gaps count per campaign.
+- **Publisher:** re-checks the campaign (status, dates, budget) right before sending (`DbStore.campaign_refusal`).
+- **Captions:**
+  - Required line (CTA and mention) after the credit; required tags first among the hashtags; only the clip line is cut.
+  - No first comment on campaign posts.
+  - Paid labels: YouTube `hasPaidProductPlacement`; TikTok `brand_content_toggle`, not on `SELF_ONLY`; Instagram none (manual).
+- **Tests:**
+  - `tests/unit/posting/test_posting_campaign_lane.py`.
+  - `tests/integration/test_campaign_posting.py`: YouTube and Instagram take the campaign clip with its tag, line, tags and label; TikTok, with no quota, takes a Normal clip; a paused campaign gets no post.
+
+### Findings
+
+- Production `posting.base_hashtags` is already `#GTA6 #GTAVI #GTA6Clips` (read 23 Nov). The plan's "replace #GTA5 #GTAV" is not needed.
+- Production `tiktok_main.lanes` is `[]`. TikTok campaign posts need it set back to `{hourly}` (owner approved the idea; ask before the change).
+
+### Deviations
+
+- Spike clips of campaign streamers post through the spike lane as before (spikes unchanged). They count toward their campaign but are not limited by its quota.
+- A campaign clip that waits past its hours or its campaign is not re-rendered as Normal. It waits for the next campaign hours, or expires with `posting.max_clip_age_h`. The plan's "held until 10:00 if under 8 h old, else Normal (re-render)" needs re-rendering, which is left for later.
+- Instagram's paid-partnership label cannot be set through Upload-Post (Instagram Login). It goes into the PR 5 submission alert as a manual step.
+
+### Open issues / next
+
+- Release of phase 1 (PR 1-4) to production needs the owner's go:
+  - merge `clipcamp-4` (with 1-3) to `main`; `main` gained 0037-0042 meanwhile, so expect doc conflicts;
+  - migrations 0050-0053 applied by the production deploy;
+  - production `tiktok_main.lanes = {hourly}`.
+- PR 5: `clip_campaign_posts` rows, Telegram Submitted/Skip, reminders, expected payout.
+
+## M19 R1 — Render v2: G and G0 geometry, retired frames off (D119) (2026-11-23)
+
+**Branch:** `render-v2-r1` (worktree `../6stars-wt-render`) · **Migration:** 0054 (0053 is held by the campaign-posting work)
+
+### What was built
+
+- `factory/layout.py`: `LayoutKind` gains `G` and `G0`; `LayoutG(facecam_box, face_box, overlay_boxes)` and `LayoutG0(overlay_boxes)`; `LayoutV2Rules` (the setting `factory.layout_v2`, every key validated, a bad value gives the defaults with the switch off); `Geometry.for_canvas(w, h, v2)` adds `g_cam_h`, `g_game_h`, `g0_game_h`, `g0_game_y`; `gameplay_band("G" | "G0", v2)` for the gate.
+- `gameplay_crop_v2` (pure): the largest crop of the panel's aspect at full source height, centred, slid sideways to the nearest position clear of the facecam and the overlay boxes within `max_slide` x source width, else the least overlapping area (nearest the centre on a tie); even offsets; one crop per clip. Candidates are the range ends and the edge-meeting positions (the overlap is piecewise linear), so it is exact and cheap.
+- Filter graphs (`_v2_filters`): G = cam panel 1080x`cam_h` (until R2: the centred crop of the cam box) vstacked over 1080x(1920-`cam_h`) of gameplay; G0 = layout B's blurred background (`blur_background`, factored out) with the 4:5 gameplay at `g0_game_y`. Both Lanczos (the scaler setting), no seam and no progress bar (`render.build_video_filters`).
+- `pipeline.framed_layout(layout, style, v2)`: with `factory.layout_v2.enabled`, G when a facecam was found (any detected layout with a facecam, until R3 verifies it), else G0; `style.frame` and `style.facecam_top` are ignored. Off, nothing changes, and a G/G0 layout from a recipe is drawn as A/B. The rules flow `FactoryConfig.layout_v2` → `RenderJob.layout_v2` → `RenderSpec.layout_v2`, also for story cuts, variants (`clip.variants`) and the gate band (`gate.visual.measure_file(layout_v2=...)`, `gate.store` accepts G/G0).
+- Text until R4: G uses layout C's places on its own seam (720), G0 uses layout B's.
+- `variants.recipe_json` stores `kind`, `facecam_box`, `gameplay_box`, `face_box`, `overlay_boxes`; `layout_from_recipe` reads G/G0 back; old recipes load as A/B and become G/G0 through `framed_layout` while the switch is on.
+- Migration `0054_render_v2_settings.sql` (idempotent, never overwrites a value): seeds `factory.layout_v2` (enabled **false**), `factory.text_v2`, `facecam.detect`, `gate.render_v2`; disables `hype_montage`, `headline_card`, `pov_fullframe` and removes them from `factory.style_director.affinity`. Code defaults (`DEFAULT_STYLES`, `DEFAULT_DIRECTOR`) mirror it. docs/16 documents the four keys; docs/27 marks the three styles disabled.
+- Console: `ClipBits.tsx` names layouts G/G0 and marks the retired styles "(retired)" (the console has no style picker; styles are only displayed).
+
+### Results
+
+ruff, format, `mypy --strict` clean; unit 4022 passed. New `tests/unit/factory/test_layout_v2.py` (32: setting parse and seeded values, geometry, the five crop cases of the plan with production-like boxes, slide limit, even offsets, G/G0 graphs, no seam/progress, master switch for every style, recipe round trip, gate kinds); `test_no_zoom.py` covers G and G0; real-ffmpeg `test_render_v2_frames_have_the_spec_sizes_and_avoid_cam_and_chat` (G: cam panel red = facecam, gameplay panel pure gameplay with no cam or chat pixels; G0: gameplay at 285..1635 without the chat, dark blur above; 1080x1920 checked with ffprobe). Integration: `test_render_v2_settings_migration.py` (idempotent, switch off, styles off, affinities gone, operator value kept).
+
+Render time, local PC, 10 s clip from a 1920x1080 test pattern, normal mode, median of 3 (noisy machine): C bicubic (today) 6.2 s, C Lanczos 4.8 s, B bicubic 5.9 s, G Lanczos 3.8 s, G0 Lanczos 5.4 s. No slowdown from Lanczos measurable.
+
+### Deviations
+
+- Lanczos becomes active for every render once 0054 is applied (the scaler is read with the switch off, as R0 specified).
+- "Staging renders of 3 cam and 2 no-cam clips match the spec sizes" needs `factory.layout_v2.enabled = true` on staging, which the plan schedules from R2 on. The sizes are checked on real ffmpeg renders locally; the staging check is done when the switch goes on (R2).
+- R0's staging framing check is still open: since the R0 deploy (14:49 UTC) every staging render was rejected by the gate for content reasons (music_over_limit, score_too_low, same mix as before), so no post-R0 render has been stored yet; rejected files stay on the server, which this PC cannot reach by SSH.
+
+### Open issues / next
+
+- R2: YuNet face detector (`factory/faces.py`), `cam_window`, the blurred fill and unsharp on the cam panel; switch staging on.
+
+## M19 R2 — Render v2: face-aware cam panel (D119) (2026-11-23)
+
+**Branch:** `render-v2-r2` · no migration (the settings came with 0054)
+
+### What was built
+
+- Dependency `opencv-python-headless>=4.14.0.94,<5` (4.14.0.94, July 2026). The model `assets/models/face_detection_yunet_2023mar.onnx` (opencv_zoo, MIT, `LICENSE-yunet.txt`; sha256 `8f2383e4…`, matches the LFS pointer) is bundled. docs/14 records the version, the API as checked and why 4.x (5.1.0.95 is six days old; the 2023mar model has a fixed input shape for the 4.x DNN engine). docs.opencv.org refused automated fetches (403), so the API was read from the installed package's docstrings.
+- `factory/faces.py`: `YuNetDetector` (CPU, crops shorter than 320 px enlarged before detection, one per process, locked), `FakeFaceDetector`, `FaceDetectRules` (the setting `facecam.detect`), `grab_frames` (ffmpeg → raw BGR of the cam box), `sample_times`, `median_face`, `find_cam_face` → `CamFaceCheck` (median face box in source pixels, hits, frames, ms).
+- `layout.cam_window` (pure): window of the panel's aspect; the face height at the middle of `cam_face_h_min..max` when that window fits the cam box, else the largest share up to `cam_face_h_max` that fits, else `cam_face_h_max` with a blurred fill; face centred horizontally, its centre at `cam_face_center_y`; never cut (the window grows, a smaller face, until the face fits with 5% margins); only cam-box pixels taken from the source. Returns `CamWindow` (window, even sharp crop, scale, placement, fill, face in panel pixels).
+- `layout.cam_panel_filters`: crop → Lanczos → `unsharp=5:5:cam_unsharp` on the cam, over a blurred (`cam_fill_blur`) and darkened (`cam_fill_darken`) copy of the cam box when the crop does not cover the panel. Layout G uses it when it has a face box (`layout_filters(..., v2=rules)` replaces the R1 `max_slide` argument).
+- `pipeline.frame_cam` (in `render_file`): with the switch on, a layout-G job gets its face from `find_cam_face`; no face in any checked frame, or a check that cannot run, draws the clip as G0 (log `cam_no_face` / `cam_face_check_failed`). `RenderOutcome.layout` is the layout actually drawn (recorded as `clips.layout_kind` / `clip_renders.layout_kind` and used for the gate band); `RenderOutcome.cam_check` goes into `clip.rendered` and `clip_renders.checks.cam`; a G0 fallback emits `clip.cam_no_face` (clip, story cut and per-account renders). `FactoryConfig.face_detect` → `RenderJob.face_rules`.
+
+### Results
+
+ruff, format, `mypy --strict` clean; unit 4071 passed. New `test_cam_framing.py` (40): `cam_window` on the production cam boxes of Jerma (248x246), MissMikkaa (518x608), Kai (393x222), a 16:9 cam, a face at the box edge, a tiny face and a face filling the cam: face fully inside the panel with ≥ 4 px to every edge, height share within 0.40..0.60, only cam-box pixels, even crop; panel filters with and without fill; detector helpers; YuNet loads and finds nothing in a blank frame; `frame_cam` accept / no face → G0 / switch off / failed check → G0. Real ffmpeg: a Jerma-sized cam framed on the face, sharp cam in place, dark fill beside, no gameplay pixels in the panel.
+
+Real footage (the owner's Kai Cenat reference Short, its cam region 720x460 as the cam box): YuNet found the face in 3 of 5 frames (the other two are the Short's own zoomed close-ups), panel framed at a 0.50 share, whole face, centred. **Face check latency: 1.1 s per clip on the dev PC** (5 frames, about 200 ms each, mostly the ffmpeg seek), under the 3 s budget. Render of a 10 s G clip with the framed panel: 5.8 s (normal mode).
+
+### Deviations
+
+- The window is not moved into the cam box to avoid fill: the plan places the face exactly (centred, at `cam_face_center_y`) and fills whatever lies outside the box, so a cam whose face is near its edge gets a blurred band on that side.
+- The face is detected again on every render of a clip (reference and each style, about 1 s each); R3 caches it per source.
+
+### Open issues / next
+
+- Switch `factory.layout_v2.enabled` on in staging (plan: from R2) and check staging renders (R1 sizes, R2 faces of Jerma/MissMikkaa/Kai-style sources).
+- R3: detection v2 (P4 overlays, face-verified cam boxes, source cache, migration).
+
+### M19 R2 fix — odd cam boxes (2026-11-23)
+
+First staging renders with `factory.layout_v2.enabled` on (staging only, from 16:49 UTC): two clips drawn as G with the face found in 5 of 5 frames (face check 1.4 and 1.8 s on the server), one MissMikkaa live clip drawn as G0 with **0 frames read**. Her cached cam box (1402, 477, 518, 603) has an odd y and height; ffmpeg rounds a crop of 4:2:0 video, so it returned 602 rows, every frame was shorter than expected and was dropped. Fix: the face check grabs `faces.even_box(cam_box)` (the largest even box inside the cam box) and maps the face back from it; `CamFaceCheck.reason` tells `no_frames` (no frame could be read) from `no_face`, in the log, `clip.rendered.cam_check` and `clip.cam_no_face`.
+
+## TZ — App time zone, default Cairo (built 2026-11-21, rebased onto develop 2026-11-23)
+
+Branch `app-timezone-v2` (rebuilt on develop 2026-11-23; the original 2026-11-21 work was never committed and sat 75 commits behind). Owner request: run the whole app on Cairo time with a time zone setting in the console; limits keep working in UTC. Decision D120 (D116 was taken on develop meanwhile).
+
+### What was built
+
+- Migration `0055_app_timezone.sql` (first written as 0034, which develop has since used): setting `app.timezone` = `"Africa/Cairo"`; `reports.timezone` removed.
+- `src/sixstars/clock.py`: `app_zone()` (cached 30 s; never raises; invalid name or no database means Cairo), `fmt_local()` ("14:32 Cairo (12:32 UTC)"), `zone_label()`, `is_valid_zone()`.
+- Telegram text in the app zone, with UTC in brackets:
+  - the pre-launch summary title and `/status` (launch time, pause times)
+  - discovery failing/recovered and blocked-downloads notes
+  - live-lane blocked/recovered
+  - the Upload-Post reconnect alert
+  - "Hourly queue empty"
+  - the proxy status line
+- The daily report day follows `app.timezone`, and its issue times now use that zone too (before, they were hard-coded UTC).
+- `POST /v1/control/settings` refuses an invalid zone (`422 invalid_timezone`).
+- `GET /v1/reports/daily?due=1`: claims the local day that just ended through a `report.daily_sent` event, so each day is sent once.
+- WF06 builder: every hour at :05, then fetch with `due=1`, then IF `due`, then Telegram.
+- Console (`web/`):
+  - `lib/format.ts` formats in the display zone (Intl, DST-safe). Hover titles show the UTC instant.
+  - `TimeZoneSync` keeps the display zone in line with the setting.
+  - `<main key={zone}>` re-renders every page once when the zone changes.
+  - Header clock (app zone plus UTC; popover with app, UTC and browser zones).
+  - Settings → Time zone card (searchable list, live preview, saves through the usual confirm step).
+  - "UTC" labels on shown times are replaced by the zone label.
+  - UTC-hour slot grids stay labelled UTC; each cell's tooltip shows the local hour.
+
+### Kept in UTC on purpose
+
+Storage, API payloads, caps and budgets (UTC day), `hourly_hours_utc`, `posting.reserve_release_hour_utc`, the YouTube quota day (LA), AI prompts, CLI output, stored decision reasons (`posting/precedence.py`, `posting/gate.py`, `gate/checks.py`, `posting/caps.py`, discovery gate details), containers `TZ=UTC`.
+
+### Deploy order (important)
+
+1. Apply 0055 and deploy the server.
+2. Only then re-apply WF06 (`build_workflows.py apply --env staging`).
+
+An old API ignores `due=1`, so the new WF06 would send the report every hour. The first run after deploy sends the report for the Cairo day that just ended. The `workflows/*.json` exports refresh on the next `export`.
+
+### Tests
+
+- Python unit: all pass (13 new in `test_clock.py`; status, discovery and blocked-platform text expectations updated).
+- Integration (throwaway postgres:17):
+  - new tests: zone validation, the `due` flow sending once, and the Cairo day boundary of the report
+  - updated: the stats and blocked-discovery tests
+  - full suite: 57 failures, the same 57 that fail on untouched develop (`test_gate_run`, `test_gate_visual_score`, `test_precheck_flow` and others), none from this change
+- Web: vitest 36 passed (Cairo, DST, midnight rollover, offsets, UTC hover); lint, typecheck and build clean.
+- Not checked in a browser (no browser tools in this session).
+
+### Rebase onto develop (2026-11-23)
+
+- Rebuilt as one commit on `origin/develop` (c776f27). Conflicts only in `scheduler.py` imports (kept the campaign watcher), `00-decisions.md` and this file.
+- Renumbered: migration 0034 → 0055 (develop runs to 0054; cover-engine holds 0044), decision D116 → D120.
+- `claim_due_day` now takes a transaction advisory lock per day, so a manual WF06 run overlapping the hourly one cannot send the report twice.
+- New develop code checked for human-facing UTC times: none added to the console; the one new UTC string (`posting/store.py` campaign refusal) is a stored decision reason and stays UTC by design.
+- Checks on the rebased branch: ruff, ruff format, `mypy --strict src/` clean; unit 4052 passed, 6 skipped; web lint, tsc, vitest 36, build clean; all 55 migrations apply on fresh postgres:17; integration 531 passed, 58 failed; untouched develop gives 528 passed and the identical 58 failures (`test_gate_run`, `test_gate_visual_score`, `test_precheck_flow`, `test_gate_cli`, `test_factory_pipeline`), so none come from this change.
+
+### Release checklist (for the merge to production)
+
+1. Merge this PR into `develop`; the staging deploy applies 0055 automatically (`supabase db push`).
+2. After the staging server is healthy: `uv run python n8n/build_workflows.py apply --env staging` (WF06). Never before the server deploy: an old API ignores `due=1`, so the report would go out every hour.
+3. Check on staging: `/status` in Telegram shows Cairo times with UTC in brackets; console header clock; Settings → Time zone card saves; `GET /v1/reports/daily?due=1` answers `due: true` once, then `due: false`.
+4. Merge `develop` → `main`; the production deploy applies 0055; then re-apply WF06 with `--env production` (same order: server first).
+5. The first WF06 run after the re-apply sends the report for the Cairo day that just ended, so one extra report around the switch is expected.
+
+## Cover engine C0 — verify and probe (2026-11-23)
+
+**Branch:** `covers-c0` (worktree `../6stars-wt-covers`, off `develop` b58de03). Spec: `docs/29-cover-engine.md` (copied from the owner's Claude Doc) + `docs/29a-cover-engine-prompt.md` (the build prompt, wins on conflicts).
+
+### What was built
+
+- `docs/29`, `docs/29a`; `docs/29b-cover-probe.md` (prompt §2 re-verified against the code, Upload-Post docs, live probe results); `docs/14` §1 "Cover fields" row.
+- `scripts/covers_probe.py`: a staging-only, private-only probe (`prepare`, `post`, `status`, `yt_thumb`); refuses Instagram, never touches `settings`, redacts the account email from its log.
+- Probe: TikTok `cover_timestamp` and `tiktok_cover_image_url` both accepted on `SELF_ONLY` posts with no capability warning (our TikTok connection has `cover_image` + `cover_timestamp`). YouTube `thumbnail_url` at upload → `thumbnail_pending: true` (still pending after 8 min); `POST /api/uploadposts/youtube/thumbnail` → **200**, and YouTube stored our image as the 1080×1920 Shorts thumbnail, although the channel is not in the Partner Program.
+
+### Deviations
+
+- No Instagram live probe: staging posts onto the production accounts (D101/D102), and Instagram can't post privately (owner decision, 23 Nov).
+- The probe calls the Upload-Post API with httpx directly, not through `clients/upload_post.py`, because the client's status parser drops `thumbnail_pending` / `warnings`. C7 adds those fields to the client.
+- The prompt says staging = GTA 5; staging runs GTA VI (`env.target_game`, read live) and stays that way.
+- Migration number: not 0028 (taken). 0037 is claimed by two in-flight branches, so covers takes the next free number at merge time.
+
+### Open issues / next (owner)
+
+- Check in YouTube Studio whether the custom thumbnail on private video `X0n4aCpzTVI` shows. If it does, YouTube custom covers can be tested on staging in C7 without waiting for the Partner Program. Then delete the video (`unpublish`).
+- C1 is a visible look change on every clip: facecam 672 → ≥ 768 px in layout C, and phrase captions in the first 2 s and around the peak. Needs the owner's yes before building.
+- YouTube traffic-source reward needs a YouTube OAuth refresh token (`sixstars youtube auth`).
+- OCR: RapidOCR (PP-OCR models on onnxruntime) proposed instead of the paddlepaddle install.
+
+## Cover engine C2 — migration, config, buckets (2026-11-23)
+
+**Branch:** `covers-c2` (on `covers-c1`). Owner, 23 Nov: merge everything at the end, once the other sessions are done. Staging verification of C1+ is batched after that merge.
+
+### What was built
+
+- `supabase/migrations/0044_cover_engine.sql`:
+  - the `covers` table from docs/29a §8, plus `render_id` (M18 renders several styles per clip), `account_id` (diversity and grid are per account) and `mode` (full / frame_only), with check constraints and RLS;
+  - the eleven `cover.*` keys, with `cover.enabled` off everywhere;
+  - buckets `covers-work` (private) and `covers-public` (public).
+- `covers/config.py` `CoverConfig`:
+  - `from_values` is pure; `load` reads `scoring_config` and records the version;
+  - helpers `mode_for`, `brand_mark_for`, `runs_for`, `deadline_for`, and `lane_key(lane, campaign_slug)`.
+- `covers/store.py`: insert, `set_status`, `recent_for_account`, `recent_lines`.
+- `storage.py`: `public_url`, `cover_work_key`, `cover_public_key`.
+- Tests: `tests/unit/covers/test_covers_config.py` and `tests/integration/test_cover_engine_migration.py`.
+
+### Deviations
+
+- Migration 0044 instead of 0028.
+- `cover.enabled` is seeded `false` (the prompt's staging default is `true`). One migration serves both environments, and production must start off, so staging is switched on by hand.
+- `cover.lane_modes` and `cover.brand_mark` include `spike` next to `normal`: our live lane is ours, like the normal lane. Campaign lanes (`campaign:<slug>`, from the unmerged `clipcamp-1`) fall to `*`, which is `frame_only` with no mark.
+
+## Cover engine — restructure after Render v2 (2026-11-23)
+
+The owner decided on 23 Nov:
+- Render v2 (M19, D119, another session) owns the framing. Its spec supersedes the cover prompt's "facecam ≥ 40%" rule (cam 720 px = 37.5%) and verifies and centres the face itself.
+- C1's renderer changes are therefore dropped: the 768 px facecam, the face crop, the phrase windows, the dark lift and migration 0038. The code stays on branch `covers-c1` for reference.
+- What survives from C1 moves into this stack: the clip's peak (`covers/peak.py`, stored as `clips.peak_s`), and caption OCR and judging (`covers/ocr.py`).
+- The cover-specific extras (whole caption phrase in the first 2 s and ±1 s around the peak, dark-opening lift, the `check-video` acceptance tool) are rebuilt on Render v2's text_v2 once its R1/R2 land.
+- Branches are rebuilt as one stack on develop (`cover-engine`). Migrations are renumbered to 0044+ (0038–0042 landed on develop and render-v2 holds 0043); check again before the final merge. PRs #74, #79 and #81 are replaced.
+- Merges into develop wait until all sessions are done (owner), so the staging checks of every C milestone are batched after that merge.
+- YouTube custom thumbnails: the owner saw the probe thumbnail in Studio on a non-Partner channel, so C7 tests them on staging. Production still waits for the owner's yes.
+
+## Cover engine C3 — frame miner and scorer (2026-11-23)
+
+### What was built
+
+- `covers/miner.py`:
+  - `capture` runs in the render job after the variants are prepared, for the short clip and the story cut (peak moved into the story's time). When `cover.enabled` is on, it keeps the clip's source span in `$DATA_DIR/covers/<clip_id>/source.mkv`. That is a hard link to `variants/<clip_id>/source.mkv` when one exists, so it costs nothing on most clips; otherwise it is the same frame-exact copy. It also writes `manifest.json`, stores `clips.peak_s/peak_source` and queues `cover.mine`.
+  - `mine` (the job): one ffmpeg pass at 4 fps for the facecam box (native pixels) and the gameplay region (≤ 1280 px wide). It scores 4 fps frames in peak ±2 s and 1 fps elsewhere, keeps the top 5 (≥ 0.5 s apart) in `top/` and `covers-work/<clip_id>/`, and writes `mine.json`. It OCRs the rendered file at the 12 best frames to pick `cover_timestamp_ms`, then deletes the source copy.
+- `covers/scorer.py`, pure maths plus OpenCV/MediaPipe:
+  - **Features:** expression (max of jawOpen / eyeWide / browInnerUp / smile, +0.15 when two are ≥ 0.4), eyes open, face area (height share), sharpness (percentile among frames with a face), exposure (90–190 ideal, clipped pixels), gameplay (brightness factor × mean of detail and change percentiles).
+  - **Hard rejects:** no face, eyes < 0.35, face cut by the edge, bottom 20% sharpness.
+  - **Layout proposal:** face-led if gameplay < 0.3 or moment_type "emotional"; moment-led if gameplay > 0.7 and face < 0.25; else split.
+- `covers/peak.py`: anchor, else payoff, else chat. `covers/ocr.py`: caption tokens across y 200–1760 and cut-word judging.
+- Pipeline: `Produced.peak_s/peak_source`, `_capture_cover`, `_story_peak`.
+- Worker: `cover.mine` is registered.
+- Dependencies: `mediapipe`, `rapidocr`, `onnxruntime` and `opencv-contrib-python-headless`, with uv overrides dropping the GUI OpenCV builds.
+- Dockerfile: the face landmarker is baked (sha256-pinned), `libegl1`/`libgles2` are added, and the landmarker and RapidOCR load at build time.
+- Tests: `tests/unit/covers/test_covers_mining.py` (17).
+
+### Local check on real staging clips
+
+Four layout C clips were run through the miner, with the rendered file standing in for the source:
+- 22–54 frames scored per clip, in 21–39 s with OCR;
+- the top picks show visible, expressive faces;
+- a death screen gave the face-led proposal;
+- OCR reads wordcap captions and title pills.
+
+### Deviations
+
+- The prompt's "save clean layers from the renderer" is met without touching the renderer: the facecam and gameplay boxes of the kept source span are the clean layers.
+- "Talking/quotable" has no tag; the writer's `moment_type = "emotional"` stands in.
+- Scorer thresholds (eyes 0.35, blur 20%, layout 0.3/0.7/0.25) are spec structure, kept as constants. The weights are the `cover.weights` setting.
+- OCR also reads the title pill, so a title that repeats transcript words counts as a phrase. To refine once Render v2's text layout is final.
+
+### Open issues / next
+
+- The C3 acceptance (blind top-vs-random pairs on 30 staging clips, `docs/reports/covers-c3.md`) needs the staging deploy, after the final merge.
+- A localised death screen ("МЕРТВА") can be a top gameplay frame: the C6 QA must reject non-English text.
+
+## Cover engine C4 and C5 — cover line and compositor (2026-11-23)
+
+### C4
+
+- Prompt P12 `ai/prompts/p12_cover_hookline.md` holds the owner's text. The JSON example is described in words, because the repo's prompt test forbids literal braces in a system prompt.
+- `ai.calls.write_cover_lines` (fast model, `ai.model.p12_cover_hookline` override) and the `CoverLines` schema.
+- `covers/hookline.py` checks in code: words, capitals, wrap, emoji, `?!`, banned words plus the title writer's outcome words, overlap with the title, source in the transcript (fuzzy ≥ 0.8), recent lines. Profanity is masked F*CK-style.
+- `sixstars covers eval-lines --limit 50` runs the C4 eval.
+- **Deviation:** the prompt's own example "OH MY GOD I DID IT" has 6 words, against its 1–5 rule. The rule (5) is kept.
+- **Open:** the eval did not run. Staging's `ai.daily_budget_usd` ($5) was used up on 23 Nov, and the budget guard stopped every call. It runs after 00:00 UTC; it was neither forced nor raised.
+
+### C5
+
+- `covers/compose/` (Python preparation plus Playwright) and the four templates. Details in docs/CHANGELOG-scoring.md and `docs/reports/covers-c5.md` (an early local sheet; the acceptance sheet comes after the staging deploy).
+- **Deviations:**
+  - The moment-led cut-out uses MediaPipe's selfie segmenter (already a dependency, 250 KB) instead of rembg/BiRefNet, which would bring numba, scikit-image and a 170 MB model for the same mask.
+  - The four template files share `cover.css`/`cover.js`.
+  - The Real-ESRGAN upscale (`cover.upscale_enabled`, off) is not built: face-led falls back to split for a facecam crop under 400 px. Building the upscaler is left for when the flag is wanted.
+
+## Cover engine C6 and C7 — QA gate, build and delivery (2026-11-23)
+
+### C6
+
+- QA gate (`covers/qa.py`, P13 `p13_cover_qa`); details in docs/CHANGELOG-scoring.md.
+- Deviations:
+  - **Face check:** done on the composed face picture before the type, else where the compositor placed the mined face. The detector misses a turned face on an upscaled panel that the miner found on the original frame.
+  - **Exposure:** measured on the pictures, not the type, because white type counts as clipped.
+  - **Added rules:** no non-Latin text on the cover (English-only audience; the localised "МЕРТВА" screen), and text inside the safe band (the compositor now clamps the line into it).
+
+### C7
+
+- `covers/engine.py`, `covers/deliver.py`, `covers/learn.py` (C7 form) and the publisher hooks.
+- Deviations:
+  - **YouTube** gets its thumbnail only through the follow-up job after publishing. C0 showed `thumbnail_url` at upload stays pending, while the endpoint answered 200.
+  - **No waiting at post time.** A cover not ready when the post goes out is logged `skipped_deadline` and the post goes out as before. Hourly posts go out long after the render, so they have their cover. Spike posts usually leave before mining ends (20–40 s), so spike covers mostly skip; `cover.deadline_s` is read but not used yet. Holding the express post up to 60 s for the cover is a design choice for the owner.
+  - **Alerts** fire once per kind per UTC day (events `cover.alert`). Further failures only go to the log and the events table.
+- Open: the TikTok custom-image test (10 `SELF_ONLY` posts plus screen recordings) needs the staging deploy and someone to watch playback in the app.
+
+## Cover engine C8 — learning, console, weekly report (2026-11-23)
+
+- **Bandit:** `learn.load_stats` and `learn.choose`, with Thompson sampling once rewards exist.
+- **Reward:** above the account median at **72 h**, the first learning-loop snapshot after 48 h. It counts covers made before the current week, so it updates weekly. The YouTube non-feed-traffic half of the reward waits for a YouTube OAuth refresh token.
+- **Console:** Covers page (`web/app/(console)/covers`) and `GET /v1/admin/covers`, with nav under Insights. The web app was checked by CI only: there are no node modules on this machine.
+- **Weekly report:** `sixstars covers report`.
+- **Arm storage:** the cover arm is a column of `covers`. `clip_features` (docs/28 L2) does not exist yet; the arm joins in when it lands.
+
+## Cover engine T — unit level done, staging level after the merge (2026-11-23)
+
+- Unit tests cover every pure function: fit and geometry, line validation, the QA rules, the bandit, the report and the fields.
+- Fault drills as unit tests (`tests/unit/covers/test_covers_drills.py`): a crash in fields or build never stops a post, and alerts once.
+- The 48 h end-to-end run, the staging drills, and every milestone acceptance that needs staging are listed in `docs/29c-cover-staging-runbook.md`, for after the final merge.
+- **Fix found by CI:** `Renderer()` left Playwright's event loop running when Chromium was missing, which broke a later asyncio test. It now stops Playwright on a failed launch.
+
+## Cover engine — owner follow-ups (2026-11-23)
+
+### 1. Posts wait for their cover
+
+- `deliver.wait_for_cover`, called from `cover_fields` for Instagram and TikTok. It waits up to `cover.deadline_s` (60 s live, 300 s normal) while the clip's `cover.mine` job is queued or running, polling every 3 s, and returns at once when no job exists.
+- Spike jobs: priority 10, and 4 OCR'd rendered frames.
+- **Trade-off:** the express worker is blocked up to 60 s per spike post. The spike cover still depends on a free normal-queue worker. If the normal queue is busy with renders or variants, the cover may miss the 60 s and the post goes out with `skipped_deadline`. Watch this in the staging run.
+
+### 2. C4 eval (local, staging data)
+
+`docs/reports/covers-c4.md`:
+- 50/50 clips have a valid line, none invented.
+- Haiku 5.5, $0.017 per 100 clips. With C6's vision call per cover, the total stays far under the 1.5× AI-spend limit.
+
+### 3. Exposure
+
+- **The data:** 172 clean staging frames (facecam above the captions and the text-free gameplay band, 13 clips). Median luma is 65, and only 43% are within 70–200; 62% have < 2% clipped pixels.
+- **The change:** setting `cover.exposure` holds luma 60–200, clipped < 10%, and a gamma lift (≤ 1.25) of dark pictures toward 75.
+- **The result:** the pass rate goes from 34% to 90%.
+- **Rollback:** SQL in docs/CHANGELOG-scoring.md.
+
+### 4. YouTube traffic-source reward
+
+Dropped (owner). The bandit learns from views only.

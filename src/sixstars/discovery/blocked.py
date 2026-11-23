@@ -21,6 +21,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Final
 
+from sixstars.clock import DATE_TIME, fmt_local
 from sixstars.live import health as live_health
 
 BLOCKED_REASON_PREFIX: Final = "download_blocked"  # how `vod.process` marks a video waiting out a block
@@ -98,7 +99,7 @@ def vod_note(platform: str, since: datetime, held: int, queued: int, queue: Queu
     """The one line of the pass summary about a platform whose downloads are blocked."""
     probe = f", {queued} queued as a probe" if queued else ""
     return (
-        f"{platform} downloads are blocked since {since:%Y-%m-%d %H:%M} UTC: {held} video(s) not "
+        f"{platform} downloads are blocked since {fmt_local(since, DATE_TIME)}: {held} video(s) not "
         f"queued{probe}, {queue.blocked} waiting for the VOD lane's retry"
     )
 

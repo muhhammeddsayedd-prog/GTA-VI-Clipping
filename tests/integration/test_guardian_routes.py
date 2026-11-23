@@ -209,6 +209,9 @@ def test_stats_collect_route(client: TestClient, platforms: Platforms) -> None:
         "posts": 1,
         "skipped": 0,
         "rate_limited": False,
+        "snapshots": 0,
+        "snapshots_left": 0,
+        "handed_to_job": False,
         "errors": [],
     }
     assert row("posts", post_id)["views"] == 5000 and heartbeat_names() == {"trigger:stats"}
@@ -240,3 +243,15 @@ def test_daily_report_route_in_both_formats(client: TestClient, platforms: Platf
     assert client.get("/v1/reports/daily?format=telegram&day=2026-11-18", headers=AUTH).status_code == 200
     assert client.get("/v1/reports/daily?format=pdf", headers=AUTH).status_code == 422
     assert titles() == [] and heartbeat_names() == set()  # reading a report changes nothing
+
+
+def test_the_hourly_due_call_sends_each_local_day_once(client: TestClient, platforms: Platforms) -> None:
+    first = client.get("/v1/reports/daily?format=telegram&due=1", headers=AUTH)
+    assert first.status_code == 200 and first.json()["due"] is True
+    assert "daily report" in first.json()["text"] and "Cairo" in first.json()["text"]
+    again = client.get("/v1/reports/daily?format=telegram&due=1", headers=AUTH)
+    assert again.status_code == 200 and again.json() == {"due": False}
+    sent = db.fetch_all("select entity_id, data from events where type = 'report.daily_sent'")
+    assert len(sent) == 1 and sent[0]["data"]["timezone"] == "Africa/Cairo"
+    # without due=1 (the console, /report) the report is always answered
+    assert "due" not in client.get("/v1/reports/daily?format=telegram", headers=AUTH).json()

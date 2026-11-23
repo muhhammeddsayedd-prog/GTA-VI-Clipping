@@ -8,7 +8,7 @@ import { Hours } from "@/components/kit/data";
 import { Badge, Card, KV, Plat, platformName } from "@/components/kit/primitives";
 import { accountState } from "@/components/domain/AccountCard";
 import type { AccountSummary } from "@/lib/api/types";
-import { fmtAgo, fmtTime } from "@/lib/format";
+import { fmtAgo, fmtTime, utcHourInZone, zoneLabel } from "@/lib/format";
 import { accountLabel } from "@/lib/use-accounts";
 
 export function hourCells(a: AccountSummary) {
@@ -16,13 +16,13 @@ export function hourCells(a: AccountSummary) {
   const hourlyOn = a.enabled && a.lanes.includes("hourly");
   return Array.from({ length: 24 }, (_, h) => {
     const ok = hourlyOn && (!allowed || allowed.includes(h));
-    return { cls: ok ? "on" : "off", title: `${String(h).padStart(2, "0")}:00 UTC — ${ok ? "hourly slot allowed" : "no hourly slot"}` };
+    return { cls: ok ? "on" : "off", title: `${String(h).padStart(2, "0")}:00 UTC (${utcHourInZone(h)}) — ${ok ? "hourly slot allowed" : "no hourly slot"}` };
   });
 }
 
 export function pauseNote(a: AccountSummary): string | null {
   const st = accountState(a);
-  if (st === "paused") return `Paused until ${fmtTime(a.paused_until)} UTC${a.pause_reason ? ` · ${a.pause_reason}` : ""}. Other accounts keep posting; resumes on its own.`;
+  if (st === "paused") return `Paused until ${fmtTime(a.paused_until)} ${zoneLabel()}${a.pause_reason ? ` · ${a.pause_reason}` : ""}. Other accounts keep posting; resumes on its own.`;
   if (st === "disabled") return `Disabled · ${a.lanes.join(" + ")} lane off${a.lanes.includes("spike") && a.platform === "tiktok" ? " (TikTok gets no spike clips)" : ""}`;
   return null;
 }

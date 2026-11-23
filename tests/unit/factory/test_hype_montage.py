@@ -104,7 +104,6 @@ def test_layout_m_stacks_gameplay_over_face_and_lays_the_broll_over_the_gameplay
         source_h=1080,
         geometry=g,
         fps=30,
-        duration_s=20.0,
         broll=cuts,
     )
     joined = ";".join(chains)

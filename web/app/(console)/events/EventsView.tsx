@@ -11,7 +11,7 @@ import { useDrawerParam } from "@/components/domain/ops/useDrawerParam";
 import { entityHref } from "@/components/domain/ops/entity";
 import { POLL, useApi } from "@/lib/api/client";
 import type { Event, Page } from "@/lib/api/types";
-import { fmtTime } from "@/lib/format";
+import { fmtTime, zoneLabel } from "@/lib/format";
 import { useListParams } from "@/lib/use-list";
 
 const KEYS = ["type_prefix", "level", "service", "entity_type", "entity_id"];
@@ -79,7 +79,7 @@ function EventDrawer({ id, onClose, onOpen }: { id: string; onClose: () => void;
   const link = e ? entityHref(e.entity_type, e.entity_id) : null;
   return (
     <Drawer open={!!id} onClose={onClose} title={e ? <span className="mono" style={{ fontSize: 18 }}>{e.type}</span> : "Event"}
-      sub={e && <>Event #{e.id.toLocaleString("en-US")} · {fmtTime(e.created_at, true)} UTC · <LevelBadge level={e.level} /></>}>
+      sub={e && <>Event #{e.id.toLocaleString("en-US")} · {fmtTime(e.created_at, true)} {zoneLabel()} · <LevelBadge level={e.level} /></>}>
       {q.error ? <ErrorState error={q.error} /> : !e ? <div className="muted">Loading…</div> : (
         <>
           <KV rows={[["Service", e.service ?? "—"],

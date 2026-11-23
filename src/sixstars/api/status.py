@@ -8,7 +8,7 @@ from datetime import UTC, datetime
 from html import escape
 from typing import Any
 
-from sixstars import db
+from sixstars import clock, db
 from sixstars.config import env
 
 SETTING_KEYS = (
@@ -228,6 +228,14 @@ def format_age(age_s: int) -> str:
     return f"{age_s // 86400}d {age_s % 86400 // 3600}h"
 
 
+def _when(iso: Any) -> str:
+    """An ISO time from the snapshot in the app zone, e.g. "2026-11-21 14:32 Cairo (12:32 UTC)"."""
+    try:
+        return clock.fmt_local(datetime.fromisoformat(str(iso)), clock.DATE_TIME)
+    except ValueError:
+        return str(iso)
+
+
 def render_telegram(status: dict[str, Any]) -> str:
     """The snapshot as text for Telegram's HTML parse mode. Every value from the database is escaped."""
     mode = {
@@ -240,7 +248,7 @@ def render_telegram(status: dict[str, Any]) -> str:
         lines.append(f"Stop reason: {escape(status['stop_reason'] or 'none given')}")
     if status["launch_at"] and status["posting_mode"] == "dry_run":
         lines.append(
-            f"Launch at: {escape(status['launch_at'])} · dry-run switch: {_on_off(status['dry_run'])}"
+            f"Launch at: {escape(_when(status['launch_at']))} · dry-run switch: {_on_off(status['dry_run'])}"
         )
 
     live = status["live_sessions"]
@@ -258,7 +266,7 @@ def render_telegram(status: dict[str, Any]) -> str:
         if not account["enabled"]:
             notes.append("disabled")
         if account["paused_until"]:
-            notes.append(f"paused until {account['paused_until']}")
+            notes.append(f"paused until {_when(account['paused_until'])}")
         if account["failed_last_24h"]:
             notes.append(f"failed {account['failed_last_24h']}")
         if account["dry_run_last_24h"]:

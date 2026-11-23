@@ -43,9 +43,14 @@ from sixstars.factory.styles import DEFAULT_STYLES, StyleCatalog
 from sixstars.factory.subtitles import SubtitleStyle, credit_bottom
 from sixstars.factory.variants import recipe_json
 
-# The five styles of phases A and B (phases C and E have their own tests).
+# The five styles of phases A and B (phases C and E have their own tests). Render v2 switched off
+# cam_top_viral (R0), headline_card and pov_fullframe (R1); the planner tests switch them on again.
 CATALOG = StyleCatalog.from_setting(
-    {k: v for k, v in DEFAULT_STYLES.items() if k not in ("cam_top_wordcap", "hype_montage")}
+    {
+        k: {**v, "enabled": True}  # type: ignore[dict-item]
+        for k, v in DEFAULT_STYLES.items()
+        if k not in ("cam_top_wordcap", "hype_montage")
+    }
 )
 ACCOUNTS = [
     AccountSlot("instagram_main", "instagram", ("hourly", "spike")),
@@ -179,12 +184,10 @@ def test_the_news_card_crop_keeps_the_facecam() -> None:
 
 def test_layouts_h_and_p_pad_one_crop_into_the_frame() -> None:
     g = Geometry.for_canvas(1080, 1920)
-    chains = layout_filters(
-        LayoutCard(facecam_box=CAM), source_w=1920, source_h=1080, geometry=g, fps=30, duration_s=10.0
-    )
+    chains = layout_filters(LayoutCard(facecam_box=CAM), source_w=1920, source_h=1080, geometry=g, fps=30)
     assert len(chains) == 1 and f"pad=w=1080:h=1920:x=0:y={H_VIDEO_Y}:color=black" in chains[0]
     assert chains[0].endswith("[v_layout]")
-    pov = layout_filters(LayoutPov(), source_w=1920, source_h=1080, geometry=g, fps=30, duration_s=10.0)
+    pov = layout_filters(LayoutPov(), source_w=1920, source_h=1080, geometry=g, fps=30)
     assert "pad=w=1080:h=1920:x=0:y=240:color=black" in pov[0] and "h=1440" in pov[0]
 
 

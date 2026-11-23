@@ -10,11 +10,13 @@ import { Popover } from "@/components/kit/overlays";
 import { Avatar, Badge, Btn } from "@/components/kit/primitives";
 import { useApi, POLL } from "@/lib/api/client";
 import type { Alert, Health, Status } from "@/lib/api/types";
-import { fmtAgo, fmtDuration } from "@/lib/format";
+import { fmtAgo, fmtDuration, zoneLabel } from "@/lib/format";
 import { SEVERITY_TONE } from "@/lib/status";
 import { cn } from "@/lib/utils";
 import { useNow } from "@/lib/use-now";
+import { useDisplayZone } from "@/lib/use-zone";
 import { CommandPalette } from "./CommandPalette";
+import { HeaderClock, TimeZoneSync } from "./HeaderClock";
 import { Logo } from "./Logo";
 import { NAV, activeOf } from "./nav";
 import { ResumeModal, StopModal } from "./StopControls";
@@ -37,6 +39,7 @@ export function Shell({ env, email, mock, signOut, children }: ShellProps) {
   const [resumeOpen, setResumeOpen] = useState(false);
   const [sheet, setSheet] = useState(false);
 
+  const zone = useDisplayZone();
   const status = useApi<Status>("status", undefined, { interval: POLL.status });
   const health = useApi<Health>("admin/health", undefined, { interval: POLL.list });
   const alerts = useApi<{ items: Alert[] }>(pop === "alerts" ? "admin/alerts" : null, { limit: 6 }, { interval: POLL.list });
@@ -131,6 +134,7 @@ export function Shell({ env, email, mock, signOut, children }: ShellProps) {
 
           <div className="tright">
             <ModePill mode={mode} />
+            <HeaderClock />
             <button type="button" className="ibtn hide-sm" aria-label="Search (Ctrl K)" title="Search (Ctrl K)" onClick={() => setPalette(true)}><Search size={17} /></button>
             <Link href="/health" className="ibtn hide-sm" aria-label={`Health: ${incidents} open incident${incidents === 1 ? "" : "s"}`} title="Health">
               <Activity size={17} />{incidents > 0 && <em>{incidents}</em>}
@@ -167,7 +171,7 @@ export function Shell({ env, email, mock, signOut, children }: ShellProps) {
                 <div className="row" style={{ padding: 12 }}><Avatar name="Operator" size={44} i={0} /><div style={{ minWidth: 0 }}><div className="semi">Operator</div><div className="muted xs ellipsis">{email}</div></div></div>
                 <div className="sep" />
                 <div className="pi"><span className="pic"><Server size={16} /></span><div><div className="semi">Environment</div><div className="t2">{env === "production" ? "Production" : env === "staging" ? "Staging" : "Local development"}</div></div><span className="right">{envChip}</span></div>
-                <div className="pi"><span className="pic"><Clock size={16} /></span><div><div className="semi">Times shown in UTC</div><div className="t2">Hover any time for your local time</div></div></div>
+                <div className="pi"><span className="pic"><Clock size={16} /></span><div><div className="semi">Times shown in {zoneLabel(zone)} time</div><div className="t2">Hover any time for UTC · change it in Settings</div></div></div>
                 <div className="sep" />
                 <form action={signOut}>
                   <button type="submit" className="pi link" style={{ width: "100%", border: 0, background: "none", color: "var(--red)", textAlign: "left" }}>
@@ -181,7 +185,9 @@ export function Shell({ env, email, mock, signOut, children }: ShellProps) {
 
         <ModeBanner status={status.data} onResume={() => setResumeOpen(true)} />
 
-        <main id="main" tabIndex={-1} style={{ outline: "none" }}>{children}</main>
+        <TimeZoneSync />
+        {/* keyed by zone: a time zone change re-renders every page once */}
+        <main id="main" key={zone} tabIndex={-1} style={{ outline: "none" }}>{children}</main>
       </div>
 
       <nav className="mbar mobile-bar" aria-label="Quick">

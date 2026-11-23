@@ -10,6 +10,8 @@ from typing import Literal
 from sixstars import lengths, settings
 from sixstars.factory.anchor import CutRules
 from sixstars.factory.director import DEFAULT_DIRECTOR, DirectorRules
+from sixstars.factory.faces import FaceDetectRules
+from sixstars.factory.layout import DEFAULT_SCALER, LayoutV2Rules
 from sixstars.factory.params import FactoryParams
 from sixstars.factory.pauses import SnapRules
 from sixstars.factory.story import DEFAULT_STORY, StoryRules
@@ -68,6 +70,12 @@ def gate_profile_for(lane: str) -> GateProfile:
     return "express" if lane == "spike" else "hourly"
 
 
+def layout_scaler(raw: object) -> str:
+    """The ffmpeg scaler of the frame from `factory.layout_v2` (Render v2, D119): its `scaler`, else ffmpeg's
+    default (bicubic, the look before the setting existed). Pure."""
+    return LayoutV2Rules.from_setting(raw).scaler
+
+
 def _number(value: object, fallback: float) -> float:
     if isinstance(value, int | float) and not isinstance(value, bool):
         return float(value)
@@ -98,6 +106,9 @@ class FactoryConfig:
     catalog: StyleCatalog = StyleCatalog.legacy(None)
     director: DirectorRules = DirectorRules()
     story: StoryRules = StoryRules()  # development-plan/M18 Phase C
+    scaler: str = DEFAULT_SCALER  # factory.layout_v2.scaler (D119)
+    layout_v2: LayoutV2Rules = LayoutV2Rules()  # factory.layout_v2 (Render v2, D119)
+    face_detect: FaceDetectRules = FaceDetectRules()  # facecam.detect (Render v2 R2/R3)
 
     @classmethod
     def from_mapping(cls, values: Mapping[str, object], lane: str) -> "FactoryConfig":
@@ -135,6 +146,9 @@ class FactoryConfig:
             catalog=StyleCatalog.from_setting(values.get("factory.styles"), values.get("factory.style")),
             director=DirectorRules.from_setting(values.get("factory.style_director")),
             story=StoryRules.from_setting(values.get("factory.story")),
+            scaler=layout_scaler(values.get("factory.layout_v2")),
+            layout_v2=LayoutV2Rules.from_setting(values.get("factory.layout_v2")),
+            face_detect=FaceDetectRules.from_setting(values.get("facecam.detect")),
         )
 
     @classmethod
@@ -160,6 +174,9 @@ class FactoryConfig:
         values["factory.style_director"] = settings.get("factory.style_director", None)
         # Absent before migration 0029: no story cuts.
         values["factory.story"] = settings.get("factory.story", None)
+        # Render v2 (D119); absent before its settings migration: ffmpeg's default scaler.
+        values["factory.layout_v2"] = settings.get("factory.layout_v2", None)
+        values["facecam.detect"] = settings.get("facecam.detect", None)
         return with_cut_rules(cls.from_mapping(values, lane), scoring_config.flag("cut.adaptive"))
 
     @classmethod

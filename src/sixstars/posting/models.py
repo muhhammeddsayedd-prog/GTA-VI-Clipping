@@ -42,6 +42,7 @@ class Reason(StrEnum):
     ACCOUNT_DISABLED = "account_disabled"
     LANE_NOT_ALLOWED = "lane_not_allowed"
     ACCOUNT_PAUSED = "account_paused"
+    HOURLY_PAUSED = "hourly_paused"
     PRIVACY_INVALID = "privacy_invalid"
     STAGING_PRIVACY_NOT_PRIVATE = "staging_privacy_not_private"
     STAGING_INSTAGRAM_NOT_ALLOWED = "staging_instagram_not_allowed"
@@ -98,6 +99,7 @@ class Account:
     hourly_hours_utc: frozenset[int] | None = None  # None = all 24 hours; empty = no hour at all
     enabled: bool = True
     paused_until: datetime | None = None
+    hourly_paused_until: datetime | None = None  # the delivery guard pauses only the hourly lane
     # Seconds between two hourly posts of this account, counted from its last hourly post only (spike posts
     # do not count). None = no extra hourly gap. Migration 0034.
     hourly_min_gap_s: int | None = None
@@ -111,6 +113,8 @@ class Account:
             raise ValueError(f"account {self.id}: hourly_hours_utc must be within 0..23")
         if self.paused_until is not None:
             ensure_utc(self.paused_until, "paused_until")
+        if self.hourly_paused_until is not None:
+            ensure_utc(self.hourly_paused_until, "hourly_paused_until")
 
     @property
     def channel(self) -> tuple[Platform, str]:
@@ -134,6 +138,8 @@ class PostRecord:
     slot_at: datetime | None = None
     # M18 Phase C: the short clip of the posted clip's family (itself, or the clip it is the story cut of).
     family_id: str | None = None
+    # D118: the clipping campaign the post was made for (`posts.campaign_id`), None for a Normal post.
+    campaign_id: str | None = None
 
     def __post_init__(self) -> None:
         if self.status not in POST_STATUSES:
@@ -173,6 +179,11 @@ class Clip:
     # The gate profile that approved the clip (`clips.gate_profile`): "hourly" for a clip cut for the hourly
     # lane, "express" for a spike clip (also after it was demoted to the hourly lane).
     gate_profile: str | None = None
+    # D118: the clip's clipping campaign and what its brief requires in the caption (call to action and
+    # mention as one line, required hashtags). None/empty for a Normal clip.
+    campaign_id: str | None = None
+    campaign_line: str = ""
+    campaign_tags: tuple[str, ...] = ()
 
     @property
     def is_story(self) -> bool:

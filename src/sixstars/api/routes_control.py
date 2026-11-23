@@ -13,9 +13,10 @@ from fastapi.responses import JSONResponse
 from psycopg.types.json import Jsonb
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 
-from sixstars import db, events, notify, settings
+from sixstars import clock, db, events, notify, settings
 from sixstars.api import status as status_view
 from sixstars.api.errors import ApiError
+from sixstars.learning import delivery
 from sixstars.logging import get_logger
 
 router = APIRouter(prefix="/v1")
@@ -95,6 +96,37 @@ def control_stop(body: Annotated[StopBody | None, Body()] = None) -> JSONRespons
     return JSONResponse({"stopped": True, "reason": reason, "changed": changed})
 
 
+class LaneResumeBody(BaseModel):
+    """`account_id`, or the Telegram message text `/resume <account_id>` (WF08 sends the whole text)."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    account_id: str | None = None
+    text: str | None = None
+
+    def account(self) -> str | None:
+        if self.account_id:
+            return self.account_id.strip()
+        words = (self.text or "").split()
+        return words[1].strip() if len(words) > 1 else None
+
+
+@router.post("/control/lane/resume")
+def control_lane_resume(body: LaneResumeBody) -> JSONResponse:
+    """Clear the hourly-lane pause the delivery guard set on one account (only the owner does this)."""
+    account_id = body.account()
+    if not account_id:
+        return JSONResponse({"text": "Usage: /resume <account_id>, e.g. /resume tiktok_main"})
+    result = delivery.resume_lane(account_id)
+    if not result["found"]:
+        text = f"No account {account_id}."
+    elif result["changed"]:
+        text = f"▶️ Hourly lane of {account_id} resumed."
+    else:
+        text = f"The hourly lane of {account_id} was not paused."
+    return JSONResponse(result | {"text": text})
+
+
 @router.post("/control/start")
 def control_start() -> JSONResponse:
     """Clear the emergency stop."""
@@ -147,6 +179,10 @@ def control_settings(body: SettingBody) -> JSONResponse:
         raise ApiError(422, "invalid_value", "value must be JSON (NaN and Infinity are not)") from exc
     if "\\u0000" in encoded:
         raise ApiError(422, "invalid_value", "value must not contain NUL characters")
+    if body.key == clock.TIMEZONE_KEY and not clock.is_valid_zone(body.value):
+        raise ApiError(
+            422, "invalid_timezone", f"{body.value!r} is not an IANA time zone such as Africa/Cairo"
+        )
     with db.transaction():
         current = db.fetch_one("select key, value from settings where key = %s for update", (body.key,))
         if current is None:

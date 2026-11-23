@@ -13,13 +13,14 @@ writer work in seconds from the start of the padded window ("window time"); subt
 stored transcript are in seconds from the first frame of the clip ("clip time").
 """
 
+import json
 import os
 import shutil
 import time
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime, timedelta
-from pathlib import Path
+from pathlib import Path, PurePath
 from typing import Any
 
 import structlog
@@ -29,14 +30,18 @@ from sixstars import db, events, jobs, notify
 from sixstars import storage as clip_storage
 from sixstars.ai.calls import BudgetExceededError, ChatLine
 from sixstars.ai.schemas import ClipWriting, SpikeVerdict
+from sixstars.campaigns import look as campaign_look
+from sixstars.campaigns import tagging
 from sixstars.clients.anthropic_client import AnthropicClient, BudgetKind
 from sixstars.clients.transcribe import Mode, Transcriber
 from sixstars.config import env
+from sixstars.covers import peak as cover_peak
 from sixstars.factory import (
     anchor,
     cards,
     effects,
     facecam,
+    faces,
     montage,
     music,
     precheck,
@@ -56,6 +61,7 @@ from sixstars.factory.layout import (
     B_GAMEPLAY_Y,
     C_QUESTION_GAP,
     C_TITLE_OVERLAP,
+    DEFAULT_SCALER,
     H_HEADER_TOP,
     HOOK_BOTTOM,
     HOOK_TOP,
@@ -69,10 +75,11 @@ from sixstars.factory.layout import (
     LayoutA,
     LayoutB,
     LayoutCard,
+    LayoutG,
+    LayoutG0,
     LayoutMontage,
     LayoutPov,
-    PunchIns,
-    ZoomCut,
+    LayoutV2Rules,
 )
 from sixstars.factory.lines import Line, clip_lines, group_lines
 from sixstars.factory.params import FactoryParams
@@ -80,7 +87,6 @@ from sixstars.factory.presets import RenderMode, uses_nvenc
 from sixstars.factory.render import (
     RenderSpec,
     SourceInfo,
-    build_envelope_command,
     build_loudnorm_measure_command,
     build_render_command,
 )
@@ -310,15 +316,33 @@ class RenderJob:
     texts: Mapping[str, str] = field(default_factory=dict)
     # Layout M (Phase E): the footage around the clip (file time) the B-roll may come from.
     broll_from: ClipWindow | None = None
+    # The ffmpeg scaler of every crop (`factory.layout_v2.scaler`, D119).
+    scaler: str = DEFAULT_SCALER
+    # Render v2 (`factory.layout_v2`, D119): with `enabled`, every clip is drawn as layout G or G0.
+    layout_v2: LayoutV2Rules = field(default_factory=LayoutV2Rules)
+    # Render v2 R2: the face check of the cam panel (`facecam.detect`) and the detector (None: YuNet).
+    face_rules: faces.FaceDetectRules = field(default_factory=faces.FaceDetectRules)
+    face_detector: faces.FaceDetector | None = None
 
 
-def framed_layout(layout: Layout, style: StyleRules) -> Layout:
+def framed_layout(layout: Layout, style: StyleRules, v2: LayoutV2Rules | None = None) -> Layout:
     """The layout a style draws: the news card (H) or the POV crop (P) when its `frame` says so; else with
     a facecam on top (layout C) when the style says so, or below (layout A); without a facecam, layout B.
-    Pure."""
+
+    Render v2 (`v2.enabled`, D119): layout G when a facecam was found, else G0; the style's `frame` and
+    `facecam_top` are ignored (the styles only vary the text). With the switch off, a G or G0 layout (from
+    a recipe written while it was on) is drawn as layout A or B. Pure."""
     facecam = (
-        layout.facecam_box if isinstance(layout, LayoutA | LayoutCard | LayoutPov | LayoutMontage) else None
+        layout.facecam_box
+        if isinstance(layout, LayoutA | LayoutCard | LayoutPov | LayoutMontage | LayoutG)
+        else None
     )
+    if v2 is not None and v2.enabled:
+        if isinstance(layout, LayoutG | LayoutG0):
+            return layout
+        return LayoutG(facecam_box=facecam) if facecam is not None else LayoutG0()
+    if isinstance(layout, LayoutG | LayoutG0):
+        layout = LayoutA(facecam_box=facecam) if facecam is not None else LayoutB()
     if style.frame == "montage":
         return LayoutMontage(facecam_box=facecam) if facecam is not None else LayoutB()
     if isinstance(layout, LayoutMontage):
@@ -377,6 +401,9 @@ class RenderOutcome:
     profanity_count: int
     sfx_times_s: tuple[float, ...]
     nvenc: bool
+    # The layout actually drawn (Render v2: G0 when the cam showed no face) and the face check.
+    layout: Layout | None = None
+    cam_check: dict[str, object] | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -396,6 +423,9 @@ class Produced:
     # Where the padded window starts in the file, and the writer's input: a story cut reuses both.
     offset_s: float = 0.0
     writer_input: writer.WriterInput | None = None
+    # The clip's peak in clip time and its source (`covers.peak`), for the cover engine's frame miner.
+    peak_s: float | None = None
+    peak_source: str = ""
 
 
 WritingChooser = Callable[[writer.WriterInput], ClipWriting]
@@ -421,23 +451,6 @@ def _measurer(assets: FactoryAssets) -> TextMeasurer:
 def _caption_measurer(assets: FactoryAssets) -> TextMeasurer:
     font = assets.caption_font_file
     return pillow_measurer(font) if font is not None else _measurer(assets)
-
-
-def _punch_spans(spec: RenderSpec, job: RenderJob, payoff_s: float | None, ffmpeg: str) -> tuple[Span, ...]:
-    """docs/27 punch-ins at the loudest moments of the clip's source audio. An envelope that cannot be
-    measured means no punch-ins, never a failed render."""
-    if not job.style.punchins or not job.media.has_audio:
-        return ()
-    try:
-        result = tools.run(
-            build_envelope_command(spec, ffmpeg=ffmpeg), timeout_s=tools.RENDER_TIMEOUT_S, what="envelope"
-        )
-    except tools.FfmpegError as exc:
-        get_logger("factory").warning("punchin_envelope_failed", error=str(exc)[:200])
-        return ()
-    envelope = effects.parse_momentary(result.stderr.decode("utf-8", errors="replace"))
-    avoid = () if payoff_s is None else (payoff_s,)
-    return effects.select_punchins(envelope, spec.clip_duration_s, job.style, avoid_s=avoid)
 
 
 def _title_bar(job: RenderJob, live_badge: bool) -> TitleBar | None:
@@ -553,15 +566,18 @@ def _seam_fade(job: RenderJob) -> dict[str, Any]:
     return {"fade_png": fade.path, "fade_top": M_SEAM_Y - M_FADE_H // 2}
 
 
-def _own_title_top(kind: str, height: int, seam_y: int) -> int:
+def _own_title_top(kind: str, height: int, seam_y: int, g0_game_y: int = B_GAMEPLAY_Y) -> int:
     """Top of a Phase B text on the reference canvas: the news card's header, the POV line centred on the
-    gameplay, or the question title at the top of the gameplay. Pure."""
+    gameplay, or the question title at the top of the gameplay (`seam_y` is the seam of layout C or G,
+    `g0_game_y` the gameplay top of layout G0). Pure."""
     if kind == "H":
         return H_HEADER_TOP
     if kind == "P":
         return max(0, P_TEXT_CENTER_Y - height // 2)
-    if kind == "C":
+    if kind in ("C", "G"):
         return seam_y + C_QUESTION_GAP
+    if kind == "G0":
+        return g0_game_y + C_QUESTION_GAP
     if kind == "B":
         return B_GAMEPLAY_Y + C_QUESTION_GAP
     return QUESTION_TOP_A
@@ -593,6 +609,106 @@ def _move_into_place(finished: Path, destination: Path) -> None:
         finished.unlink(missing_ok=True)
 
 
+def frame_cam(job: RenderJob, *, ffmpeg: str = "ffmpeg") -> tuple[RenderJob, dict[str, object] | None]:
+    """Render v2 R2: find the face in the facecam of a layout-G job, so the cam panel is framed around it.
+    No face in any checked frame (or a check that cannot run) draws the clip as layout G0 instead, never a
+    cam panel without a face. Other layouts, or a G layout that already has its face, are returned as
+    they are (no check: None)."""
+    layout = job.layout
+    if not isinstance(layout, LayoutG) or layout.face_box is not None or not job.layout_v2.enabled:
+        return job, None
+    log = get_logger("factory")
+    try:
+        check = faces.find_cam_face(
+            job.source_path,
+            job.window,
+            layout.facecam_box,
+            job.face_rules,
+            detector=job.face_detector,
+            ffmpeg=ffmpeg,
+        )
+    except (OSError, ValueError, tools.FfmpegError) as exc:
+        log.warning("cam_face_check_failed", error=str(exc)[:200])
+        return replace(job, layout=LayoutG0(layout.overlay_boxes)), {
+            "error": str(exc)[:200],
+            "fallback": "G0",
+        }
+    result: dict[str, object] = check.as_json()
+    if check.face_box is None:
+        log.warning("cam_no_face", reason=check.reason, frames=check.frames, ms=check.elapsed_ms)
+        return replace(job, layout=LayoutG0(layout.overlay_boxes)), {**result, "fallback": "G0"}
+    log.info("cam_face_found", hits=check.hits, frames=check.frames, ms=check.elapsed_ms)
+    return replace(job, layout=replace(layout, face_box=check.face_box)), result
+
+
+def emit_cam_check(clip_id: str, outcome: RenderOutcome) -> None:
+    """The `clip.cam_no_face` event when a clip planned as layout G was drawn as G0 (Render v2 R2)."""
+    check = outcome.cam_check
+    if check is not None and check.get("fallback") == "G0":
+        events.emit(
+            "clip.cam_no_face",
+            level="warn",
+            entity_type="clip",
+            entity_id=clip_id,
+            message="no face in the facecam: drawn without a cam panel (layout G0)",
+            data=check,
+        )
+
+
+def _story_peak(story: Produced, short_job: RenderJob, window: ClipWindow) -> Produced:
+    """The short clip's peak moved into the story cut's clip time (dropped when it falls outside). Pure."""
+    if story.peak_s is None:
+        return story
+    peak = story.peak_s + (short_job.window.start_s - window.start_s)
+    if not 0 <= peak < window.duration_s:
+        return replace(story, peak_s=None, peak_source="")
+    return replace(story, peak_s=round(peak, 2))
+
+
+def _capture_cover(clip_id: str, produced: Produced, deps: Deps) -> None:
+    """Hand the clip to the cover engine (`covers.miner.capture`): keep its source span and queue the
+    frame miner when `cover.enabled` is on. Never raises."""
+    job = produced.job
+    if job is None:
+        return
+    from sixstars.covers import miner
+
+    layout = job.layout
+    facecam = (
+        layout.facecam_box
+        if isinstance(layout, LayoutA | LayoutCard | LayoutPov | LayoutMontage | LayoutG)
+        else None
+    )
+    gameplay = layout.gameplay_box if isinstance(layout, LayoutA) else None
+    folder = variants.variants_dir(clip_id)
+    offset = 0.0
+    try:
+        recipe = json.loads((folder / variants.RECIPE_NAME).read_text(encoding="utf-8"))
+        offset = float(recipe.get("window_start_s") or 0.0)
+    except (OSError, ValueError):
+        pass
+    duration = produced.outcome.clip_duration_s
+    miner.capture(
+        clip_id,
+        source=job.source_path,
+        window=ClipWindow(job.window.start_s, job.window.start_s + duration),
+        duration_s=duration,
+        has_audio=job.media.has_audio,
+        source_w=job.media.width,
+        source_h=job.media.height,
+        facecam=facecam,
+        gameplay=gameplay,
+        peak_s=produced.peak_s,
+        peak_source=produced.peak_source,
+        moment_type=produced.writing.moment_type,
+        lane=job.lane,
+        rendered_path=produced.outcome.output_path,
+        variants_source=folder / variants.SOURCE_NAME,
+        variants_offset_s=offset,
+        ffmpeg=deps.ffmpeg,
+    )
+
+
 def render_file(job: RenderJob, *, ffmpeg: str = "ffmpeg", ffprobe: str = "ffprobe") -> RenderOutcome:
     """Write the subtitle file and render the clip with ffmpeg.
 
@@ -606,10 +722,11 @@ def render_file(job: RenderJob, *, ffmpeg: str = "ffmpeg", ffprobe: str = "ffpro
     style = job.style
     job = replace(
         job,
-        layout=framed_layout(job.layout, style),
+        layout=framed_layout(job.layout, style, job.layout_v2),
         hook=chosen_title(job.hook, job.texts, job.payoff_emoji, style) if style.show_title else None,
     )
-    cam_top = job.layout.kind == "C"
+    job, cam_check = frame_cam(job, ffmpeg=ffmpeg)
+    cam_top = job.layout.kind in ("C", "G")
     words = [word for line in job.lines for word in line.words]
     matcher = job.assets.profanity()
     profane = matcher.find([word.text for word in words])
@@ -627,6 +744,8 @@ def render_file(job: RenderJob, *, ffmpeg: str = "ffmpeg", ffprobe: str = "ffpro
         sfx_path=job.assets.sfx_pop,
         logo_path=job.assets.logo,
         hook_shown=bool(job.hook),
+        scaler=job.scaler,
+        layout_v2=job.layout_v2,
     )
     duration = spec.clip_duration_s
     live_badge = job.lane == "spike"
@@ -637,19 +756,17 @@ def render_file(job: RenderJob, *, ffmpeg: str = "ffmpeg", ffprobe: str = "ffpro
     payoff_s = job.payoff_s
     if not style.payoff_fx or payoff_s is None or not 0 <= payoff_s < duration:
         payoff_s = None
-    punch_spans = _punch_spans(spec, job, payoff_s, ffmpeg)
     broll = _montage_broll(job, duration, payoff_s if payoff_s is not None else job.payoff_s, ffmpeg)
-    # The montage's cuts get the punch-in sounds (whoosh, impact); they are not punch-ins on screen.
-    sfx_spans = punch_spans or tuple(Span(at, at + length) for _start, at, length in broll)
+    # The montage's B-roll cuts get a whoosh and an impact.
+    cut_spans = tuple(Span(at, at + length) for _start, at, length in broll)
     cues = effects.plan_sfx(
-        duration_s=duration, keyword_times=pop_times, punchins=sfx_spans, payoff_s=payoff_s, rules=style
+        duration_s=duration, keyword_times=pop_times, cuts=cut_spans, payoff_s=payoff_s, rules=style
     )
     sfx_times = tuple(cue.time_s for cue in cues if cue.kind == "pop")
     log.info(
         "clip_edit_effects",
         style_id=job.style_id,
         layout=job.layout.kind,
-        punchins=[[span.start_s, span.end_s] for span in punch_spans],
         broll=[list(cut) for cut in broll],
         payoff_s=payoff_s,
         sfx={
@@ -664,13 +781,16 @@ def render_file(job: RenderJob, *, ffmpeg: str = "ffmpeg", ffprobe: str = "ffpro
     title_top = title_bar_top(params, live_badge=live_badge)
     # Layout C: the title sits on the seam (its bottom just below it), over the streamer's chest, never
     # on the face; the watermark keeps its corner and shows from the start.
-    seam_ref = Geometry.for_canvas(REF_WIDTH, REF_HEIGHT).c_seam_y
+    reference = Geometry.for_canvas(REF_WIDTH, REF_HEIGHT, job.layout_v2)
+    seam_ref = reference.g_cam_h if job.layout.kind == "G" else reference.c_seam_y
     hook_top: float | None = None
     kind = job.layout.kind
     own_place = kind in ("H", "P") or style.title_look == "question"
     if own_place:
         # Phase B styles: the text has its own place and the watermark keeps its corner.
-        top = _own_title_top(kind, bar.height if bar is not None else HOOK_BOTTOM - HOOK_TOP, seam_ref)
+        top = _own_title_top(
+            kind, bar.height if bar is not None else HOOK_BOTTOM - HOOK_TOP, seam_ref, reference.g0_game_y
+        )
         hook_top = float(top)
         title_top = top
     elif cam_top:
@@ -692,12 +812,6 @@ def render_file(job: RenderJob, *, ffmpeg: str = "ffmpeg", ffprobe: str = "ffpro
         sfx_tracks=_sfx_tracks(cues, job.assets),
         sfx_gain_db=style.sfx_gain_db,
         compress=style.compress,
-        zoom_cut=ZoomCut(style.zoomcut_every_s, style.zoomcut_scale) if style.zoomcuts else None,
-        punch_ins=(
-            PunchIns(tuple((s.start_s, s.end_s) for s in punch_spans), style.punchin_zoom)
-            if punch_spans
-            else None
-        ),
         hook_shown=bool(job.hook) and not title_bar and not cam_top and not own_place,
         watermark=style.watermark,
         watermark_y=watermark_y,
@@ -706,6 +820,10 @@ def render_file(job: RenderJob, *, ffmpeg: str = "ffmpeg", ffprobe: str = "ffpro
         title_whole_clip=style.title_whole_clip,
         follow_text=style.follow_overlay_text,
         follow_s=min(style.follow_overlay_s, duration),
+        disclosure_text=style.disclosure_text,
+        disclosure_s=min(style.disclosure_s, duration),
+        campaign_logo=PurePath(style.campaign_logo) if style.campaign_logo else None,
+        campaign_logo_pos=style.campaign_logo_pos,
         broll=broll,
         **_seam_fade(job),
     )
@@ -782,6 +900,8 @@ def render_file(job: RenderJob, *, ffmpeg: str = "ffmpeg", ffprobe: str = "ffpro
         profanity_count=len(profane),
         sfx_times_s=sfx_times,
         nvenc=uses_nvenc(params, job.mode, nvenc_available=nvenc),
+        layout=job.layout,
+        cam_check=cam_check,
     )
 
 
@@ -1038,6 +1158,12 @@ def produce(
         if deps.assets is None and style.caption_font != cfg.style.caption_font:
             assets = load_assets(cfg.params.font, caption_font=_caption_fonts(cfg, style))
 
+    peak_s, peak_source = cover_peak.choose_peak(
+        window.duration_s,
+        anchor_s=None if cut_anchor is None else cut_anchor.t_s - window_w.start_s,
+        payoff_s=None if writing.payoff_s is None else writing.payoff_s - window_w.start_s,
+        chat_times=tuple(line.t_s - window_w.start_s for line in window_chat),
+    )
     started = time.monotonic()
     job = RenderJob(
         source_path=item.source_path,
@@ -1062,6 +1188,9 @@ def produce(
         style_id=style_id,
         texts=writing.style_texts(),
         broll_from=padded,
+        scaler=cfg.scaler,
+        layout_v2=cfg.layout_v2,
+        face_rules=cfg.face_detect,
     )
     outcome = render_file(job, ffmpeg=deps.ffmpeg, ffprobe=deps.ffprobe)
     timed("render", started)
@@ -1070,13 +1199,15 @@ def produce(
         writing=writing,
         window=window,
         lines=tuple(clip_text),
-        layout=framed_layout(layout, style),
+        layout=outcome.layout or framed_layout(layout, style, cfg.layout_v2),
         music=analysis,
         outcome=outcome,
         timings_ms=timings,
         job=job,
         offset_s=offset,
         writer_input=writer_input,
+        peak_s=peak_s,
+        peak_source=peak_source,
     )
 
 
@@ -1141,14 +1272,15 @@ def claim_clip(item: RenderInput, *, force: bool = False) -> ClipRow:
                 )
                 return replace(existing, status="rendering")
             return existing
+        tag = tagging.tag_for(item.creator_id, item.lane, datetime.now(UTC))  # D118: campaign lane
         row = db.fetch_one(
             """
             insert into clips
               (id, series_no, spike_id, creator_id, source_platform, source_id, source_url, source_type,
-               lane, start_s, end_s, gate_profile, status)
+               lane, start_s, end_s, gate_profile, status, campaign_id, render_profile)
             values
               (coalesce(%s::uuid, gen_random_uuid()), nextval('clip_series_seq'), %s, %s, %s, %s, %s, %s,
-               %s, %s, %s, %s, 'rendering')
+               %s, %s, %s, %s, 'rendering', %s, %s)
             returning id, series_no
             """,
             (
@@ -1163,6 +1295,8 @@ def claim_clip(item: RenderInput, *, force: bool = False) -> ClipRow:
                 item.source_offset_s + item.window_start_s,
                 item.source_offset_s + item.window_end_s,
                 "express" if item.lane == "spike" else "hourly",
+                tag.campaign_id if tag else None,
+                tag.render_profile if tag else None,
             ),
         )
         assert row is not None
@@ -1178,6 +1312,7 @@ def claim_clip(item: RenderInput, *, force: bool = False) -> ClipRow:
             entity_id=clip_id,
             data={
                 "series_no": series_no,
+                "campaign": tag.slug if tag else None,
                 "spike_id": item.spike_id,
                 "lane": item.lane,
                 "mode": item.mode,
@@ -1282,8 +1417,10 @@ def _finish(clip_id: str, item: RenderInput, cfg: FactoryConfig, produced: Produ
                 "bleeps": [[round(span.start_s, 3), round(span.end_s, 3)] for span in outcome.bleeps],
                 "sfx_times_s": list(outcome.sfx_times_s),
                 "nvenc": outcome.nvenc,
+                "cam_check": outcome.cam_check,
             },
         )
+        emit_cam_check(clip_id, outcome)
 
 
 def _prepare_variants(
@@ -1372,10 +1509,11 @@ def claim_story_clip(parent_id: str, item: RenderInput, window: ClipWindow) -> C
             """
             insert into clips
               (series_no, creator_id, source_platform, source_id, source_url, source_type, lane, start_s,
-               end_s, gate_profile, status, version, parent_clip_id)
-            values
-              (nextval('clip_series_seq'), %s, %s, %s, %s, %s, 'hourly', %s, %s, 'hourly', 'rendering',
-               'story', %s)
+               end_s, gate_profile, status, version, parent_clip_id, campaign_id, render_profile)
+            select
+               nextval('clip_series_seq'), %s, %s, %s, %s, %s, 'hourly', %s, %s, 'hourly', 'rendering',
+               'story', p.id, p.campaign_id, p.render_profile
+            from clips p where p.id = %s
             returning id::text as id, series_no
             """,
             (
@@ -1437,7 +1575,7 @@ def render_story(
                 )
             except music.MusicDetectorUnavailableError as exc:
                 log.warning("music_detector_unavailable", error=str(exc)[:200])
-        facts = clip_facts(dict(job.texts), has_facecam=isinstance(job.layout, LayoutA))
+        facts = clip_facts(dict(job.texts), has_facecam=isinstance(job.layout, LayoutA | LayoutG))
         plan = variants.plan_for(row.id, "hourly", cfg, facts=facts, moment_type="story")
         payoff = produced.writing.payoff_s
         scratch = scratch_dir_for(row.id)
@@ -1451,7 +1589,12 @@ def render_story(
             series_no=row.series_no,
             lane="hourly",
             duck=music.duck_spans(analysis, cfg.max_music_ratio, window.duration_s),
-            style=cfg.catalog.rules_for(plan.reference_style),
+            style=campaign_look.rules_for(
+                row.id,
+                cfg.catalog.rules_for(plan.reference_style),
+                has_facecam=isinstance(job.layout, LayoutA | LayoutG),
+                duration_s=window.duration_s,
+            ),
             style_id=plan.reference_style,
             payoff_s=None if payoff is None else payoff - window_w.start_s,
         )
@@ -1462,7 +1605,7 @@ def render_story(
             writing=writing,
             window=window,
             lines=tuple(clip_text),
-            layout=framed_layout(job.layout, story_job.style),
+            layout=outcome.layout or framed_layout(job.layout, story_job.style, job.layout_v2),
             music=analysis,
             outcome=outcome,
             timings_ms={"render": int((time.monotonic() - started) * 1000)},
@@ -1478,6 +1621,7 @@ def render_story(
             ffmpeg=deps.ffmpeg,
         )
         _prepare_variants(row.id, story_item, plan, story, deps, cfg)
+        _capture_cover(row.id, _story_peak(story, job, window), deps)
         jobs.enqueue("normal", JOB_GATE, {"clip_id": row.id}, dedupe_key=f"{JOB_GATE}:{row.id}")
         events.emit(
             "clip.story_rendered",
@@ -1485,6 +1629,7 @@ def render_story(
             entity_id=parent_id,
             data={"story_clip_id": row.id, "duration_s": round(outcome.clip_duration_s, 3)},
         )
+        emit_cam_check(row.id, outcome)
         log.info("story_rendered", story_clip_id=row.id, duration_s=round(outcome.clip_duration_s, 2))
         return row.id
     except Exception as exc:  # noqa: BLE001 - see the docstring
@@ -1595,7 +1740,7 @@ def render_clip(item: RenderInput, *, deps: Deps | None = None, force: bool = Fa
 
         def choose_style(writing: ClipWriting, layout: Layout, has_broll: bool) -> tuple[StyleRules, str]:
             facts = clip_facts(
-                writing.style_texts(), has_facecam=isinstance(layout, LayoutA), broll=has_broll
+                writing.style_texts(), has_facecam=isinstance(layout, LayoutA | LayoutG), broll=has_broll
             )
             plan = variants.plan_for(row.id, item.lane, cfg, facts=facts, moment_type=writing.moment_type)
             planned.append(plan)
@@ -1606,7 +1751,14 @@ def render_clip(item: RenderInput, *, deps: Deps | None = None, force: bool = Fa
                 moment_type=writing.moment_type,
                 facts=sorted(facts),
             )
-            return cfg.catalog.rules_for(plan.reference_style), plan.reference_style
+            # D118: brief_match and the campaign look (a failed brief makes it a Normal clip, not a drop).
+            rules = campaign_look.rules_for(
+                row.id,
+                cfg.catalog.rules_for(plan.reference_style),
+                has_facecam=isinstance(layout, LayoutA | LayoutG),
+                duration_s=max(0.0, writing.end_s - writing.start_s),
+            )
+            return rules, plan.reference_style
 
         def choose_writing(writer_input: writer.WriterInput) -> ClipWriting:
             return writer.write(writer_input, lane=ai_lane, client=deps.ai_client)
@@ -1652,6 +1804,7 @@ def render_clip(item: RenderInput, *, deps: Deps | None = None, force: bool = Fa
         _finish(row.id, item, cfg, produced)
         if planned:
             _prepare_variants(row.id, item, planned[-1], produced, deps, cfg)
+        _capture_cover(row.id, produced, deps)
         if produced.writing.has_story and wants_story(item, cfg):
             render_story(row.id, item, cfg, produced, deps)
         # The console's frame of the clip, made before the gate so a rejected clip has one too. Never

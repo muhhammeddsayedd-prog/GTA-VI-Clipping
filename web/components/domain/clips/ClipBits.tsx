@@ -138,15 +138,21 @@ export function ClipPlayer({ clip }: { clip: ClipDetail }) {
   );
 }
 
-const LAYOUT_NAMES: Record<string, string> = { A: "gameplay on top", B: "no facecam", C: "facecam on top", H: "news card", P: "POV crop", M: "montage" };
+// G and G0: Render v2 (D119). A, B, C, H, P and M are retired when factory.layout_v2 is switched on.
+const LAYOUT_NAMES: Record<string, string> = {
+  A: "gameplay on top", B: "no facecam", C: "facecam on top", H: "news card", P: "POV crop", M: "montage",
+  G: "v2 · facecam on top", G0: "v2 · no facecam",
+};
 
 /** Human name of a design style id (development-plan/M18). */
 export function styleName(id: string | null | undefined): string {
   if (!id) return "—";
   const known: Record<string, string> = {
-    cam_top_viral: "Facecam top · viral", cam_top_title: "Facecam top · title", cam_top_question: "Facecam top · question",
-    headline_card: "News card", pov_fullframe: "POV full frame", cam_top_wordcap: "Facecam top · word captions",
-    hype_montage: "Hype montage", legacy: "Single style (legacy)",
+    cam_top_title: "Facecam top · title", cam_top_question: "Facecam top · question",
+    cam_top_wordcap: "Facecam top · word captions", legacy: "Single style (legacy)",
+    // Retired by Render v2 (D119): still named for the clips that used them, never offered as a style.
+    cam_top_viral: "Facecam top · viral (retired)", headline_card: "News card (retired)",
+    pov_fullframe: "POV full frame (retired)", hype_montage: "Hype montage (retired)",
   };
   return known[id] ?? humanize(id);
 }
