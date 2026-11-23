@@ -864,3 +864,26 @@ Read-only production analysis, 11-17 to 11-22:
 - PR 5 notes:
   - WF08 can be live in only one environment (one bot webhook).
   - Warn alerts are rate-limited per title, so each reminder needs its own title.
+## Cover engine C0 — verify and probe (2026-11-23)
+
+**Branch:** `covers-c0` (worktree `../6stars-wt-covers`, off `develop` b58de03). Spec: `docs/29-cover-engine.md` (copied from the owner's Claude Doc) + `docs/29a-cover-engine-prompt.md` (the build prompt, wins on conflicts).
+
+### What was built
+
+- `docs/29`, `docs/29a`; `docs/29b-cover-probe.md` (prompt §2 re-verified against the code, Upload-Post docs, live probe results); `docs/14` §1 "Cover fields" row.
+- `scripts/covers_probe.py`: a staging-only, private-only probe (`prepare`, `post`, `status`, `yt_thumb`); refuses Instagram, never touches `settings`, redacts the account email from its log.
+- Probe: TikTok `cover_timestamp` and `tiktok_cover_image_url` both accepted on `SELF_ONLY` posts with no capability warning (our TikTok connection has `cover_image` + `cover_timestamp`). YouTube `thumbnail_url` at upload → `thumbnail_pending: true` (still pending after 8 min); `POST /api/uploadposts/youtube/thumbnail` → **200**, and YouTube stored our image as the 1080×1920 Shorts thumbnail, although the channel is not in the Partner Program.
+
+### Deviations
+
+- No Instagram live probe: staging posts onto the production accounts (D101/D102), and Instagram can't post privately (owner decision, 23 Nov).
+- The probe calls the Upload-Post API with httpx directly, not through `clients/upload_post.py`, because the client's status parser drops `thumbnail_pending` / `warnings`. C7 adds those fields to the client.
+- The prompt says staging = GTA 5; staging runs GTA VI (`env.target_game`, read live) and stays that way.
+- Migration number: not 0028 (taken). 0037 is claimed by two in-flight branches, so covers takes the next free number at merge time.
+
+### Open issues / next (owner)
+
+- Check in YouTube Studio whether the custom thumbnail on private video `X0n4aCpzTVI` shows. If it does, YouTube custom covers can be tested on staging in C7 without waiting for the Partner Program. Then delete the video (`unpublish`).
+- C1 is a visible look change on every clip: facecam 672 → ≥ 768 px in layout C, and phrase captions in the first 2 s and around the peak. Needs the owner's yes before building.
+- YouTube traffic-source reward needs a YouTube OAuth refresh token (`sixstars youtube auth`).
+- OCR: RapidOCR (PP-OCR models on onnxruntime) proposed instead of the paddlepaddle install.
