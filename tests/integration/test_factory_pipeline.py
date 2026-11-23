@@ -511,6 +511,37 @@ def test_handler_defers_a_job_stopped_by_the_ai_budget(
     assert event is not None and event["level"] == "warn" and event["entity_id"] == str(job.id)
 
 
+def test_a_live_render_stopped_by_the_ai_budget_is_closed_not_deferred(
+    creator_id: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """AI cost plan A7: the live cut is gone by the budget reset, so the render is closed (budget_skipped)."""
+
+    def over_budget(item: pipeline.RenderInput, **_: object) -> str:
+        pipeline.claim_clip(item)
+        raise BudgetExceededError("p2_clip_writer: ai.daily_budget_usd is used up for today")
+
+    monkeypatch.setattr(pipeline, "render_clip", over_budget)
+    spike_id = make_spike(creator_id, mode="live")
+    item = render_input(tmp_path / "a.mp4", creator_id, source_type="live", spike_id=spike_id)
+    job = claimed_job("clip.render", item.to_payload())
+    pipeline.handle_clip_render(job)
+    assert db.fetch_all("select id from jobs where status = 'queued'") == []
+    clip = db.fetch_one("select status, reject_reason from clips where spike_id = %s", (spike_id,))
+    assert clip is not None and clip["status"] == "rejected"
+    assert clip["reject_reason"].startswith("budget_skipped: ")
+    spike = db.fetch_one("select status from spikes where id = %s", (spike_id,))
+    assert spike is not None and spike["status"] == "rejected"
+    assert db.fetch_one("select 1 from events where type = 'clip.budget_skipped'") is not None
+    assert db.fetch_one("select 1 from events where type = 'clip.render_deferred'") is None
+
+
+def test_only_a_live_render_is_closed_for_the_budget(tmp_path: Path) -> None:
+    live = pipeline.RenderInput(tmp_path / "a.mp4", 0, 30, "c", source_type="live")
+    vod = pipeline.RenderInput(tmp_path / "a.mp4", 0, 30, "c", source_type="vod")
+    assert not pipeline.budget_deferrable(live)
+    assert pipeline.budget_deferrable(vod)
+
+
 def test_handler_runs_the_registered_next_step_for_a_rendered_clip(
     creator_id: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
