@@ -69,7 +69,7 @@ def test_normal_and_spike_rows_exist_for_every_account() -> None:
     rows = {(r["account_id"], r["lane_key"]): r["max_day"] for r in store.lane_quotas()}
     assert rows[("youtube_main", "normal")] == 10  # cap 16 - campaign share 6
     assert rows[("instagram_main", "normal")] == 27  # cap 45 - 18
-    assert rows[("youtube_main", "spike")] == 4
+    assert rows[("youtube_main", "spike")] == 10  # migration 0056
 
 
 def test_add_activate_pause_end_moves_the_tier_and_the_lane() -> None:
