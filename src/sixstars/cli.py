@@ -1046,6 +1046,46 @@ covers_app = typer.Typer(help="Cover engine (docs/29a): checks and tools.", no_a
 app.add_typer(covers_app, name="covers")
 
 
+yt_thumb_app = typer.Typer(help="One fixed thumbnail for every YouTube Short (0057).", no_args_is_help=True)
+covers_app.add_typer(yt_thumb_app, name="youtube-thumbnail")
+
+
+@yt_thumb_app.command("set")
+def yt_thumb_set(
+    image: str = typer.Argument("assets/youtube/thumbnail.jpg", help="The JPEG to use (1080x1920)."),
+) -> None:
+    """Upload the image to covers-public and give every YouTube Short published from now on this thumbnail."""
+    from pathlib import Path
+
+    from sixstars.covers import fixed_thumb
+
+    with _database():
+        key = fixed_thumb.install(Path(image))
+    typer.echo(f"YouTube fixed thumbnail on: {key}")
+
+
+@yt_thumb_app.command("off")
+def yt_thumb_off() -> None:
+    """Stop setting the fixed thumbnail on new YouTube Shorts."""
+    from sixstars.covers import fixed_thumb
+
+    with _database():
+        fixed_thumb.disable()
+    typer.echo("YouTube fixed thumbnail off")
+
+
+@yt_thumb_app.command("backfill")
+def yt_thumb_backfill(
+    days: int = typer.Option(30, "--days", help="YouTube posts published in the last N days."),
+) -> None:
+    """Queue the fixed thumbnail for YouTube Shorts already published (one call every 20 s)."""
+    from sixstars.covers import fixed_thumb
+
+    with _database():
+        count = fixed_thumb.backfill(days)
+    typer.echo(f"queued {count} YouTube posts")
+
+
 @covers_app.command("eval-lines")
 def covers_eval_lines(
     limit: int = typer.Option(50, "--limit", help="How many of the newest clips with a transcript."),

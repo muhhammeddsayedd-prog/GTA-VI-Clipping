@@ -1386,6 +1386,15 @@ Fixes made during the release:
 - L0 measurement (one private URL-mode upload from staging) needs the owner's OK to switch off `launch.dry_run` for one post.
 - Next: L1 (schema and settings, `0058_longform.sql`).
 
+## YouTube fixed thumbnail (2026-11-25, owner request)
+
+- **What changed:** every YouTube Short gets one owner-chosen image as its thumbnail. Migration `0057_youtube_fixed_thumbnail.sql` adds `cover.youtube_fixed_thumbnail` (a covers-public storage key, or null = off). After a YouTube post is published, `covers.deliver.after_published` queues `cover.youtube_fixed_thumb` (`src/sixstars/covers/fixed_thumb.py`). The job calls Upload-Post `POST /api/uploadposts/youtube/thumbnail` with the image's public URL.
+- **Independent of the cover engine:** it works with `cover.enabled` off. While the key is set, it wins over composed YouTube covers.
+- **Retries:** 202 (still processing) backs off 2, 5, 15, 30 and 60 min, then alerts once. A 429 retries hourly for up to 24 h. A 403 alerts once and stops; unlike the engine path, it does not switch anything off. Emergency stop and dry run block the call (the posting guard).
+- **Events:** `cover.youtube_fixed_applied`, `cover.youtube_fixed_failed` and `cover.youtube_fixed_set`.
+- **The image:** `assets/youtube/thumbnail.jpg` is a 1080×1920 JPEG built from the owner's 563×545 picture (`thumbnail-source.png`): sharp in the middle, blurred and darkened fill above and below. YouTube stores Shorts thumbnails as `shortsAspectRatio` 1080×1920 (docs/29b P3b).
+- **Turn on per environment:** `sixstars covers youtube-thumbnail set` uploads the image under a content-hash key and sets the setting. To turn it off: `sixstars covers youtube-thumbnail off`. `sixstars covers youtube-thumbnail backfill --days N` queues the Shorts already published, one call every 20 s (each call costs YouTube API quota).
+- **Open:** whether YouTube shows a custom thumbnail on every Shorts surface. The Shorts feed itself plays the video; the thumbnail shows on the channel's Shorts tab, in search and in suggestions. This is the open check from docs/29b.
 ## M20 L1 + L2 — Long-form episodes: schema, settings, moment selection (D122) (2026-11-25)
 **Branch:** longform-l1 (PR #108), longform-l2 · **Plan:** development-plan/M20-longform.md · **Migration:** 0058
 

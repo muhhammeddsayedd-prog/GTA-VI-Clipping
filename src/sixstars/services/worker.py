@@ -32,6 +32,7 @@ HANDLER_MODULES: tuple[str, ...] = (
     "sixstars.factory.variants:register_handlers",  # M18: clip.variants
     "sixstars.covers.miner:register_handlers",  # cover engine C3: cover.mine
     "sixstars.covers.deliver:register_handlers",  # cover engine C7: cover.youtube_thumb
+    "sixstars.covers.fixed_thumb:register_handlers",  # 0057: cover.youtube_fixed_thumb
     "sixstars.gate.gate:install",  # M07
     "sixstars.vod:register_handlers",  # M08
     "sixstars.discovery.tiers:register_handlers",  # M09
