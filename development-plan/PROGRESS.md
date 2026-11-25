@@ -415,6 +415,25 @@ FakeUploadPostClient()                 .uploads .deleted .upload_error .platform
 
 - Only clips rendered after the deploy are affected. Clips already rendered or posted keep the title for the whole clip.
 
+## Scoring overhaul Phase 1 — 2026-11-18 UTC
+
+### What was built
+- Migration 0026 (additive): `scoring_config` (flags) + `scoring_config_history` (config version),
+  `scoring_log` (every decision with sub-scores), `scoring_version` on spikes and clips.
+- Package `sixstars.scoring` (flags, log, per-channel percentiles, first-time boost); `factory/anchor.py`
+  (loudness + chat + speech anchor); `gate/overhaul.py`; live fast path and keep-stronger merging; stored
+  live chat baselines. Scripts `scoring_flag.py`, `scoring_monitor.py`. Full log: `docs/CHANGELOG-scoring.md`.
+
+### Deviations
+- Flags live in `scoring_config` (owner's order), not `settings` as CLAUDE.md says for thresholds.
+- `reactions.extended` rolled back twice on the error trigger; left off.
+- `cut.adaptive` tripped the error trigger on a false positive (jobs queued before the flip); re-enabled with
+  a fresh, clean 30-minute window.
+
+### Open issues / next
+- Normal queue CPU saturation (local Whisper) makes live cuts expire; see the changelog summary.
+- Phase 2: judge rewrite (rubric in docs/taste-profile.md), unknown instead of reject, cap hold, 30-min buffer.
+
 ## M18 Phase A — Design styles, one per platform account (2026-11-19)
 
 ### What was built
@@ -1293,6 +1312,53 @@ Dropped (owner). The bandit learns from views only.
 - **Tests:** a unit test for the 16/10 cap maths, a migration test (`tests/integration/test_youtube_spike_dominant_migration.py`), and the seed and hour tests moved to the new values.
 - **Rollback:** `update platform_accounts set spike_reserve = 4, hourly_hours_utc = '{0,10,13,14,16,17,18,19,20,21,22,23}' where id = 'youtube_main';`
 - **Check after 24–48 h in production:** youtube_main posts per lane per day. Expect hourly ≤ 6 and spikes the majority.
+
+## Release 2026-11-23 and the evening render slowdown (2026-11-24)
+
+**Release (PR #99, #101, #100):** every branch built on 2026-11-23 is in production, with migrations 0032–0055 applied:
+- AI cost plan and Title writer v2;
+- Learning L0/L1;
+- Clipping Campaigns PR 1–4;
+- Render v2 R0–R2;
+- Cover Engine C0–C8;
+- App time zone;
+- the GTA 6 hashtag fix.
+
+Production switches were left as they were:
+- `cover.enabled` off;
+- `factory.layout_v2.enabled` off;
+- learning off;
+- TikTok lanes empty;
+- `titles.v2` on.
+
+Fixes made during the release:
+- Cover Engine and Render v2 R2 each pulled in a different OpenCV package. They now share one, `opencv-contrib-python-headless` 4.14.
+- The runtime Docker image was missing `libatomic1` (PR #101).
+- WF06 was re-applied on both environments and both consoles were redeployed.
+
+**Incident: renders slowed from 16:00 UTC.**
+- **Symptoms:**
+  - normal renders went from 3–5 min to 10–35 min;
+  - express renders went from 2 min to 8–11 min;
+  - 99 renders were waiting by midnight;
+  - 34 renders failed with "cut file missing", because their live cut was cleaned up before they reached the front of the queue;
+  - the 18:00 and 19:00 hourly posts waited until 20:00.
+- **Cause:** the OpenAI account ran out of credit (HTTP 429 `credit_balance_exhausted`). No `GROQ_API_KEY` is set, so express transcription fell back to local faster-whisper `medium` on the CPU: 400–600 s per clip instead of about 8 s. The normal renders' local transcription then slowed to 500–2,100 s on the shared CPU.
+- **Why nobody noticed:** the failure was only a `warning` log line, with no alert.
+- **Not the cause:** the release deploy at 18:27, and `factory.pre_p2_checks` (on since 15:31; its music check adds 10–17 s per clip).
+
+**Fixes (branch `ops-fixes-2026-11-24`):**
+- `clients/transcribe.py`: when a hosted provider refuses the account (401, 403, or 429 mentioning credit, quota or billing), it now:
+  - logs `transcribe_account_refused`;
+  - sends a Telegram `warn`;
+  - skips that provider for `ACCOUNT_COOLDOWN_S` (600 s) in the process.
+  
+  This means renders stop spending their retries on an account that cannot answer. Covered by unit tests.
+- `posting/hourly.py`: `HOURLY_PRIORITY` 50 → 110, above express renders (100), so a stream of spike renders can no longer hold back an hourly slot.
+
+**Owner actions (not code):**
+- add OpenAI credit;
+- optionally set `GROQ_API_KEY` as a second hosted provider ($0.04 per audio hour).
 
 ## YouTube fixed thumbnail (2026-11-25, owner request)
 
