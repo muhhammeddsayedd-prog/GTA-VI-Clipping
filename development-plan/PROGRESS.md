@@ -1427,3 +1427,45 @@ Fixes made during the release:
 - **STOP (L2):** with `longform.enabled` on in staging, the owner reviews the Telegram plan summaries for 2 days.
 - The staging deploy was blocked by a full disk. #109 adds a prune before the pull.
 - Next: L3 (re-download and 16:9 segment render).
+
+## M20 L3 + L4 — Long-form episodes: re-download, 16:9 segments, assembly (D122) (2026-11-25)
+**Branch:** longform-l3 · **Plan:** development-plan/M20-longform.md · **Migration:** 0059
+
+### What was built
+- **Two-phase build** (`longform/build.py`):
+  - Phase 1, `longform.item`, one job per moment:
+    - re-downloads the clip plus room to widen it (`fetch_pad_s`), from the VOD, or for live clips from the session's archive VOD (`live_sessions.vod_source_id`; no archive means the moment is dropped);
+    - transcribes the file locally (faster-whisper, `longform.whisper_model`, no hosted cost);
+    - aligns it and keeps the file and the segment words on the item.
+  - When nothing is still planned: the kept moments are renumbered 1..k without gaps (the `#N` badge is burned in, so the numbers are final before rendering). Then phase 2, `longform.render`, renders each segment and deletes its download.
+  - The last render queues `longform.assemble`. Every job is safe to re-run.
+- **`longform/align.py`** (pure logic):
+  - finds the clip in the file by word votes, which fixes live drift and edit-list offsets;
+  - widens the cut toward the moment length (60% before the clip);
+  - snaps both ends to speech pauses;
+  - clamps the result to 15–45 s.
+- **`longform/subs16x9.py`**: one ASS file per segment, with the canvas as PlayRes. It holds the captions (profanity masked; the audio is bleeped), the `#N` badge (2 s), the creator credit (3 s) and the brand mark. Every size comes from `longform.style`.
+- **`longform/segment.py`**: scale and pad to the canvas (never cropped); two-pass loudnorm through `factory.audio`; x264 with a fixed 2 s GOP, so segments join without re-encoding.
+- **`longform/assemble.py`** and **`longform/chapters.py`**:
+  - cold open (the last 5 s of #1 with a line on top), segments N..1, end card, joined with `-c copy` and faststart;
+  - YouTube chapters (00:00, at least 3, each at least 10 s), title, description with every streamer's link;
+  - a 1280×720 thumbnail (a frame of #1 plus "TOP N");
+  - TUS upload to the `episodes` bucket, status `ready`, Telegram notice.
+- **`storage.py`**: `upload_resumable` (TUS, 6 MB chunks, resumes from the server's offset). The fake supports it too.
+- **Migration 0059** adds `longform.auto_build` (default off), `longform.cut` and `longform.style`; adds `preset` and `bufsize` to `longform.render` where missing; adds `episode_items.source_path` and `episode_items.words`.
+- The pool now takes English moments only, because episode captions come from the local transcript and never from a paid translation.
+- Triggers: CLI `sixstars longform render [--date]` and `POST /v1/longform/build {"render": true}`.
+
+### Results
+- Unit tests: 4226 passed. Long-form tests: 30 unit tests, including a real ffmpeg render and a real episode join (1920×1080, 30 fps, AAC 48 kHz, thumbnail 1280×720), and 20 integration tests.
+- `mypy --strict src/` and ruff are clean.
+
+### Deviations
+- The title and description are built from the clips' existing titles (titles v2) instead of a new PL1 prompt, so there is no new AI cost. PL1 can follow after the owner has seen the first episode.
+- The thumbnail is an ffmpeg frame plus text, not the Playwright cover engine (which is 9:16 only).
+- There is no audio crossfade between segments: every segment ends on a speech pause and is loudness-normalised on its own.
+
+### Open issues / next
+- Staging YouTube cookies (`/secrets/youtube_cookies.txt`) are not in Netscape format, so YouTube VOD downloads fail on staging. Twitch moments are not affected.
+- The staging scheduler had not planned the first episode by 10:29 UTC. Investigate after this deploy.
+- Next: L5 (console Episodes page and API), then L6 (publishing).

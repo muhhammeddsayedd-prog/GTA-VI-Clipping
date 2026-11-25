@@ -177,6 +177,7 @@ class LongformBuildBody(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
     episode_date: date | None = None
+    render: bool = False
 
 
 @router.post("/longform/build")
@@ -184,11 +185,13 @@ def longform_build(body: LongformBuildBody | None = None) -> JSONResponse:
     """Plan the long-form episode of a day now (idempotent: an episode already planned is returned)."""
     from datetime import UTC, datetime
 
+    from sixstars.longform.build import build_day
     from sixstars.longform.planner import plan_episode
 
     day = (body.episode_date if body else None) or datetime.now(UTC).date()
     result = plan_episode(day)
-    return JSONResponse(jsonable_encoder(dataclasses.asdict(result)))
+    queued = build_day(day) if body is not None and body.render else 0
+    return JSONResponse(jsonable_encoder({**dataclasses.asdict(result), "queued": queued}))
 
 
 @read_router.get("/reports/daily")

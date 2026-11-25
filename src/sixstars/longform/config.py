@@ -5,6 +5,8 @@ from enum import StrEnum
 from typing import Any
 
 from sixstars import settings
+from sixstars.longform.align import CutRules
+from sixstars.longform.subs16x9 import OverlayStyle
 
 
 class PublishMode(StrEnum):
@@ -24,6 +26,8 @@ class RenderSpec:
     fps: int = 30
     crf: int = 20
     maxrate: str = "8M"
+    bufsize: str = "16M"
+    preset: str = "veryfast"
 
     @classmethod
     def from_value(cls, value: dict[str, Any]) -> "RenderSpec":
@@ -33,6 +37,8 @@ class RenderSpec:
             fps=int(value.get("fps", cls.fps)),
             crf=int(value.get("crf", cls.crf)),
             maxrate=str(value.get("maxrate", cls.maxrate)),
+            bufsize=str(value.get("bufsize", cls.bufsize)),
+            preset=str(value.get("preset", cls.preset)),
         )
 
 
@@ -88,6 +94,9 @@ class LongformConfig:
     end_card_s: float
     account_id: str
     rank_weights: RankWeights
+    auto_build: bool
+    cut: CutRules
+    style: OverlayStyle
 
     @classmethod
     def load(cls) -> "LongformConfig":
@@ -120,4 +129,13 @@ class LongformConfig:
             end_card_s=settings.get_float("longform.end_card_s"),
             account_id=settings.get_str("longform.account_id"),
             rank_weights=RankWeights.from_value(settings.get_dict("longform.rank_weights")),
+            auto_build=settings.get_bool("longform.auto_build"),
+            cut=cut_rules(settings.get_dict("longform.cut")),
+            style=OverlayStyle.from_value(settings.get_dict("longform.style")),
         )
+
+
+def cut_rules(value: dict[str, Any]) -> CutRules:
+    """Setting `longform.cut` (unknown keys ignored, missing keys keep their defaults)."""
+    known = {k: v for k, v in value.items() if k in CutRules.__dataclass_fields__}
+    return CutRules(**{**CutRules().__dict__, **known})
