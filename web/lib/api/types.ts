@@ -283,3 +283,22 @@ export interface CoverGrid {
   accounts: { account_id: string; platform: PostPlatform }[];
   covers: CoverTile[];
 }
+
+/* ---------- long-form episodes (development-plan/M20) ---------- */
+export interface EpisodeRow {
+  id: string; episode_date: string; status: string; n_moments: number | null; duration_s: number | null; title: string | null;
+  error: string | null; privacy: string | null; post_url: string | null; account_id: string | null; created_at: Iso; updated_at: Iso;
+  has_file: boolean; items: number; rendered: number; dropped: number;
+}
+export interface EpisodeMoment {
+  id: string; position: number; status: string; error: string | null; clip_id: string; est_s: number | null; duration_s: number | null;
+  cut_start_s: number | null; cut_end_s: number | null; align_offset_s: number | null; fetch_url: string | null;
+  series_no: number | null; title: string | null; score: number | null; source_type: string | null;
+  creator_platform: string; creator_handle: string; creator_name: string;
+}
+export interface EpisodeChapter { start_s: number; label: string }
+export interface EpisodeDetail extends Omit<EpisodeRow, "items" | "rendered" | "dropped"> {
+  description: string | null; chapters: EpisodeChapter[] | null; tags: string[] | null; thumb_text: string | null; has_thumb: boolean;
+  moments: EpisodeMoment[]; events: Event[];
+}
+export interface EpisodeMedia { video: ClipMedia; thumb: ClipMedia }
