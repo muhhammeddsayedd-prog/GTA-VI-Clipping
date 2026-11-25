@@ -64,6 +64,75 @@ class RankWeights:
 
 
 @dataclass(frozen=True)
+class SoloRules:
+    """Creator-day rules (setting `longform.solo`)."""
+
+    pool_hours: int = 168
+    min_s: float = 360.0
+    target_s: float = 480.0
+    max_s: float = 600.0
+    cooldown_days: int = 14
+    min_moments: int = 8
+
+    @classmethod
+    def from_value(cls, value: dict[str, Any]) -> "SoloRules":
+        return cls(
+            pool_hours=int(value.get("pool_hours", cls.pool_hours)),
+            min_s=float(value.get("min_s", cls.min_s)),
+            target_s=float(value.get("target_s", cls.target_s)),
+            max_s=float(value.get("max_s", cls.max_s)),
+            cooldown_days=int(value.get("cooldown_days", cls.cooldown_days)),
+            min_moments=int(value.get("min_moments", cls.min_moments)),
+        )
+
+
+@dataclass(frozen=True)
+class ThumbSpec:
+    """Thumbnail generation (setting `longform.thumb`)."""
+
+    ai: bool = True
+    model: str = "gpt-image-2.6-sunburst"
+    quality: str = "high"
+    size: str = "1536x864"
+    timeout_s: float = 240.0
+    usd_max: float = 0.5
+    frames: int = 2
+    max_bytes: int = 2_000_000
+
+    @classmethod
+    def from_value(cls, value: dict[str, Any]) -> "ThumbSpec":
+        return cls(
+            ai=bool(value.get("ai", cls.ai)),
+            model=str(value.get("model", cls.model)),
+            quality=str(value.get("quality", cls.quality)),
+            size=str(value.get("size", cls.size)),
+            timeout_s=float(value.get("timeout_s", cls.timeout_s)),
+            usd_max=float(value.get("usd_max", cls.usd_max)),
+            frames=int(value.get("frames", cls.frames)),
+            max_bytes=int(value.get("max_bytes", cls.max_bytes)),
+        )
+
+
+@dataclass(frozen=True)
+class PublishSpec:
+    """Upload of a ready episode (setting `longform.publish`)."""
+
+    video_url_ttl_s: int = 21600
+    wait_timeout_s: float = 5400.0
+    poll_s: float = 20.0
+    category_id: str = "20"
+
+    @classmethod
+    def from_value(cls, value: dict[str, Any]) -> "PublishSpec":
+        return cls(
+            video_url_ttl_s=int(value.get("video_url_ttl_s", cls.video_url_ttl_s)),
+            wait_timeout_s=float(value.get("wait_timeout_s", cls.wait_timeout_s)),
+            poll_s=float(value.get("poll_s", cls.poll_s)),
+            category_id=str(value.get("category_id", cls.category_id)),
+        )
+
+
+@dataclass(frozen=True)
 class LongformConfig:
     """Every number the long-form layer uses. Nothing here is hard-coded elsewhere."""
 
@@ -97,6 +166,10 @@ class LongformConfig:
     auto_build: bool
     cut: CutRules
     style: OverlayStyle
+    format_cycle: tuple[str, ...] = ("mix", "creator")
+    solo: SoloRules = SoloRules()
+    thumb: ThumbSpec = ThumbSpec()
+    publish: PublishSpec = PublishSpec()
 
     @classmethod
     def load(cls) -> "LongformConfig":
@@ -132,6 +205,10 @@ class LongformConfig:
             auto_build=settings.get_bool("longform.auto_build"),
             cut=cut_rules(settings.get_dict("longform.cut")),
             style=OverlayStyle.from_value(settings.get_dict("longform.style")),
+            format_cycle=tuple(str(f) for f in settings.get_list("longform.format_cycle")),
+            solo=SoloRules.from_value(settings.get_dict("longform.solo")),
+            thumb=ThumbSpec.from_value(settings.get_dict("longform.thumb")),
+            publish=PublishSpec.from_value(settings.get_dict("longform.publish")),
         )
 
 

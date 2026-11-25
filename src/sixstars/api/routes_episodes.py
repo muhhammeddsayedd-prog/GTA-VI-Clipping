@@ -21,7 +21,9 @@ router = APIRouter(prefix="/v1/admin")
 
 LIST_SQL = """
 select e.id::text as id, e.episode_date, e.status, e.n_moments, e.duration_s, e.title, e.error, e.privacy,
-       e.post_url, e.account_id, e.created_at, e.updated_at,
+       e.post_url, e.account_id, e.created_at, e.updated_at, e.format,
+       (select coalesce(f.title_name, f.display_name, f.handle) from creators f
+         where f.id = e.featured_creator_id) as featured_name,
        (e.storage_path is not null) as has_file,
        (select count(*) from episode_items i where i.episode_id = e.id) as items,
        (select count(*) from episode_items i where i.episode_id = e.id and i.status = 'rendered') as rendered,
@@ -34,8 +36,12 @@ select e.id::text as id, e.episode_date, e.status, e.n_moments, e.duration_s, e.
 DETAIL_SQL = """
 select e.id::text as id, e.episode_date, e.status, e.n_moments, e.duration_s, e.title, e.description,
        e.chapters, e.tags, e.thumb_text, e.error, e.privacy, e.post_url, e.account_id, e.created_at,
-       e.updated_at, (e.storage_path is not null) as has_file, (e.thumb_path is not null) as has_thumb
+       e.updated_at, (e.storage_path is not null) as has_file, (e.thumb_path is not null) as has_thumb,
+       e.format, e.hashtags, e.thumb_scene, e.thumb_source, e.published_at,
+       e.featured_creator_id::text as featured_creator_id,
+       coalesce(f.title_name, f.display_name, f.handle) as featured_name
   from episodes e
+  left join creators f on f.id = e.featured_creator_id
  where e.id = %s
 """
 

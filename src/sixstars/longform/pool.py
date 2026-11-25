@@ -64,12 +64,13 @@ def to_candidate(row: dict[str, Any]) -> Candidate:
     )
 
 
-def load_candidates(cfg: LongformConfig, now: datetime) -> list[Candidate]:
-    """Every clip that may be a moment of today's episode."""
+def load_candidates(cfg: LongformConfig, now: datetime, pool_hours: float | None = None) -> list[Candidate]:
+    """Every clip that may be a moment of today's episode (`pool_hours` overrides the mix-day window)."""
+    hours = cfg.pool_hours if pool_hours is None else pool_hours
     rows = db.fetch_all(
         POOL_SQL,
         {
-            "since": now - timedelta(hours=cfg.pool_hours),
+            "since": now - timedelta(hours=hours),
             "min_score": cfg.min_score,
             "statuses": list(cfg.pool_statuses),
             "reasons": list(cfg.pool_reject_reasons),

@@ -289,6 +289,7 @@ export interface EpisodeRow {
   id: string; episode_date: string; status: string; n_moments: number | null; duration_s: number | null; title: string | null;
   error: string | null; privacy: string | null; post_url: string | null; account_id: string | null; created_at: Iso; updated_at: Iso;
   has_file: boolean; items: number; rendered: number; dropped: number;
+  format: "mix" | "creator"; featured_name: string | null;
 }
 export interface EpisodeMoment {
   id: string; position: number; status: string; error: string | null; clip_id: string; est_s: number | null; duration_s: number | null;
@@ -299,6 +300,8 @@ export interface EpisodeMoment {
 export interface EpisodeChapter { start_s: number; label: string }
 export interface EpisodeDetail extends Omit<EpisodeRow, "items" | "rendered" | "dropped"> {
   description: string | null; chapters: EpisodeChapter[] | null; tags: string[] | null; thumb_text: string | null; has_thumb: boolean;
+  hashtags: string[] | null; thumb_scene: string | null; thumb_source: string | null; published_at: Iso | null;
+  featured_creator_id: string | null;
   moments: EpisodeMoment[]; events: Event[];
 }
 export interface EpisodeMedia { video: ClipMedia; thumb: ClipMedia }

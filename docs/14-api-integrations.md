@@ -92,6 +92,18 @@ Docs: https://docs.claude.com
 - **OpenAI** (the hosted provider in use): ✅ M02: `POST https://api.openai.com/v1/audio/transcriptions` with `model=whisper-1`, `response_format=verbose_json`, `timestamp_granularities[]=word`. **Word timestamps exist only on `whisper-1`** (not on the `gpt-*-transcribe` models); `whisper-1` shuts down on 26 Feb 2027. $0.006 per minute, 25 MB file limit. Tested live: `language` comes back as a name (`english`).
 - **Local**: faster-whisper `medium`, `compute_type=int8`.
 
+## 6b. OpenAI Images (long-form thumbnail, M20)
+✅ Checked 2026-11-25 (https://developers.openai.com/api/reference/resources/images/methods/edit, the image
+generation guide and the pricing page): `POST https://api.openai.com/v1/images/edits`, multipart `model`,
+`prompt`, up to 16 `image[]` files, `size` (1024x1024, 1536x1024, 1024x1536, auto; GPT Image 2.x also any
+`WxH` with edges divisible by 16, aspect 1:3–3:1, max 3840x2160), `quality` (low/medium/high/auto),
+`output_format` (png/jpeg/webp), `n`. The reply has `data[0].b64_json` (no URLs) and `usage` tokens. Models:
+`gpt-image-2.6-sunburst` (default, recommended), `-flare`, `gpt-image-2.5-*`, `gpt-image-2`, `gpt-image-1.5`,
+`gpt-image-1-mini`; **`gpt-image-1` was shut down on 2026-10-23**. Price (GPT Image 2.x, per 1M tokens): image
+input $8, text input $5, image output $30 (about $0.15–0.25 for one high-quality 1536x864 image). Complex
+prompts can take up to 2 minutes. A refusal is an error with code `moderation_blocked`. Organisation
+verification may be needed before GPT Image models work on a key. Client: `clients/openai_images.py`.
+
 ## 7. Telegram (via n8n only)
 The worker never calls Telegram directly; it calls the n8n notify webhook (`docs/13` WF07).
 

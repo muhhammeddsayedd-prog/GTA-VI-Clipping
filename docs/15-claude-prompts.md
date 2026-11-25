@@ -197,6 +197,16 @@ the chat peak, numbers, chat words, gta_label, story_spoiler). Output: `candidat
 facts_used) and `caption_short`. The title rules are checked by code (`titles.checks`), not by the schema;
 nothing passing → one retry with the failures listed, then a fallback title.
 
+## P14 — episode_package (model: `ai.model_writer`, override `ai.model.p14_episode_package`)
+
+One call per long-form episode (M20, `longform/package.py`). Input: format (`mix` or `creator`), the featured
+streamer, the number of moments, length, date, the channel's last 10 episode titles, and the moments in
+countdown order (`#N streamer: title`). Output: `title` (≤ 90 characters, "TOP N …" on a mix day, the streamer
+first on a creator day), `intro` (2–3 sentences), `hashtags` (3, `#GTA6` first), `tags` (8–15 lowercase search
+tags), `thumb_text` (1–3 words or empty) and `thumb_scene` (one sentence for the thumbnail image). Code
+(`package.clean`) enforces every limit and repairs slips; any error uses the template title and intro.
+The description is assembled by code: intro, chapters, streamer credits, footer, hashtags. No `#Shorts`.
+
 ## Cost control
 - P1 batches in replay mode.
 - P2 uses prompt caching for its long rules block.

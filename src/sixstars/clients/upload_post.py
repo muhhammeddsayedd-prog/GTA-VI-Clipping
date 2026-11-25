@@ -304,6 +304,50 @@ class UploadPostClient:
         usage.record(SERVICE, "upload_video", units=1, ref_id=request_id)
         return parse_status(request_id, response.json())
 
+    def upload_video_url(
+        self,
+        user: str,
+        platform: str,
+        video_url: str,
+        fields: Mapping[str, Any],
+        idempotency_key: str,
+        request_id: str,
+    ) -> UploadStatus:
+        """Publish a video that Upload-Post fetches from `video_url` (M20 long-form episodes).
+
+        Docs (upload-video, checked 2026-11-25): `video` may be "a file upload or a video URL"; a URL is
+        fetched by Upload-Post (up to 20 GB) and with `async_upload=true` the `request_id` comes back within
+        seconds whatever the size. List values in `fields` (YouTube `tags`) are sent as repeated `<key>[]`
+        fields. Same idempotency and posting guard as `upload_video`.
+        """
+        if self._posting_guard is not None:
+            self._posting_guard()
+        endpoint = "POST /api/upload (url)"
+        parts: list[tuple[str, tuple[None, str]]] = [("async_upload", (None, "true"))]
+        for key, value in fields.items():
+            if value is None:
+                continue
+            if isinstance(value, list | tuple):
+                parts += [(f"{key}[]", (None, str(item))) for item in value]
+            else:
+                text = ("true" if value else "false") if isinstance(value, bool) else str(value)
+                parts.append((key, (None, text)))
+        parts += [
+            ("user", (None, user)),
+            ("platform[]", (None, platform)),
+            ("request_id", (None, request_id)),
+            ("video", (None, video_url)),
+        ]
+        headers = {**self._headers(), "Idempotency-Key": idempotency_key}
+
+        def call() -> httpx.Response:
+            return self._http.post(API_BASE + "/api/upload", files=parts, headers=headers)
+
+        response = _http.send(SERVICE, endpoint, call, retry_statuses=(500, 502, 503, 504))
+        self._raise(endpoint, response, account=f"{user}/{platform}")
+        usage.record(SERVICE, "upload_video", units=1, ref_id=request_id)
+        return parse_status(request_id, response.json())
+
     def get_upload_status(self, request_id: str) -> UploadStatus:
         """Status of an upload by request id. An unknown id gives status `not_found`."""
         endpoint = "GET /api/uploadposts/status"

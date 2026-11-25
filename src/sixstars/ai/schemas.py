@@ -717,3 +717,18 @@ class CoverQa(Reply):
     total: int = Field(ge=0, le=10)
     hard_fail: bool
     reason: str = ""
+
+
+# ── P14 episode_package (M20 long-form episodes, docs/31) ────
+
+
+class EpisodePackage(Reply):
+    """P14: what a viewer sees of a long-form episode before clicking. Lengths are checked again by
+    `longform.package.clean`, which also repairs small slips instead of paying for a retry."""
+
+    title: str = Field(min_length=1, description="At most 90 characters.")
+    intro: str = Field(default="", description="2 or 3 sentences, under 400 characters.")
+    hashtags: list[str] = Field(default_factory=list, max_length=6)
+    tags: list[str] = Field(default_factory=list, max_length=25)
+    thumb_text: str = Field(default="", description="1 to 3 words in capitals, or empty.")
+    thumb_scene: str = Field(default="", description="One sentence for the thumbnail illustrator.")

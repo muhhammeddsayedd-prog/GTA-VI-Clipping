@@ -91,6 +91,7 @@ def test_the_scheduler_has_the_m11_and_m13_tasks_with_their_intervals() -> None:
         "vod_recovery": 15.0,
         "campaign_watch": 10.0,
         "longform_plan": 300.0,
+        "longform_publish": 300.0,
     }
 
 

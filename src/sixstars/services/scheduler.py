@@ -42,6 +42,7 @@ from sixstars.guardian import health as guardian_health
 from sixstars.guardian import service as guardian_service
 from sixstars.logging import configure_logging, get_logger
 from sixstars.longform import planner as longform_planner
+from sixstars.longform import publish as longform_publish
 from sixstars.posting import ranking
 from sixstars.posting.params import PostingParams
 from sixstars.posting.precedence import demoted_rank
@@ -334,6 +335,11 @@ def plan_longform() -> int | None:
     return longform_planner.due_tick()
 
 
+def publish_longform() -> list[int]:
+    """M20 L6: enqueue the publish job of each ready episode once `longform.publish_hour_utc` has come."""
+    return longform_publish.due_tick()
+
+
 def tasks() -> list[PeriodicTask]:
     """The periodic tasks of the scheduler."""
     return [
@@ -349,6 +355,7 @@ def tasks() -> list[PeriodicTask]:
         PeriodicTask("vod_recovery", VOD_RECOVERY_TICK_S, recover_vod_orphans),
         PeriodicTask("campaign_watch", CAMPAIGN_WATCH_TICK_S, watch_campaigns),
         PeriodicTask("longform_plan", LONGFORM_TICK_S, plan_longform),
+        PeriodicTask("longform_publish", LONGFORM_TICK_S, publish_longform),
     ]
 
 

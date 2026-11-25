@@ -15,6 +15,8 @@ from sixstars.factory.presets import audio_encoder_args, container_args
 from sixstars.factory.tools import probe, run
 from sixstars.logging import get_logger
 from sixstars.longform import chapters as ch
+from sixstars.longform import package as pkg
+from sixstars.longform import thumb as thumbs
 from sixstars.longform.build import JOB_ASSEMBLE, episode_dir
 from sixstars.longform.config import LongformConfig, RenderSpec
 from sixstars.longform.segment import video_encoder_args
@@ -109,21 +111,38 @@ def moments(rows: Sequence[dict[str, Any]]) -> list[ch.Moment]:
     ]
 
 
+EPISODE_SQL = """
+select e.episode_date, e.status, e.format,
+       coalesce(cr.title_name, cr.display_name, cr.handle) as featured, cr.avatar_url
+  from episodes e
+  left join creators cr on cr.id = e.featured_creator_id
+ where e.id = %s
+"""
+
+
+def min_seconds(fmt: str, cfg: LongformConfig) -> float:
+    """The shortest episode worth posting: the creator-day minimum on a creator day."""
+    return cfg.solo.min_s if fmt == "creator" else cfg.min_s
+
+
 def assemble(episode_id: str, cfg: LongformConfig | None = None) -> str:
     """Build the final MP4 and its packaging. Returns the episode status."""
     cfg = cfg or LongformConfig.load()
-    ep = db.fetch_one("select episode_date, status from episodes where id = %s", (episode_id,))
+    ep = db.fetch_one(EPISODE_SQL, (episode_id,))
     if ep is None:
         return "missing"
     if ep["status"] not in ("fetching", "rendering", "assembling"):
         return str(ep["status"])
     db.execute("update episodes set status = 'assembling' where id = %s", (episode_id,))
     day: date = ep["episode_date"]
+    fmt = str(ep["format"] or "mix")
+    featured = str(ep["featured"]) if fmt == "creator" and ep["featured"] else None
     rows = [dict(r) for r in db.fetch_all(ITEMS_SQL, (episode_id,))]
     played = moments(rows)
     total_moments = sum(m.duration_s for m in played)
-    if len(played) < ch.MIN_CHAPTERS or total_moments < cfg.min_s:
-        reason = f"only {len(played)} moments / {total_moments:.0f}s rendered (minimum {cfg.min_s:.0f}s)"
+    minimum = min_seconds(fmt, cfg)
+    if len(played) < ch.MIN_CHAPTERS or total_moments < minimum:
+        reason = f"only {len(played)} moments / {total_moments:.0f}s rendered (minimum {minimum:.0f}s)"
         db.execute("update episodes set status = 'failed', error = %s where id = %s", (reason, episode_id))
         events.emit("episode.failed", "warn", "episode", episode_id, reason)
         notify.send("warn", f"Episode {day} not built", reason)
@@ -133,7 +152,7 @@ def assemble(episode_id: str, cfg: LongformConfig | None = None) -> str:
     fonts = Path(assets.fonts.fonts_dir) if assets.fonts.fonts_dir else None
     r, style = cfg.render, cfg.style
     best = Path(rows[-1]["segment_path"])  # position 1 plays last
-    cold_ass, end_ass, thumb_ass = work / "cold.ass", work / "end.ass", work / "thumb.ass"
+    cold_ass, end_ass = work / "cold.ass", work / "end.ass"
     cold_ass.write_text(
         build_title_ass(
             style.cold_open_text, duration_s=cfg.cold_open_s, style=style, width=r.width, height=r.height
@@ -162,22 +181,24 @@ def assemble(episode_id: str, cfg: LongformConfig | None = None) -> str:
     total = probe(final).duration_s
     cold_s = probe(cold).duration_s
     chs = ch.chapters(played, cold_s)
-    title = ch.title(len(played), day)
+    packed = pkg.write(episode_id, played, day=day, fmt=fmt, featured=featured, length_s=total)
+    title = packed.title
     footer = settings.get_str("posting.youtube_description_footer", "")
-    description = ch.description(played, chs, day, footer)
-    thumb = work / "thumb.jpg"
-    thumb_ass.write_text(
-        build_title_ass(
-            f"TOP {len(played)}", duration_s=1.0, style=thumb_style(style), width=THUMB_W, height=THUMB_H
-        ),
-        encoding="utf-8",
+    description = ch.description(played, chs, day, footer, intro=packed.intro, hashtags=packed.hashtags)
+    best_first = [Path(row["segment_path"]) for row in reversed(rows)]
+    made = thumbs.make(
+        episode_id,
+        best_first,
+        work,
+        fmt=fmt,
+        n=len(played),
+        thumb_text=packed.thumb_text,
+        scene=packed.thumb_scene,
+        featured=featured,
+        avatar_url=ep["avatar_url"] if fmt == "creator" else None,
+        spec=cfg.thumb,
     )
-    best_len = probe(best).duration_s
-    run(
-        thumbnail_command(best, max(best_len * 0.6, 0.0), thumb_ass, fonts, thumb),
-        timeout_s=120,
-        what="thumbnail",
-    )
+    thumb = made.path
     env_name = config.env().APP_ENV
     key = f"{EPISODES_BUCKET}/{env_name}/{day:%Y/%m/%d}/{episode_id}.mp4"
     thumb_key = f"{EPISODES_BUCKET}/{env_name}/{day:%Y/%m/%d}/{episode_id}.jpg"
@@ -189,24 +210,41 @@ def assemble(episode_id: str, cfg: LongformConfig | None = None) -> str:
         update episodes
            set status = 'ready', n_moments = %s, duration_s = %s, title = %s, description = %s, chapters = %s,
                tags = %s, thumb_text = %s, storage_path = %s, thumb_path = %s, local_path = %s,
+               hashtags = %s, thumb_scene = %s, thumb_source = %s,
                error = case when %s then null else 'chapters not valid for YouTube' end
          where id = %s
         """,
         (
             len(played), round(total, 1), title, description,
             db_json([{"start_s": c.start_s, "label": c.label} for c in chs]),
-            ["GTA 6", "GTA VI", "GTA 6 funny moments", "GTA 6 streamers"], f"TOP {len(played)}",
-            key, thumb_key, str(final), ch.valid(chs, total), episode_id,
+            list(packed.tags), packed.thumb_text,
+            key, thumb_key, str(final), list(packed.hashtags), packed.thumb_scene, made.source,
+            ch.valid(chs, total), episode_id,
         ),
     )  # fmt: skip
-    for part in (cold, end, cold_ass, end_ass, thumb_ass, list_file):
+    for part in (cold, end, cold_ass, end_ass, list_file):
         part.unlink(missing_ok=True)
     minutes, seconds = divmod(int(total), 60)
-    events.emit("episode.ready", "info", "episode", episode_id, title, {"duration_s": round(total, 1)})
+    events.emit(
+        "episode.ready",
+        "info",
+        "episode",
+        episode_id,
+        title,
+        {
+            "duration_s": round(total, 1),
+            "format": fmt,
+            "package": packed.source,
+            "thumb": made.source,
+            "thumb_usd": made.cost_usd,
+        },
+    )
+    kind = f"Creator day: {featured}" if featured else "Mix day"
     notify.send(
         "info",
-        f"Episode {day} ready to watch",
-        f"{title}\n{len(played)} moments, {minutes}:{seconds:02d}\nOpen the console: Episodes",
+        f"Episode {day} ready",
+        f"{title}\n{kind}, {len(played)} moments, {minutes}:{seconds:02d}\n"
+        f"Text: {packed.source}, thumbnail: {made.source}\nOpen the console: Episodes",
     )
     log.info("episode_ready", episode_id=episode_id, duration_s=total, n_moments=len(played))
     return "ready"
