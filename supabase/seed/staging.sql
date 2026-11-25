@@ -20,3 +20,9 @@ insert into platform_accounts (id, platform, upload_post_user, handle, lanes, ca
   ('youtube_main',   'youtube',   'default', '@6starsClips-m3x', '{hourly,spike}', 16, 10, 900, 'private', '{0,14,17,19,21,23}', true, 3000)
 on conflict (id) do nothing;
 -- Note: staging dry_run starts true. Set it to false only for the end-to-end private posting test (M15).
+
+-- Long-form episodes (M20, D122, migration 0058): on in staging, uploads stay private.
+update settings set value = 'true'::jsonb where key = 'longform.enabled';
+update settings set value = '"private"'::jsonb where key = 'longform.publish_mode';
+update settings set value = '72'::jsonb where key = 'longform.pool_hours';
+update settings set value = '6'::jsonb where key = 'longform.min_score';

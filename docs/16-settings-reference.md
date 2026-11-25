@@ -437,3 +437,37 @@ Campaign lanes, decision D118 (migration 0050). The campaigns themselves live in
 | `twitch_clips.campaign_first` | `true` | Viewer clips of campaign streamers are read per broadcaster and come before the game-wide list, inside `twitch_clips.daily_cap`. |
 | `lanes.return_unused_at_utc` | `18` | From this UTC hour (20:00 Cairo) unused campaign quota goes back to the Normal lane for the rest of the day. Before it, Normal posts leave room for the campaign minimums still open. |
 | `lanes.campaign_gap_s` | `3600` | Seconds between two posts of the same campaign on one account. |
+
+## Long-form episodes
+
+One daily 1920×1080 "TOP N" YouTube episode built from moments the engine already clipped (D122, development-plan/M20, docs/31). Migration 0058.
+
+| Key | Default | Meaning |
+|---|---|---|
+| `longform.enabled` | `false` | Master switch (D122, development-plan/M20). Off: no episode is planned, built or published. Staging: `true`. Migration 0058. |
+| `longform.publish_mode` | `"off"` | `off` = build only (console preview), `private` = upload as a private YouTube video, `public` = publish. Staging is always private. Production starts `private`; `public` needs the owner's go. |
+| `longform.build_hour_utc` | `10` | UTC hour the daily episode is planned and built. |
+| `longform.publish_hour_utc` | `16` | UTC hour the ready episode is uploaded. Keep it outside `youtube_main.hourly_hours_utc`. |
+| `longform.pool_hours` | `48` | Clips created within this many hours are candidates. Staging: `72`. |
+| `longform.pool_statuses` | `["approved","posted","expired"]` | Clip statuses that are candidates (passed the quality gate). |
+| `longform.pool_reject_reasons` | `["creator_daily_cap","duplicate_topic","unreadable_subtitles","creator_tier_express"]` | Rejected clips with one of these reasons are candidates too: they were refused by Shorts-only rules. |
+| `longform.min_score` | `7` | Minimum clip score (Claude, 1–10). Staging: `6`. |
+| `longform.target_s` | `720` | Target length of the moments together, in seconds. |
+| `longform.min_s` | `600` | Below this the day is skipped (notify), never padded. |
+| `longform.max_s` | `870` | Hard maximum (14:30), under YouTube's 15 min default. |
+| `longform.segment_min_s` | `15` | Shortest moment, in seconds. |
+| `longform.segment_max_s` | `45` | Longest moment, in seconds. |
+| `longform.lead_s` | `3` | Seconds kept before the build-up starts. |
+| `longform.tail_s` | `2` | Seconds kept after the payoff pause. |
+| `longform.max_per_creator` | `3` | Most moments of one creator per episode. |
+| `longform.max_creator_s` | `90` | Most seconds of one creator per episode. |
+| `longform.reuse_after_days` | `7` | A clip can be in a new episode again after this many days. |
+| `longform.fetch_pad_s` | `5` | Extra seconds downloaded on each side of a moment, for alignment. |
+| `longform.whisper_model` | `"small"` | Local faster-whisper model for alignment and subtitles (no hosted cost). |
+| `longform.render` | `{"width": 1920, "height": 1080, "fps": 30, "crf": 20, "maxrate": "8M"}` | Segment encode: full frame, scale + pad, no crop. Every segment shares it so they join without re-encoding. |
+| `longform.priority` | `15` | Job priority on the normal queue (below hourly 110, spikes 90, VODs 30). |
+| `longform.keep_days` | `7` | Local and Storage episode files are deleted after this many days. |
+| `longform.cold_open_s` | `5` | Seconds of #1 shown before the countdown. |
+| `longform.end_card_s` | `10` | End card length (room for YouTube end-screen elements). |
+| `longform.rank_weights` | `{"score": 1.0, "spike_z": 1.0, "spike_z_cap": 5.0, "views": 1.0, "fresh": 0.5}` | Ranking of candidates: score × score + spike_z × min(score_z, spike_z_cap) / spike_z_cap + views × (views / best views in the pool) + fresh × (1 − age / pool_hours). |
+| `longform.account_id` | `"youtube_main"` | `platform_accounts` row the episode posts to. |
