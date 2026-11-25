@@ -1,9 +1,11 @@
 """M20 L2: the pool SQL and the planner against a real schema (pool excludes, episode rows, idempotency)."""
 
 import uuid
+from collections.abc import Iterator
 from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
+import pytest
 from psycopg.types.json import Jsonb
 
 from sixstars import db, settings
@@ -12,6 +14,15 @@ from sixstars.longform.config import LongformConfig
 
 NOW = datetime(2030, 1, 2, 12, tzinfo=UTC)
 DAY = NOW.date()
+
+
+@pytest.fixture(autouse=True)
+def _cleanup(test_database_url: str) -> Iterator[None]:
+    """Clips and creators are not truncated between tests: remove what these tests add."""
+    yield
+    db.execute("delete from episodes where episode_date >= '2030-01-01'")
+    db.execute(r"delete from clips where creator_id in (select id from creators where handle like 'lf\_%%')")
+    db.execute(r"delete from creators where handle like 'lf\_%%'")
 
 
 def ensure_account() -> None:
