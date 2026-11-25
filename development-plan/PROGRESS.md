@@ -1359,3 +1359,29 @@ Fixes made during the release:
 **Owner actions (not code):**
 - add OpenAI credit;
 - optionally set `GROQ_API_KEY` as a second hosted provider ($0.04 per audio hour).
+
+## M20 L0 — Long-form episodes: setup and checks (D122) (2026-11-25)
+**Branch:** longform-l0 · **Plan:** development-plan/M20-longform.md · **Migration:** none (0058 is reserved for L1)
+
+### What was built
+- Milestone file `development-plan/M20-longform.md`, decision D122, design summary `docs/31-longform.md`.
+- Doc checks recorded in `docs/14`:
+  - Upload-Post takes `video` as a URL (up to 20 GB) and `thumbnail_url` at upload.
+  - Supabase Pro allows files up to 500 GB (global limit set in the dashboard); TUS is recommended over 6 MB.
+  - YouTube: 15 min limit unless the channel is verified; chapters need 00:00, at least 3, each at least 10 s.
+
+### Ops done before L0 (owner approved)
+- Migration history: the hand-applied 0056 rows in `supabase_migrations.schema_migrations` were renamed to `0056` (staging `20261123211434`, production `20261124000108`), so CI `db push` works again.
+- PR #104 merged to develop.
+- Removed 7 merged local worktrees on D:, which had 0.85 GB free. One locked file is left in `6stars-wt-tz/web`.
+
+### Deviations
+- Migration number 0058, not 0057: PR #105 (fixed YouTube thumbnail) took 0057.
+
+### Open issues / next
+- Owner tasks:
+  - new production `SUPABASE_ACCESS_TOKEN` secret;
+  - raise the global Storage file limit to at least 2 GB in both projects;
+  - confirm the YouTube channel is verified.
+- L0 measurement (one private URL-mode upload from staging) needs the owner's OK to switch off `launch.dry_run` for one post.
+- Next: L1 (schema and settings, `0058_longform.sql`).
