@@ -1469,3 +1469,28 @@ Fixes made during the release:
 - Staging YouTube cookies (`/secrets/youtube_cookies.txt`) are not in Netscape format, so YouTube VOD downloads fail on staging. Twitch moments are not affected.
 - The staging scheduler had not planned the first episode by 10:29 UTC. Investigate after this deploy.
 - Next: L5 (console Episodes page and API), then L6 (publishing).
+
+## M20 L5 — Long-form episodes: console Episodes page, whisper model fix (D122) (2026-11-25)
+**Branch:** longform-l5 · **Plan:** development-plan/M20-longform.md · **Migration:** 0060
+
+### What was built
+- **API** (`api/routes_episodes.py`; same token and read-only transaction as `/v1/admin/*`):
+  - `GET /v1/admin/episodes` lists episodes with moment counts (rendered and dropped).
+  - `GET /v1/admin/episodes/{id}` returns the episode, its moments in playback order (dropped ones last), the chapters, the YouTube text and its events.
+  - `GET /v1/admin/episodes/{id}/media` returns 1 h signed URLs for the MP4 and the thumbnail.
+- **Console**:
+  - an `Episodes` entry under Content;
+  - a list page;
+  - a detail page with a 16:9 player (`objectFit: contain`, thumbnail as poster), clickable chapters that seek the video, a download link, the moments table, title, tags and description.
+- **Migration 0060**: `longform.whisper_model` goes from `small` to `medium`.
+  - The image bakes only `medium` and runs with `HF_HUB_OFFLINE=1`.
+  - With `small`, every fetch failed with "transcription failed in modes ['local']" on the first staging build.
+  - Staging was set by hand to unblock that build; the migration only changes a value still at `small`.
+
+### Staging
+- First episode build (`3d54a80d…`, 2026-11-25, 18 Twitch moments) was started after the owner approved the picks. `longform.auto_build` is on in staging.
+
+### Open issues / next
+- L6: publish privately through Upload-Post (URL mode), caps, takedowns, guardian.
+- The console is deployed by hand on Vercel (staging and production) after the merge.
+- The PR "longform: download moments through the residential proxy" covers YouTube moments. The staging server's `.env` still needs `PROXY_URL` / `PROXY_STICKY_PORT_*` / `POT_PROVIDER_URL`, the same as production.

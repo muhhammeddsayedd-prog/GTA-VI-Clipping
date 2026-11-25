@@ -1,4 +1,4 @@
-import { Activity, Bell, Bolt, Compass, DollarSign, FileText, Film, GitBranch, Image, Layers, LayoutGrid, List, Palette, Radio, Send, Server, Shield, SlidersHorizontal, TrendingUp, Users, UserSquare2, Video } from "lucide-react";
+import { Activity, Bell, Bolt, Clapperboard, Compass, DollarSign, FileText, Film, GitBranch, Image, Layers, LayoutGrid, List, Palette, Radio, Send, Server, Shield, SlidersHorizontal, TrendingUp, Users, UserSquare2, Video } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
 export interface NavItem { href: string; label: string; icon: LucideIcon; hint?: string }
@@ -15,6 +15,7 @@ export const NAV: NavGroup[] = [
       { href: "/clips", label: "Clips", icon: Film, hint: "Rendered clips and the quality gate" },
       { href: "/queue", label: "Posting queue", icon: Layers, hint: "What posts next and why" },
       { href: "/posts", label: "Posts", icon: Send, hint: "Every post on every account" },
+      { href: "/episodes", label: "Episodes", icon: Clapperboard, hint: "Daily 16:9 Top-N videos" },
     ],
   },
   {

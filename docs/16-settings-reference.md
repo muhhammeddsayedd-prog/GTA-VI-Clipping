@@ -463,7 +463,7 @@ One daily 1920×1080 "TOP N" YouTube episode built from moments the engine alrea
 | `longform.max_creator_s` | `90` | Most seconds of one creator per episode. |
 | `longform.reuse_after_days` | `7` | A clip can be in a new episode again after this many days. |
 | `longform.fetch_pad_s` | `5` | Extra seconds downloaded on each side of a moment, for alignment. |
-| `longform.whisper_model` | `"small"` | Local faster-whisper model for alignment and subtitles (no hosted cost). |
+| `longform.whisper_model` | `"medium"` | Local faster-whisper model for alignment and subtitles (no hosted cost). Must be baked into the image (`docker/Dockerfile` `WHISPER_MODEL`); the workers run offline (0060). |
 | `longform.render` | `{"width": 1920, "height": 1080, "fps": 30, "crf": 20, "maxrate": "8M"}` | Segment encode: full frame, scale + pad, no crop. Every segment shares it so they join without re-encoding. |
 | `longform.priority` | `15` | Job priority on the normal queue (below hourly 110, spikes 90, VODs 30). |
 | `longform.keep_days` | `7` | Local and Storage episode files are deleted after this many days. |
