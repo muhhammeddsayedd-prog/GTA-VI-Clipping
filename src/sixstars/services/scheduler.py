@@ -41,6 +41,7 @@ from sixstars.guardian import failover as guardian_failover
 from sixstars.guardian import health as guardian_health
 from sixstars.guardian import service as guardian_service
 from sixstars.logging import configure_logging, get_logger
+from sixstars.longform import planner as longform_planner
 from sixstars.posting import ranking
 from sixstars.posting.params import PostingParams
 from sixstars.posting.precedence import demoted_rank
@@ -59,6 +60,7 @@ PRUNE_INTERVAL_S = 3600.0
 LAUNCH_SUMMARY_INTERVAL_S = 60.0
 VOD_RECOVERY_TICK_S = 15.0  # how often the task looks; the pass itself runs every vod.recovery_interval_s
 VOD_RECOVERY_SETTING = "vod.recovery_interval_s"
+LONGFORM_TICK_S = 300.0  # M20: once the build hour has come, today's episode is planned (one job a day)
 CAMPAIGN_WATCH_TICK_S = 10.0  # how often the task looks; the pass runs every campaigns.watch_interval_s
 CAMPAIGN_WATCH_SETTING = "campaigns.watch_interval_s"
 LAUNCH_SUMMARY_EVENT = "launch.health_summary"
@@ -327,6 +329,11 @@ def watch_campaigns(clock: float | None = None) -> dict[str, Any] | None:
     return campaign_watcher.run_once()
 
 
+def plan_longform() -> int | None:
+    """M20: enqueue today's `longform.plan` job once `longform.build_hour_utc` has come."""
+    return longform_planner.due_tick()
+
+
 def tasks() -> list[PeriodicTask]:
     """The periodic tasks of the scheduler."""
     return [
@@ -341,6 +348,7 @@ def tasks() -> list[PeriodicTask]:
         PeriodicTask("launch_summary", LAUNCH_SUMMARY_INTERVAL_S, launch_summary),
         PeriodicTask("vod_recovery", VOD_RECOVERY_TICK_S, recover_vod_orphans),
         PeriodicTask("campaign_watch", CAMPAIGN_WATCH_TICK_S, watch_campaigns),
+        PeriodicTask("longform_plan", LONGFORM_TICK_S, plan_longform),
     ]
 
 

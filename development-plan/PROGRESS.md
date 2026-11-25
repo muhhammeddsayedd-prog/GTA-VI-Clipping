@@ -1385,3 +1385,36 @@ Fixes made during the release:
   - confirm the YouTube channel is verified.
 - L0 measurement (one private URL-mode upload from staging) needs the owner's OK to switch off `launch.dry_run` for one post.
 - Next: L1 (schema and settings, `0058_longform.sql`).
+
+## M20 L1 + L2 — Long-form episodes: schema, settings, moment selection (D122) (2026-11-25)
+**Branch:** longform-l1 (PR #108), longform-l2 · **Plan:** development-plan/M20-longform.md · **Migration:** 0058
+
+### What was built
+- **L1:**
+  - `0058_longform.sql` adds the tables `episodes` and `episode_items`, the private bucket `episodes` (2 GB per file where the storage schema has the column) and 27 `longform.*` settings, including `longform.rank_weights`.
+  - `LongformConfig.load()` reads them.
+  - Staging overrides are in `supabase/seed/staging.sql`; the settings are documented in docs/16.
+- **L2:**
+  - `longform/selector.py` (pure logic):
+    - estimated length = the longer of the spike window and the clip cut, plus lead and tail, clamped to 15–45 s;
+    - ranking = score, capped spike z, log Short views, freshness;
+    - variety: per-creator count and seconds, one moment per topic;
+    - fill up to the target, never over the maximum, and skip the day when the total is under `min_s`;
+    - countdown order built backwards from #1, so one creator never plays twice in a row when another creator is left.
+  - `longform/pool.py`: the candidate SQL. It excludes restricted or blocked creators, spoilers, any safety flag set to `true`, rejects other than the allowed Shorts-only reasons, and clips used in an episode within `reuse_after_days`.
+  - `longform/planner.py`: `plan_episode` (idempotent per day; event plus Telegram summary), `due_tick` (scheduler task `longform_plan` every 300 s; enqueues `longform.plan` once the build hour has come, deduplicated per day) and the job handler.
+  - Triggers: CLI `sixstars longform build [--date]` and `POST /v1/longform/build` (n8n token).
+
+### Results
+- Unit tests: 4187 passed. Long-form tests: 8 unit and 8 integration (local Postgres 17), all passing.
+- `mypy --strict src/` and ruff are clean.
+- The pool query, run read-only on production for the last 48 h: 60 candidates from 50 creators, about 30 minutes of estimated moments (34 live, 26 VOD). That is enough for a 12-minute episode.
+
+### Deviations
+- Every clip stores `safety_flags` as an object of booleans (all false), so the pool excludes a clip only when a flag is `true`.
+- The countdown uses a greedy backwards build instead of swaps. Swaps could not separate a creator who holds the top three.
+
+### Open issues / next
+- **STOP (L2):** with `longform.enabled` on in staging, the owner reviews the Telegram plan summaries for 2 days.
+- The staging deploy was blocked by a full disk. #109 adds a prune before the pull.
+- Next: L3 (re-download and 16:9 segment render).

@@ -41,6 +41,7 @@ HANDLER_MODULES: tuple[str, ...] = (
     "sixstars.stats.handlers",  # M13
     "sixstars.viewer_clips:register_handlers",  # D110: viewer_clip.process
     "sixstars.ai.shadow:register_handlers",  # AI cost plan B1: ai.shadow
+    "sixstars.longform.planner:register_handlers",  # M20: longform.plan
 )
 SHUTDOWN_GRACE_S = 45.0  # below the 60 s `stop_grace_period` of docker compose
 JOIN_POLL_S = 0.5
