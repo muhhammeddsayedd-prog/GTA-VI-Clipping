@@ -62,6 +62,15 @@ def _per_lane(value: Any, default: Mapping[str, Any], allowed: tuple[Any, ...]) 
     return out
 
 
+def _storage_key(value: Any) -> str | None:
+    """A `bucket/path` storage key, else None (null, empty or malformed turns the feature off)."""
+    if not isinstance(value, str):
+        return None
+    key = value.strip().strip("/")
+    bucket, _, path = key.partition("/")
+    return key if bucket and path else None
+
+
 @dataclass(frozen=True, slots=True)
 class CoverConfig:
     """All `cover.*` keys and the scoring config version they were read at."""
@@ -79,6 +88,7 @@ class CoverConfig:
     upscale_enabled: bool = False
     exploration: float = MIN_EXPLORATION
     exposure: Mapping[str, float] = field(default_factory=lambda: dict(DEFAULT_EXPOSURE))
+    youtube_fixed_thumbnail: str | None = None
 
     @classmethod
     def from_values(cls, raw: Mapping[str, Any], version: int = 0) -> "CoverConfig":
@@ -129,6 +139,7 @@ class CoverConfig:
             upscale_enabled=_bool(get("upscale_enabled"), False),
             exploration=min(max(_number(get("exploration"), MIN_EXPLORATION), MIN_EXPLORATION), 1.0),
             exposure=exposure,
+            youtube_fixed_thumbnail=_storage_key(get("youtube_fixed_thumbnail")),
         )
 
     @classmethod
@@ -147,6 +158,7 @@ class CoverConfig:
             "upscale_enabled",
             "exploration",
             "exposure",
+            "youtube_fixed_thumbnail",
         )
         raw = {f"cover.{name}": scoring_config.raw(f"cover.{name}") for name in keys}
         return cls.from_values(raw, scoring_config.version())
