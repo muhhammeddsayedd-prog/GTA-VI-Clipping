@@ -153,8 +153,13 @@ def cover_fields(clip_id: str, account_id: str, platform: str, lane: str, post_i
 
 
 def after_published(post_id: str, platform: str, platform_post_id: str | None, user: str) -> None:
-    """Mark the post's cover applied; queue the YouTube thumbnail when that is on. Never raises."""
+    """Mark the post's cover applied; queue the YouTube thumbnail when that is on. Never raises.
+    A fixed YouTube thumbnail (`cover.youtube_fixed_thumbnail`, 0057) wins over the composed cover."""
     try:
+        from sixstars.covers import fixed_thumb
+
+        if fixed_thumb.on_published(post_id, platform, platform_post_id, user, CoverConfig.load()):
+            return
         cover = db.fetch_one(
             "select id::text as id, status, storage_path from covers where post_id = %s::uuid "
             "order by created_at desc limit 1",
