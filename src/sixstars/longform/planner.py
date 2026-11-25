@@ -10,6 +10,7 @@ from typing import Any
 
 from sixstars import db, events, jobs, notify
 from sixstars.logging import get_logger
+from sixstars.longform import build
 from sixstars.longform.config import LongformConfig
 from sixstars.longform.pool import load_candidates
 from sixstars.longform.selector import Limits, Selection, select
@@ -110,6 +111,8 @@ def plan_episode(day: date, now: datetime | None = None, cfg: LongformConfig | N
     )
     notify.send("warn" if sel.skipped else "info", f"Episode {day.isoformat()} {status}", body)
     log.info("episode_planned", episode_id=episode_id, status=status, n_moments=len(sel.picks))
+    if status == "planned" and cfg.auto_build:
+        build.start_build(episode_id, cfg)
     return PlanResult(episode_id, day, status, len(sel.picks), sel.total_s, True)
 
 
@@ -134,7 +137,15 @@ def handle_plan(job: jobs.Job) -> None:
 
 def register_handlers() -> None:
     """Register the long-form job handlers with the worker (safe to call more than once)."""
+    from sixstars.longform import assemble
     from sixstars.services import worker
 
-    if worker.HANDLERS.get(JOB_PLAN) is not handle_plan:
-        worker.register(JOB_PLAN, handle_plan)
+    registered = (
+        (JOB_PLAN, handle_plan),
+        (build.JOB_ITEM, build.handle_item),
+        (build.JOB_RENDER, build.handle_render),
+        (build.JOB_ASSEMBLE, assemble.handle_assemble),
+    )
+    for job_type, handler in registered:
+        if worker.HANDLERS.get(job_type) is not handler:
+            worker.register(job_type, handler)

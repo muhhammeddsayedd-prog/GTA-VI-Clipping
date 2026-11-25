@@ -1,7 +1,8 @@
 """Load the candidate moments for one episode from the database (M20 L2).
 
 Hard excludes live here, in SQL: removed clips, blocked or restricted creators (P6 "no compilations" sets
-`restricted`), spoilers, safety flags, music rejects, and clips used in an episode within `reuse_after_days`.
+`restricted`), spoilers, safety flags, music rejects, non-English speech (episode subtitles are the local
+transcript, never a paid translation), and clips used in an episode within `reuse_after_days`.
 Ranking and variety are pure logic in `selector.py`.
 """
 
@@ -34,6 +35,7 @@ select c.id::text as clip_id,
    and cr.tier not in ('restricted', 'blocked')
    and cr.blocked_at is null
    and coalesce(c.spoiler, false) = false
+   and coalesce(c.original_language, 'en') = 'en'
    and not (jsonb_typeof(c.safety_flags) = 'object'
             and exists (select 1 from jsonb_each(c.safety_flags) f where f.value = 'true'::jsonb))
    and not exists (
