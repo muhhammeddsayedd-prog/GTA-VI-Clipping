@@ -22,6 +22,7 @@ Docs: https://docs.upload-post.com (machine-readable index: https://docs.upload-
 | Delete | ✅ M02: `POST /api/uploadposts/posts/unpublish` with JSON `{platform, user, post_id}` deletes a live post on YouTube (and Facebook, X, LinkedIn, ...). **Not available for Instagram or TikTok**: those still need `docs/12` §3. |
 | Errors | ✅ M02: non-200 bodies are `{"success": false, "message": ...}`. 400 invalid request; 401 bad key; 403 plan does not allow it; 404 user not found; 429 monthly or daily cap; 5xx server. Per-platform failures carry `error` and often `error_code` (`account_reauth_required`, `account_restricted`, `content_rejected`, `tiktok_privacy_unavailable`, `youtube_channel_daily_limit`, ...). TikTok may deliver to the inbox instead of publishing (`fallback_to_inbox: true`) and may give the public post id hours later (`post_url: null`). |
 | Webhooks | ⚠️ Account/profile webhooks exist (HMAC `X-Upload-Post-Signature`); optional, polling is enough. |
+| Long-form upload | ✅ 2026-11-25 (M20 L0, https://docs.upload-post.com/api/upload-video): `video` may be a **public URL** (fetched, up to 20 GB; a direct file is up to 4 GB). Uploads over 59 s go async on their own; on a client timeout do not resend, keep the same `request_id`. YouTube fields at upload: `title` (required), `description`/`youtube_description`, `tags` (array), `categoryId` (default "22", we send "20"), `privacyStatus` (default `public`), `thumbnail` (file) or `thumbnail_url` (JPG/PNG/GIF/BMP ≤ 50 MB, the file wins), `containsSyntheticMedia`, `youtube_playlist_id`, `youtube_publish_at`. No YouTube length limit stated (max 256 GB). Long-form episodes send a signed Storage URL, not the file. ⚠️ To measure in L0: real URL-mode upload time and the answer shape. |
 
 **Verified by the first real uploads (M15, 2026-11-17: one private YouTube video and one `SELF_ONLY` TikTok post from staging; details in `development-plan/progress-notes/M15-staging-post.md`).** ✅ = seen in a real answer.
 
@@ -67,6 +68,7 @@ Docs: https://developers.google.com/youtube/v3
 | RSS | `https://www.youtube.com/feeds/videos.xml?channel_id=<id>` (no quota) |
 | Live chat | `chat-downloader` (https://github.com/xenova/chat-downloader) for live and replay; no API quota |
 | Downloads | yt-dlp; YouTube often blocks data-centre IPs → residential proxy (`--proxy`) and/or cookies (`--cookies`) |
+| Long videos | ✅ 2026-11-25 (YouTube Help 71673, 9884579, 72431): unverified channels upload up to **15 min**; longer needs phone verification. Custom thumbnails need a verified account, and there is a daily cap on thumbnail uploads. Chapters: the first timestamp is 00:00, at least 3 timestamps in ascending order, each chapter at least 10 s. Episodes stay at 14:30 or under. |
 
 ## 4. Apify (YouTube discovery)
 Docs: https://docs.apify.com/api/v2 ; actor page in Apify Store.
@@ -96,6 +98,7 @@ The worker never calls Telegram directly; it calls the n8n notify webhook (`docs
 ## 8. Supabase
 - Postgres via session pooler connection string; Storage via `supabase` Python client with the service role key.
 - Bucket `clips` (private).
+- ✅ 2026-11-25 (https://supabase.com/docs/guides/storage/uploads/file-limits, /standard-uploads, /resumable-uploads): the global file limit is at most 50 MB on Free and up to 500 GB on Pro (the org is on Pro; the limit is set in Dashboard → Storage → Settings). The standard upload is meant for files of 6 MB or less (it works up to 5 GB); use TUS resumable upload for anything larger (upload URL valid up to 24 h, 6 MB chunks). Bucket `episodes` (private, M20) holds the long-form MP4s and thumbnails.
 
 ## 9. Tools in the Docker image
 | Tool | Install |
