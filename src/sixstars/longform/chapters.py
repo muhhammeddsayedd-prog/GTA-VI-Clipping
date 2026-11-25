@@ -59,23 +59,42 @@ def valid(chs: Sequence[Chapter], total_s: float) -> bool:
     return all(end - c.start_s >= MIN_CHAPTER_S for c, end in zip(chs, ends, strict=True))
 
 
-def title(n: int, day: date) -> str:
-    """The episode title (countdown pattern), at most 100 characters."""
+def title(n: int, day: date, featured: str | None = None) -> str:
+    """The template title (fallback when the P14 writer call fails), at most 100 characters."""
+    if featured:
+        return f"TOP {n} {featured} GTA 6 Moments ({day.strftime('%b')} {day.day})"[:TITLE_MAX]
     return f"TOP {n} Funniest GTA 6 Stream Moments ({day.strftime('%b')} {day.day})"[:TITLE_MAX]
 
 
-def description(moments: Sequence[Moment], chs: Sequence[Chapter], day: date, footer: str) -> str:
-    """Intro, the chapter list (each with its streamer's link), the credits and the footer."""
-    lines = [
-        f"The {len(moments)} best GTA 6 stream moments of {day.strftime('%B')} {day.day}, "
-        "counted down to #1.",
-        "Every clip plays in full. Go follow the streamers.",
-        "",
-    ]
+def template_intro(n: int, day: date, featured: str | None = None) -> str:
+    """The template description intro (fallback when the P14 writer call fails)."""
+    if featured:
+        return (
+            f"{featured}'s {n} best GTA 6 stream moments, counted down to #1.\n"
+            f"Every clip plays in full. Go follow {featured}."
+        )
+    return (
+        f"The {n} best GTA 6 stream moments of {day.strftime('%B')} {day.day}, counted down to #1.\n"
+        "Every clip plays in full. Go follow the streamers."
+    )
+
+
+def description(
+    moments: Sequence[Moment],
+    chs: Sequence[Chapter],
+    day: date,
+    footer: str,
+    intro: str | None = None,
+    hashtags: Sequence[str] = (),
+) -> str:
+    """Intro, the chapter list, the streamer credits, the footer and the hashtags (last: YouTube shows the
+    first three hashtags of a description above the title). No #Shorts: this is a long-form video."""
+    lines = [(intro if intro else template_intro(len(moments), day)).strip(), ""]
     lines += [f"{stamp(c.start_s)} {c.label}" for c in chs]
     credits = sorted({m.credit for m in moments if m.credit})
     if credits:
         lines += ["", "Streamers in this episode:", *credits]
     if footer:
         lines += ["", footer]
-    return "\n".join(lines)[:DESCRIPTION_MAX]
+    tail = "\n\n" + " ".join(hashtags) if hashtags else ""
+    return "\n".join(lines)[: DESCRIPTION_MAX - len(tail)] + tail

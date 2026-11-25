@@ -8,6 +8,10 @@ import { fmtClock } from "@/lib/format";
 
 const COLS: Col<EpisodeRow>[] = [
   { key: "d", head: "Day", render: (e) => <span className="num semi">{e.episode_date}</span> },
+  {
+    key: "f", head: "Format",
+    render: (e) => (e.format === "creator" ? <span className="semi">{e.featured_name ?? "Creator"}</span> : <span className="muted">Mix</span>),
+  },
   { key: "t", head: "Title", render: (e) => e.title ?? <span className="muted">Not assembled yet</span> },
   { key: "s", head: "Status", render: (e) => <Badge status={e.status} /> },
   {
@@ -27,7 +31,8 @@ export function EpisodesView() {
     <>
       <PageHead title="Episodes" sub="One 16:9 Top-N video a day, built from the moments the engine already picked" />
       <Banner tone="blue">
-        An episode is planned at the build hour; its moments are downloaded again, rendered in 16:9 and joined. Open one to watch it.
+        Days alternate: a mix of the top moments, then one top creator. An episode is planned at the build hour, its moments are
+        downloaded again, rendered in 16:9 and joined, then published at the publish hour. Open one to watch it.
       </Banner>
       <Card style={{ marginTop: 16 }}>
         <DataTable caption="Episodes" cols={COLS} rows={q.data.items} rowKey={(e) => e.id} href={(e) => `/episodes/${e.id}`} empty="No episode planned yet." />

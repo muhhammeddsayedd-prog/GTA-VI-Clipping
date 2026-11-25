@@ -31,6 +31,7 @@ class CreatorActions:
     clips_dropped: int = 0
     posts_cancelled: int = 0
     removals: list[Removal] = field(default_factory=list)
+    episodes_removed: int = 0  # M20: long-form episodes taken down or cancelled
 
     @property
     def manual(self) -> list[Removal]:
@@ -161,6 +162,9 @@ def act_on_creator(
     for post in removal.live_posts_of_creator(creator.id):
         actions.removals.append(removal.remove_post(post, upload_post, youtube, reason))
     settle_clips(creator.id)
+    from sixstars.longform.takedown import remove_episodes_of_creator
+
+    actions.episodes_removed = len(remove_episodes_of_creator(creator.id, reason, upload_post))
     get_logger(SERVICE).warning(
         "creator_actioned",
         creator_id=creator.id,

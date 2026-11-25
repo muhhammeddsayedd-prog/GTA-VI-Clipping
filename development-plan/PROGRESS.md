@@ -1494,3 +1494,38 @@ Fixes made during the release:
 - L6: publish privately through Upload-Post (URL mode), caps, takedowns, guardian.
 - The console is deployed by hand on Vercel (staging and production) after the merge.
 - The PR "longform: download moments through the residential proxy" covers YouTube moments. The staging server's `.env` still needs `PROXY_URL` / `PROXY_STICKY_PORT_*` / `POT_PROVIDER_URL`, the same as production.
+
+## M20 go-live — Long-form episodes: publish, generated packaging, AI thumbnail, mix/creator days (D122) (2026-11-25)
+**Branch:** longform-golive · **Migration:** 0061 · **Owner go:** production and `publish_mode=public` approved 2026-11-25
+
+### What was built
+- **Day formats** (`longform/rotation.py`, `selector.select_creator_day`, planner):
+  - Days alternate between a mix day (many creators, 10–14:30 min) and a creator day (one creator, 6–10 min). The rotation follows the last built episode.
+  - The creator is the one with the most good moments in 7 days, with a 14-day cooldown. If nobody has enough, the day falls back to a mix day.
+  - New columns `episodes.format` and `featured_creator_id`.
+- **Packaging** (`longform/package.py`, prompt P14 `p14_episode_package`, writer model):
+  - writes the title, intro, 3 hashtags (`#GTA6` first), tags, thumbnail words and picture brief;
+  - `clean` enforces every limit; the template is the fallback;
+  - the description is intro → chapters → credits → footer → hashtags, with no `#Shorts`.
+- **Thumbnail** (`longform/thumb.py`, `clients/openai_images.py`, template `covers/compose/templates/thumb_16x9.html`, style `assets/longform/thumb_style.md`):
+  - OpenAI image edit (`gpt-image-2.6-sunburst`, high quality, 1536x864) from the #1/#2 peak frames, plus the creator's avatar on a creator day;
+  - our own quiet typography on top;
+  - fallbacks: retry without the avatar, then the #1 frame;
+  - daily budget `longform.thumb.usd_max`.
+- **Publish (L6)** (`longform/publish.py`, job `longform.publish`, scheduler task `longform_publish`):
+  - `UploadPostClient.upload_video_url`: Upload-Post fetches a 6 h signed URL and gets `thumbnail_url`, tags and category 20;
+  - idempotent (`episode:<id>:<account>`, request id `episode-<id>`);
+  - refuses unless enabled, `publish_mode` is not off, and posting is live (emergency stop and dry run respected);
+  - non-production is always private;
+  - waits for the next tick when the YouTube 24 h platform limit is used.
+- **Takedowns** (`longform/takedown.py`, from `guardian.enforce.act_on_creator`): episodes of an actioned creator are unpublished or cancelled, with a notify. If the unpublish fails, the notify carries the manual step.
+- **Console**: Format column; the detail page shows the creator, the thumbnail with its source and brief, hashtags, privacy and the YouTube link.
+
+### Deviations from the plan
+- Caps: instead of adding episodes to the Shorts history, `publish` counts posts plus episodes of the account in 24 h against `posting.platform_max_24h.youtube`. The Shorts lanes still cap themselves at `cap_24h` (≤ 28), so one episode a day fits.
+- No separate stats collector or stuck-episode alert yet. The guardian's stuck-job check covers the jobs.
+- The thumbnail has no OCR QA step: the model is told never to draw text, and our words are rendered by the template.
+
+### Open issues / next
+- OpenAI credit must be funded (incident 2026-11-23), or every thumbnail falls back to the frame. The key may also need organisation verification for GPT Image models.
+- Staging `.env` still lacks the proxy variables for YouTube-sourced moments.

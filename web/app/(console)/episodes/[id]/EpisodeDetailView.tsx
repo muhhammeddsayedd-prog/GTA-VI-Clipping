@@ -94,6 +94,32 @@ function Player({ episode }: { episode: EpisodeDetail }) {
   );
 }
 
+const THUMB_SOURCE: Record<string, string> = {
+  ai: "AI image",
+  ai_no_avatar: "AI image (without the creator picture)",
+  frame: "video frame (AI image not available)",
+};
+
+function Thumb({ episode }: { episode: EpisodeDetail }) {
+  const m = useApi<EpisodeMedia>(episode.has_thumb ? `admin/episodes/${episode.id}/media` : null, undefined, { staleTime: 40 * 60 * 1000 });
+  const url = m.data?.thumb.reason === "ok" ? m.data.thumb.url : null;
+  if (!episode.has_thumb) return null;
+  return (
+    <Card>
+      <CardHead title="Thumbnail" hint={episode.thumb_source ? THUMB_SOURCE[episode.thumb_source] ?? episode.thumb_source : undefined} />
+      <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 480px) minmax(0, 1fr)", gap: 16, alignItems: "start" }}>
+        <div style={{ aspectRatio: "16 / 9", background: "#000", borderRadius: 12, overflow: "hidden" }}>
+          {url ? <img src={url} alt={`Thumbnail of ${episode.title ?? "the episode"}`} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} /> : null}
+        </div>
+        <KV rows={[
+          ["Words", episode.thumb_text || "—"],
+          ["Picture brief", episode.thumb_scene || "—"],
+        ]} />
+      </div>
+    </Card>
+  );
+}
+
 /** One episode: the 16:9 player with clickable chapters, its moments and its YouTube text (M20 L5). */
 export function EpisodeDetailView({ id }: { id: string }) {
   const q = useApi<EpisodeDetail>(`admin/episodes/${id}`, undefined, { interval: POLL.detail });
@@ -105,7 +131,11 @@ export function EpisodeDetailView({ id }: { id: string }) {
   return (
     <>
       <PageHead title={`Episode ${e.episode_date}`} back="/episodes"
-        sub={<><Badge status={e.status} /> {BUILDING.has(e.status) ? `${done}/${kept} moments rendered` : null}</>} />
+        sub={<>
+          <Badge status={e.status} />{" "}
+          <span className="small">{e.format === "creator" ? `Creator day: ${e.featured_name ?? "—"}` : "Mix day"}</span>{" "}
+          {BUILDING.has(e.status) ? `${done}/${kept} moments rendered` : null}
+        </>} />
       {e.error && <Banner tone={e.status === "failed" ? "red" : "amber"}>{e.error}</Banner>}
       <div className="col" style={{ gap: 16, marginTop: 16 }}>
         <Player episode={e} />
@@ -113,13 +143,16 @@ export function EpisodeDetailView({ id }: { id: string }) {
           <CardHead title="Moments" hint="Playback order: the countdown ends with #1. Dropped moments could not be downloaded." />
           <DataTable caption="Moments" cols={MOMENT_COLS} rows={e.moments} rowKey={(m) => m.id} dense />
         </Card>
+        <Thumb episode={e} />
         <Card>
-          <CardHead title="YouTube text" />
+          <CardHead title="YouTube text" hint="Written by the episode writer (P14); the template is used if it fails." />
           <KV rows={[
             ["Title", e.title ?? "—"],
+            ["Hashtags", e.hashtags?.join(" ") || "—"],
             ["Tags", e.tags?.join(", ") || "—"],
             ["Account", e.account_id ?? "—"],
-            ["Post", isHttp(e.post_url) ? <ExtLink href={e.post_url}>open</ExtLink> : "not posted"],
+            ["Privacy", e.privacy ?? "—"],
+            ["Post", isHttp(e.post_url) ? <ExtLink href={e.post_url}>open on YouTube</ExtLink> : "not posted"],
           ]} />
           {e.description && <pre className="small" style={{ whiteSpace: "pre-wrap", marginTop: 12 }}>{e.description}</pre>}
         </Card>
