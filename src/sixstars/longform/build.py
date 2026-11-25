@@ -10,6 +10,7 @@
 Every job is safe to run again: finished work is detected and skipped.
 """
 
+import random
 from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
@@ -29,7 +30,7 @@ from sixstars.longform.align import align, stored_words, words_in
 from sixstars.longform.config import LongformConfig
 from sixstars.longform.segment import SegmentJob, render_segment
 from sixstars.longform.subs16x9 import build_segment_ass, creator_label
-from sixstars.vod import sections, ytdlp
+from sixstars.vod import proxy, sections, ytdlp
 from sixstars.vod.config import VodConfig
 
 JOB_ITEM = "longform.item"
@@ -102,6 +103,45 @@ def load_item(item_id: str) -> dict[str, Any] | None:
     return None if row is None else dict(row)
 
 
+def download(
+    item_id: str, src: Source, section: sections.Section, work: Path, vod: VodConfig
+) -> sections.Downloaded:
+    """Download the moment's range the way the VOD lane does (`vod/process._run`): through the proxy each
+    attempt has its own sticky port, the PO-token provider and cookies per `proxy.cookies_mode`; a refusal
+    moves on to the next attempt. The traffic is metered into `api_usage`. After the last refusal (or when
+    the proxy account itself refused) the error is raised and the job retries later."""
+    proxy_cfg = proxy.ProxyConfig.load()
+    meter = ytdlp.TrafficMeter()
+    attempts = proxy.job_accesses(src.platform, random.random, proxy_cfg, meter)
+    try:
+        for number, access in enumerate(attempts, start=1):
+            try:
+                return sections.download_section(
+                    src.url,
+                    section,
+                    work,
+                    f"src-{item_id}",
+                    access=access,
+                    max_height=vod.max_height,
+                    timeout_s=vod.download_timeout_s,
+                    exact_cuts=True,
+                )
+            except ytdlp.DownloadBlockedError as refused:
+                detail = refused.detail
+                if number == len(attempts) or proxy.is_account_failure(detail):
+                    raise
+                log.warning(
+                    "longform_proxy_retry",
+                    item_id=item_id,
+                    attempt=number,
+                    next_port=attempts[number].sticky_port,
+                )
+        raise AssertionError("unreachable: job_accesses returns at least one access")
+    finally:
+        if attempts[0].proxy is not None:
+            proxy.record_usage(item_id, meter, proxy_cfg)
+
+
 def fetch_item(item_id: str, cfg: LongformConfig) -> str:
     """Phase 1: download, transcribe, align. Returns the item's new status."""
     r = load_item(item_id)
@@ -118,16 +158,7 @@ def fetch_item(item_id: str, cfg: LongformConfig) -> str:
     vod = VodConfig.load()
     want_start, want_end = fetch_range(src, float(r["est_s"] or cfg.segment_min_s), cfg)
     try:
-        got = sections.download_section(
-            src.url,
-            sections.section_for(want_start, want_end),
-            work,
-            f"src-{item_id}",
-            access=ytdlp.access_for(src.platform),
-            max_height=vod.max_height,
-            timeout_s=vod.download_timeout_s,
-            exact_cuts=True,
-        )
+        got = download(item_id, src, sections.section_for(want_start, want_end), work, vod)
     except (ytdlp.VideoUnavailableError, ValueError) as exc:
         return drop(item_id, f"download: {exc}")
     transcript = transcribe_window(
