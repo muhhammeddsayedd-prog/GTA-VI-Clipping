@@ -103,7 +103,7 @@ def choose(day: date, now: datetime, cfg: LongformConfig) -> Plan:
     fmt = format_for(last_format(day), cfg.format_cycle)
     limits = limits_of(cfg)
     if fmt == "creator":
-        pool = load_candidates(cfg, now, pool_hours=cfg.solo.pool_hours)
+        pool = load_candidates(cfg, now, pool_hours=cfg.solo.pool_hours, min_score=cfg.solo.min_score)
         solo_lim = Limits(**{**limits.__dict__, "pool_hours": float(cfg.solo.pool_hours)})
         cooling = cooling_creators(day, cfg.solo.cooldown_days)
         picked: CreatorDay | None = select_creator_day(
@@ -112,7 +112,8 @@ def choose(day: date, now: datetime, cfg: LongformConfig) -> Plan:
         if picked is not None:
             return Plan("creator", picked.selection, picked.creator_id, picked.creator_name)
         fallback = (
-            f"no creator has {cfg.solo.min_moments}+ good moments and {cfg.solo.min_s:.0f}s "
+            f"no creator has {cfg.solo.min_moments}+ moments scored {cfg.solo.min_score:g}+ "
+            f"and {cfg.solo.min_s:.0f}s "
             f"in the last {cfg.solo.pool_hours} h outside the {cfg.solo.cooldown_days}-day cooldown"
         )
         return Plan(

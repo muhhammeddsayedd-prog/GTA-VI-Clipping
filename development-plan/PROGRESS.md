@@ -1529,3 +1529,4 @@ Fixes made during the release:
 ### Open issues / next
 - OpenAI credit must be funded (incident 2026-11-23), or every thumbnail falls back to the frame. The key may also need organisation verification for GPT Image models.
 - Staging `.env` still lacks the proxy variables for YouTube-sourced moments.
+- 2026-11-26, owner decision: creator days take clips scored 5.5 or more (`longform.solo.min_score`, migration 0062). Mix days keep 7. At 7, only 2 creators had enough moments in a week.

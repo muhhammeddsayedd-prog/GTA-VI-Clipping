@@ -73,6 +73,7 @@ class SoloRules:
     max_s: float = 600.0
     cooldown_days: int = 14
     min_moments: int = 8
+    min_score: float = 5.5
 
     @classmethod
     def from_value(cls, value: dict[str, Any]) -> "SoloRules":
@@ -83,6 +84,7 @@ class SoloRules:
             max_s=float(value.get("max_s", cls.max_s)),
             cooldown_days=int(value.get("cooldown_days", cls.cooldown_days)),
             min_moments=int(value.get("min_moments", cls.min_moments)),
+            min_score=float(value.get("min_score", cls.min_score)),
         )
 
 
