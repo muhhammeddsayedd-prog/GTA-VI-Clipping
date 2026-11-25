@@ -171,6 +171,26 @@ def stats_collect() -> JSONResponse:
     return JSONResponse(guardian_service.collect_stats())
 
 
+class LongformBuildBody(BaseModel):
+    """Manual long-form run (M20). `episode_date` defaults to today (UTC)."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    episode_date: date | None = None
+
+
+@router.post("/longform/build")
+def longform_build(body: LongformBuildBody | None = None) -> JSONResponse:
+    """Plan the long-form episode of a day now (idempotent: an episode already planned is returned)."""
+    from datetime import UTC, datetime
+
+    from sixstars.longform.planner import plan_episode
+
+    day = (body.episode_date if body else None) or datetime.now(UTC).date()
+    result = plan_episode(day)
+    return JSONResponse(jsonable_encoder(dataclasses.asdict(result)))
+
+
 @read_router.get("/reports/daily")
 def reports_daily(
     format: Literal["telegram", "json"] = Query("json"),  # noqa: A002
