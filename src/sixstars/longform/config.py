@@ -37,6 +37,27 @@ class RenderSpec:
 
 
 @dataclass(frozen=True)
+class RankWeights:
+    """Weights of the candidate ranking (setting `longform.rank_weights`)."""
+
+    score: float = 1.0
+    spike_z: float = 1.0
+    spike_z_cap: float = 5.0
+    views: float = 1.0
+    fresh: float = 0.5
+
+    @classmethod
+    def from_value(cls, value: dict[str, Any]) -> "RankWeights":
+        return cls(
+            score=float(value.get("score", cls.score)),
+            spike_z=float(value.get("spike_z", cls.spike_z)),
+            spike_z_cap=float(value.get("spike_z_cap", cls.spike_z_cap)),
+            views=float(value.get("views", cls.views)),
+            fresh=float(value.get("fresh", cls.fresh)),
+        )
+
+
+@dataclass(frozen=True)
 class LongformConfig:
     """Every number the long-form layer uses. Nothing here is hard-coded elsewhere."""
 
@@ -66,6 +87,7 @@ class LongformConfig:
     cold_open_s: float
     end_card_s: float
     account_id: str
+    rank_weights: RankWeights
 
     @classmethod
     def load(cls) -> "LongformConfig":
@@ -97,4 +119,5 @@ class LongformConfig:
             cold_open_s=settings.get_float("longform.cold_open_s"),
             end_card_s=settings.get_float("longform.end_card_s"),
             account_id=settings.get_str("longform.account_id"),
+            rank_weights=RankWeights.from_value(settings.get_dict("longform.rank_weights")),
         )

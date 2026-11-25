@@ -121,5 +121,7 @@ insert into settings (key, value, description) values
   ('longform.keep_days', '7'::jsonb, 'Long-form episodes: local and Storage files are deleted after this many days.'),
   ('longform.cold_open_s', '5'::jsonb, 'Long-form episodes: seconds of #1 shown before the countdown.'),
   ('longform.end_card_s', '10'::jsonb, 'Long-form episodes: end card length (room for YouTube end-screen elements).'),
+  ('longform.rank_weights', '{"score": 1.0, "spike_z": 1.0, "spike_z_cap": 5.0, "views": 1.0, "fresh": 0.5}'::jsonb,
+   'Long-form episodes: ranking = score x score + spike_z x min(score_z, spike_z_cap)/spike_z_cap + views x (views / best views in the pool) + fresh x (1 - age / pool_hours).'),
   ('longform.account_id', '"youtube_main"'::jsonb, 'Long-form episodes: platform_accounts row the episode posts to.')
 on conflict (key) do nothing;

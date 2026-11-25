@@ -469,4 +469,5 @@ One daily 1920×1080 "TOP N" YouTube episode built from moments the engine alrea
 | `longform.keep_days` | `7` | Local and Storage episode files are deleted after this many days. |
 | `longform.cold_open_s` | `5` | Seconds of #1 shown before the countdown. |
 | `longform.end_card_s` | `10` | End card length (room for YouTube end-screen elements). |
+| `longform.rank_weights` | `{"score": 1.0, "spike_z": 1.0, "spike_z_cap": 5.0, "views": 1.0, "fresh": 0.5}` | Ranking of candidates: score × score + spike_z × min(score_z, spike_z_cap) / spike_z_cap + views × (views / best views in the pool) + fresh × (1 − age / pool_hours). |
 | `longform.account_id` | `"youtube_main"` | `platform_accounts` row the episode posts to. |
