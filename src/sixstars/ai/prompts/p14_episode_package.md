@@ -23,9 +23,9 @@ Hashtags: exactly 3, each starting with "#", no spaces. The first is #GTA6. On a
 
 Tags: 8 to 15 YouTube search tags, lowercase, no "#", each under 30 characters, together under 400 characters. Mix the game, the format and the streamers in the video.
 
-Thumbnail words (thumb_text): 1 to 3 words that add curiosity and are not the title, e.g. "HE DIDN'T SEE IT", "TOP 24", "PURE CHAOS". Capitals. Or an empty string when the picture works better alone.
+Thumbnail words (thumb_text): 1 to 3 words that match the picture and add curiosity and are not the title, e.g. "HE DIDN'T SEE IT", "TOP 24", "PURE CHAOS". Capitals. Or an empty string when the picture works better alone.
 
-Thumbnail picture (thumb_scene): one sentence for an illustrator, at most 40 words. Describe a single, clear, dramatic image built from the best moment you were given (its title tells you what happened): who or what is in it, what is happening, the emotion. It is painted in the bright Vice City look of {game}. Never ask for text, logos, user interface, real brand names or a real person's face on a mix day. On a creator day the streamer's own reaction may be part of the picture.
+Thumbnail picture (thumb_scene): one sentence for an illustrator, at most 30 words. Minimalist: ONE subject doing ONE thing, taken from a single moment (the best one, or the most visual one), on a calm background. Never combine several moments in one picture. Say who or what is in it, what is happening, the emotion. It is painted in the bright Vice City look of {game}. Never ask for text, logos, user interface, real brand names or a real person's face on a mix day. On a creator day the streamer's own reaction may be part of the picture.
 
 Return JSON only: an object with `title`, `intro`, `hashtags` (list), `tags` (list), `thumb_text` and `thumb_scene`.
 

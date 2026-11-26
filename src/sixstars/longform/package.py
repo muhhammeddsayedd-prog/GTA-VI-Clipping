@@ -23,6 +23,7 @@ INTRO_MAX = 600
 HASHTAGS = 3
 TAG_MAX = 30
 TAGS_TOTAL_MAX = 450  # YouTube allows 500 characters of tags; leave room for the separators it counts
+TAGS_MAX = 20
 THUMB_TEXT_WORDS = 3
 SCENE_MAX = 400
 BASE_TAGS = ("gta 6", "gta vi", "gta 6 funny moments", "gta 6 streamers", "gta 6 highlights")
@@ -75,7 +76,7 @@ def tags_for(raw: Sequence[str], creators: Sequence[str]) -> tuple[str, ...]:
         tag = re.sub(r"\s+", " ", t.replace("#", "").replace(",", " ")).strip().lower()
         if not tag or len(tag) > TAG_MAX or tag in out:
             continue
-        if total + len(tag) + 1 > TAGS_TOTAL_MAX:
+        if total + len(tag) + 1 > TAGS_TOTAL_MAX or len(out) >= TAGS_MAX:
             break
         out.append(tag)
         total += len(tag) + 1
