@@ -415,6 +415,25 @@ FakeUploadPostClient()                 .uploads .deleted .upload_error .platform
 
 - Only clips rendered after the deploy are affected. Clips already rendered or posted keep the title for the whole clip.
 
+## Scoring overhaul Phase 1 — 2026-11-18 UTC
+
+### What was built
+- Migration 0026 (additive): `scoring_config` (flags) + `scoring_config_history` (config version),
+  `scoring_log` (every decision with sub-scores), `scoring_version` on spikes and clips.
+- Package `sixstars.scoring` (flags, log, per-channel percentiles, first-time boost); `factory/anchor.py`
+  (loudness + chat + speech anchor); `gate/overhaul.py`; live fast path and keep-stronger merging; stored
+  live chat baselines. Scripts `scoring_flag.py`, `scoring_monitor.py`. Full log: `docs/CHANGELOG-scoring.md`.
+
+### Deviations
+- Flags live in `scoring_config` (owner's order), not `settings` as CLAUDE.md says for thresholds.
+- `reactions.extended` rolled back twice on the error trigger; left off.
+- `cut.adaptive` tripped the error trigger on a false positive (jobs queued before the flip); re-enabled with
+  a fresh, clean 30-minute window.
+
+### Open issues / next
+- Normal queue CPU saturation (local Whisper) makes live cuts expire; see the changelog summary.
+- Phase 2: judge rewrite (rubric in docs/taste-profile.md), unknown instead of reject, cap hold, 30-min buffer.
+
 ## M18 Phase A — Design styles, one per platform account (2026-11-19)
 
 ### What was built
@@ -1294,6 +1313,79 @@ Dropped (owner). The bandit learns from views only.
 - **Rollback:** `update platform_accounts set spike_reserve = 4, hourly_hours_utc = '{0,10,13,14,16,17,18,19,20,21,22,23}' where id = 'youtube_main';`
 - **Check after 24–48 h in production:** youtube_main posts per lane per day. Expect hourly ≤ 6 and spikes the majority.
 
+## Release 2026-11-23 and the evening render slowdown (2026-11-24)
+
+**Release (PR #99, #101, #100):** every branch built on 2026-11-23 is in production, with migrations 0032–0055 applied:
+- AI cost plan and Title writer v2;
+- Learning L0/L1;
+- Clipping Campaigns PR 1–4;
+- Render v2 R0–R2;
+- Cover Engine C0–C8;
+- App time zone;
+- the GTA 6 hashtag fix.
+
+Production switches were left as they were:
+- `cover.enabled` off;
+- `factory.layout_v2.enabled` off;
+- learning off;
+- TikTok lanes empty;
+- `titles.v2` on.
+
+Fixes made during the release:
+- Cover Engine and Render v2 R2 each pulled in a different OpenCV package. They now share one, `opencv-contrib-python-headless` 4.14.
+- The runtime Docker image was missing `libatomic1` (PR #101).
+- WF06 was re-applied on both environments and both consoles were redeployed.
+
+**Incident: renders slowed from 16:00 UTC.**
+- **Symptoms:**
+  - normal renders went from 3–5 min to 10–35 min;
+  - express renders went from 2 min to 8–11 min;
+  - 99 renders were waiting by midnight;
+  - 34 renders failed with "cut file missing", because their live cut was cleaned up before they reached the front of the queue;
+  - the 18:00 and 19:00 hourly posts waited until 20:00.
+- **Cause:** the OpenAI account ran out of credit (HTTP 429 `credit_balance_exhausted`). No `GROQ_API_KEY` is set, so express transcription fell back to local faster-whisper `medium` on the CPU: 400–600 s per clip instead of about 8 s. The normal renders' local transcription then slowed to 500–2,100 s on the shared CPU.
+- **Why nobody noticed:** the failure was only a `warning` log line, with no alert.
+- **Not the cause:** the release deploy at 18:27, and `factory.pre_p2_checks` (on since 15:31; its music check adds 10–17 s per clip).
+
+**Fixes (branch `ops-fixes-2026-11-24`):**
+- `clients/transcribe.py`: when a hosted provider refuses the account (401, 403, or 429 mentioning credit, quota or billing), it now:
+  - logs `transcribe_account_refused`;
+  - sends a Telegram `warn`;
+  - skips that provider for `ACCOUNT_COOLDOWN_S` (600 s) in the process.
+  
+  This means renders stop spending their retries on an account that cannot answer. Covered by unit tests.
+- `posting/hourly.py`: `HOURLY_PRIORITY` 50 → 110, above express renders (100), so a stream of spike renders can no longer hold back an hourly slot.
+
+**Owner actions (not code):**
+- add OpenAI credit;
+- optionally set `GROQ_API_KEY` as a second hosted provider ($0.04 per audio hour).
+
+## M20 L0 — Long-form episodes: setup and checks (D122) (2026-11-25)
+**Branch:** longform-l0 · **Plan:** development-plan/M20-longform.md · **Migration:** none (0058 is reserved for L1)
+
+### What was built
+- Milestone file `development-plan/M20-longform.md`, decision D122, design summary `docs/31-longform.md`.
+- Doc checks recorded in `docs/14`:
+  - Upload-Post takes `video` as a URL (up to 20 GB) and `thumbnail_url` at upload.
+  - Supabase Pro allows files up to 500 GB (global limit set in the dashboard); TUS is recommended over 6 MB.
+  - YouTube: 15 min limit unless the channel is verified; chapters need 00:00, at least 3, each at least 10 s.
+
+### Ops done before L0 (owner approved)
+- Migration history: the hand-applied 0056 rows in `supabase_migrations.schema_migrations` were renamed to `0056` (staging `20261123211434`, production `20261124000108`), so CI `db push` works again.
+- PR #104 merged to develop.
+- Removed 7 merged local worktrees on D:, which had 0.85 GB free. One locked file is left in `6stars-wt-tz/web`.
+
+### Deviations
+- Migration number 0058, not 0057: PR #105 (fixed YouTube thumbnail) took 0057.
+
+### Open issues / next
+- Owner tasks:
+  - new production `SUPABASE_ACCESS_TOKEN` secret;
+  - raise the global Storage file limit to at least 2 GB in both projects;
+  - confirm the YouTube channel is verified.
+- L0 measurement (one private URL-mode upload from staging) needs the owner's OK to switch off `launch.dry_run` for one post.
+- Next: L1 (schema and settings, `0058_longform.sql`).
+
 ## YouTube fixed thumbnail (2026-11-25, owner request)
 
 - **What changed:** every YouTube Short gets one owner-chosen image as its thumbnail. Migration `0057_youtube_fixed_thumbnail.sql` adds `cover.youtube_fixed_thumbnail` (a covers-public storage key, or null = off). After a YouTube post is published, `covers.deliver.after_published` queues `cover.youtube_fixed_thumb` (`src/sixstars/covers/fixed_thumb.py`). The job calls Upload-Post `POST /api/uploadposts/youtube/thumbnail` with the image's public URL.
@@ -1303,3 +1395,138 @@ Dropped (owner). The bandit learns from views only.
 - **The image:** `assets/youtube/thumbnail.jpg` is a 1080×1920 JPEG built from the owner's 563×545 picture (`thumbnail-source.png`): sharp in the middle, blurred and darkened fill above and below. YouTube stores Shorts thumbnails as `shortsAspectRatio` 1080×1920 (docs/29b P3b).
 - **Turn on per environment:** `sixstars covers youtube-thumbnail set` uploads the image under a content-hash key and sets the setting. To turn it off: `sixstars covers youtube-thumbnail off`. `sixstars covers youtube-thumbnail backfill --days N` queues the Shorts already published, one call every 20 s (each call costs YouTube API quota).
 - **Open:** whether YouTube shows a custom thumbnail on every Shorts surface. The Shorts feed itself plays the video; the thumbnail shows on the channel's Shorts tab, in search and in suggestions. This is the open check from docs/29b.
+## M20 L1 + L2 — Long-form episodes: schema, settings, moment selection (D122) (2026-11-25)
+**Branch:** longform-l1 (PR #108), longform-l2 · **Plan:** development-plan/M20-longform.md · **Migration:** 0058
+
+### What was built
+- **L1:**
+  - `0058_longform.sql` adds the tables `episodes` and `episode_items`, the private bucket `episodes` (2 GB per file where the storage schema has the column) and 27 `longform.*` settings, including `longform.rank_weights`.
+  - `LongformConfig.load()` reads them.
+  - Staging overrides are in `supabase/seed/staging.sql`; the settings are documented in docs/16.
+- **L2:**
+  - `longform/selector.py` (pure logic):
+    - estimated length = the longer of the spike window and the clip cut, plus lead and tail, clamped to 15–45 s;
+    - ranking = score, capped spike z, log Short views, freshness;
+    - variety: per-creator count and seconds, one moment per topic;
+    - fill up to the target, never over the maximum, and skip the day when the total is under `min_s`;
+    - countdown order built backwards from #1, so one creator never plays twice in a row when another creator is left.
+  - `longform/pool.py`: the candidate SQL. It excludes restricted or blocked creators, spoilers, any safety flag set to `true`, rejects other than the allowed Shorts-only reasons, and clips used in an episode within `reuse_after_days`.
+  - `longform/planner.py`: `plan_episode` (idempotent per day; event plus Telegram summary), `due_tick` (scheduler task `longform_plan` every 300 s; enqueues `longform.plan` once the build hour has come, deduplicated per day) and the job handler.
+  - Triggers: CLI `sixstars longform build [--date]` and `POST /v1/longform/build` (n8n token).
+
+### Results
+- Unit tests: 4187 passed. Long-form tests: 8 unit and 8 integration (local Postgres 17), all passing.
+- `mypy --strict src/` and ruff are clean.
+- The pool query, run read-only on production for the last 48 h: 60 candidates from 50 creators, about 30 minutes of estimated moments (34 live, 26 VOD). That is enough for a 12-minute episode.
+
+### Deviations
+- Every clip stores `safety_flags` as an object of booleans (all false), so the pool excludes a clip only when a flag is `true`.
+- The countdown uses a greedy backwards build instead of swaps. Swaps could not separate a creator who holds the top three.
+
+### Open issues / next
+- **STOP (L2):** with `longform.enabled` on in staging, the owner reviews the Telegram plan summaries for 2 days.
+- The staging deploy was blocked by a full disk. #109 adds a prune before the pull.
+- Next: L3 (re-download and 16:9 segment render).
+
+## M20 L3 + L4 — Long-form episodes: re-download, 16:9 segments, assembly (D122) (2026-11-25)
+**Branch:** longform-l3 · **Plan:** development-plan/M20-longform.md · **Migration:** 0059
+
+### What was built
+- **Two-phase build** (`longform/build.py`):
+  - Phase 1, `longform.item`, one job per moment:
+    - re-downloads the clip plus room to widen it (`fetch_pad_s`), from the VOD, or for live clips from the session's archive VOD (`live_sessions.vod_source_id`; no archive means the moment is dropped);
+    - transcribes the file locally (faster-whisper, `longform.whisper_model`, no hosted cost);
+    - aligns it and keeps the file and the segment words on the item.
+  - When nothing is still planned: the kept moments are renumbered 1..k without gaps (the `#N` badge is burned in, so the numbers are final before rendering). Then phase 2, `longform.render`, renders each segment and deletes its download.
+  - The last render queues `longform.assemble`. Every job is safe to re-run.
+- **`longform/align.py`** (pure logic):
+  - finds the clip in the file by word votes, which fixes live drift and edit-list offsets;
+  - widens the cut toward the moment length (60% before the clip);
+  - snaps both ends to speech pauses;
+  - clamps the result to 15–45 s.
+- **`longform/subs16x9.py`**: one ASS file per segment, with the canvas as PlayRes. It holds the captions (profanity masked; the audio is bleeped), the `#N` badge (2 s), the creator credit (3 s) and the brand mark. Every size comes from `longform.style`.
+- **`longform/segment.py`**: scale and pad to the canvas (never cropped); two-pass loudnorm through `factory.audio`; x264 with a fixed 2 s GOP, so segments join without re-encoding.
+- **`longform/assemble.py`** and **`longform/chapters.py`**:
+  - cold open (the last 5 s of #1 with a line on top), segments N..1, end card, joined with `-c copy` and faststart;
+  - YouTube chapters (00:00, at least 3, each at least 10 s), title, description with every streamer's link;
+  - a 1280×720 thumbnail (a frame of #1 plus "TOP N");
+  - TUS upload to the `episodes` bucket, status `ready`, Telegram notice.
+- **`storage.py`**: `upload_resumable` (TUS, 6 MB chunks, resumes from the server's offset). The fake supports it too.
+- **Migration 0059** adds `longform.auto_build` (default off), `longform.cut` and `longform.style`; adds `preset` and `bufsize` to `longform.render` where missing; adds `episode_items.source_path` and `episode_items.words`.
+- The pool now takes English moments only, because episode captions come from the local transcript and never from a paid translation.
+- Triggers: CLI `sixstars longform render [--date]` and `POST /v1/longform/build {"render": true}`.
+
+### Results
+- Unit tests: 4226 passed. Long-form tests: 30 unit tests, including a real ffmpeg render and a real episode join (1920×1080, 30 fps, AAC 48 kHz, thumbnail 1280×720), and 20 integration tests.
+- `mypy --strict src/` and ruff are clean.
+
+### Deviations
+- The title and description are built from the clips' existing titles (titles v2) instead of a new PL1 prompt, so there is no new AI cost. PL1 can follow after the owner has seen the first episode.
+- The thumbnail is an ffmpeg frame plus text, not the Playwright cover engine (which is 9:16 only).
+- There is no audio crossfade between segments: every segment ends on a speech pause and is loudness-normalised on its own.
+
+### Open issues / next
+- Staging YouTube cookies (`/secrets/youtube_cookies.txt`) are not in Netscape format, so YouTube VOD downloads fail on staging. Twitch moments are not affected.
+- The staging scheduler had not planned the first episode by 10:29 UTC. Investigate after this deploy.
+- Next: L5 (console Episodes page and API), then L6 (publishing).
+
+## M20 L5 — Long-form episodes: console Episodes page, whisper model fix (D122) (2026-11-25)
+**Branch:** longform-l5 · **Plan:** development-plan/M20-longform.md · **Migration:** 0060
+
+### What was built
+- **API** (`api/routes_episodes.py`; same token and read-only transaction as `/v1/admin/*`):
+  - `GET /v1/admin/episodes` lists episodes with moment counts (rendered and dropped).
+  - `GET /v1/admin/episodes/{id}` returns the episode, its moments in playback order (dropped ones last), the chapters, the YouTube text and its events.
+  - `GET /v1/admin/episodes/{id}/media` returns 1 h signed URLs for the MP4 and the thumbnail.
+- **Console**:
+  - an `Episodes` entry under Content;
+  - a list page;
+  - a detail page with a 16:9 player (`objectFit: contain`, thumbnail as poster), clickable chapters that seek the video, a download link, the moments table, title, tags and description.
+- **Migration 0060**: `longform.whisper_model` goes from `small` to `medium`.
+  - The image bakes only `medium` and runs with `HF_HUB_OFFLINE=1`.
+  - With `small`, every fetch failed with "transcription failed in modes ['local']" on the first staging build.
+  - Staging was set by hand to unblock that build; the migration only changes a value still at `small`.
+
+### Staging
+- First episode build (`3d54a80d…`, 2026-11-25, 18 Twitch moments) was started after the owner approved the picks. `longform.auto_build` is on in staging.
+
+### Open issues / next
+- L6: publish privately through Upload-Post (URL mode), caps, takedowns, guardian.
+- The console is deployed by hand on Vercel (staging and production) after the merge.
+- The PR "longform: download moments through the residential proxy" covers YouTube moments. The staging server's `.env` still needs `PROXY_URL` / `PROXY_STICKY_PORT_*` / `POT_PROVIDER_URL`, the same as production.
+
+## M20 go-live — Long-form episodes: publish, generated packaging, AI thumbnail, mix/creator days (D122) (2026-11-25)
+**Branch:** longform-golive · **Migration:** 0061 · **Owner go:** production and `publish_mode=public` approved 2026-11-25
+
+### What was built
+- **Day formats** (`longform/rotation.py`, `selector.select_creator_day`, planner):
+  - Days alternate between a mix day (many creators, 10–14:30 min) and a creator day (one creator, 6–10 min). The rotation follows the last built episode.
+  - The creator is the one with the most good moments in 7 days, with a 14-day cooldown. If nobody has enough, the day falls back to a mix day.
+  - New columns `episodes.format` and `featured_creator_id`.
+- **Packaging** (`longform/package.py`, prompt P14 `p14_episode_package`, writer model):
+  - writes the title, intro, 3 hashtags (`#GTA6` first), tags, thumbnail words and picture brief;
+  - `clean` enforces every limit; the template is the fallback;
+  - the description is intro → chapters → credits → footer → hashtags, with no `#Shorts`.
+- **Thumbnail** (`longform/thumb.py`, `clients/openai_images.py`, template `covers/compose/templates/thumb_16x9.html`, style `assets/longform/thumb_style.md`):
+  - OpenAI image edit (`gpt-image-2.6-sunburst`, high quality, 1536x864) from the #1/#2 peak frames, plus the creator's avatar on a creator day;
+  - our own quiet typography on top;
+  - fallbacks: retry without the avatar, then the #1 frame;
+  - daily budget `longform.thumb.usd_max`.
+- **Publish (L6)** (`longform/publish.py`, job `longform.publish`, scheduler task `longform_publish`):
+  - `UploadPostClient.upload_video_url`: Upload-Post fetches a 6 h signed URL and gets `thumbnail_url`, tags and category 20;
+  - idempotent (`episode:<id>:<account>`, request id `episode-<id>`);
+  - refuses unless enabled, `publish_mode` is not off, and posting is live (emergency stop and dry run respected);
+  - non-production is always private;
+  - waits for the next tick when the YouTube 24 h platform limit is used.
+- **Takedowns** (`longform/takedown.py`, from `guardian.enforce.act_on_creator`): episodes of an actioned creator are unpublished or cancelled, with a notify. If the unpublish fails, the notify carries the manual step.
+- **Console**: Format column; the detail page shows the creator, the thumbnail with its source and brief, hashtags, privacy and the YouTube link.
+
+### Deviations from the plan
+- Caps: instead of adding episodes to the Shorts history, `publish` counts posts plus episodes of the account in 24 h against `posting.platform_max_24h.youtube`. The Shorts lanes still cap themselves at `cap_24h` (≤ 28), so one episode a day fits.
+- No separate stats collector or stuck-episode alert yet. The guardian's stuck-job check covers the jobs.
+- The thumbnail has no OCR QA step: the model is told never to draw text, and our words are rendered by the template.
+
+### Open issues / next
+- OpenAI credit must be funded (incident 2026-11-23), or every thumbnail falls back to the frame. The key may also need organisation verification for GPT Image models.
+- Staging `.env` still lacks the proxy variables for YouTube-sourced moments.
+- 2026-11-26, owner decision: creator days take clips scored 5.5 or more (`longform.solo.min_score`, migration 0062). Mix days keep 7. At 7, only 2 creators had enough moments in a week.

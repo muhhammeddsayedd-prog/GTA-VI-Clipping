@@ -18,7 +18,14 @@ import uvicorn
 from fastapi import Depends, FastAPI
 
 from sixstars import db
-from sixstars.api import errors, routes_admin, routes_control, routes_health, routes_triggers
+from sixstars.api import (
+    errors,
+    routes_admin,
+    routes_control,
+    routes_episodes,
+    routes_health,
+    routes_triggers,
+)
 from sixstars.api.auth import require_any_token, require_token, warn_if_weak_token
 from sixstars.api.middleware import RequestMiddleware
 from sixstars.config import env
@@ -58,6 +65,7 @@ def create_app() -> FastAPI:
     app.include_router(routes_triggers.read_router, dependencies=either)
     app.include_router(routes_control.router, dependencies=either)
     app.include_router(routes_admin.router, dependencies=either)
+    app.include_router(routes_episodes.router, dependencies=either)
     return app
 
 

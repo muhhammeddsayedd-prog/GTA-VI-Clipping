@@ -46,6 +46,12 @@ PROVIDERS: tuple[Provider, ...] = ("openai", "groq")
 AUDIO_SAMPLE_RATE = 16000
 LOCAL_COMPUTE_TYPE = "int8"
 DECODE_TIMEOUT_S = 600
+# A provider that refused the account (no credit left, bad key) is not called again for this long in this
+# process: the request cannot succeed until the owner acts, and each try costs the render its retries.
+ACCOUNT_COOLDOWN_S = 600
+ACCOUNT_STATUSES = frozenset({401, 403})
+ACCOUNT_WORDS = ("credit", "quota", "billing")
+_account_blocked_until: dict[str, float] = {}
 
 
 class TranscriptionError(ClientError):
@@ -152,6 +158,29 @@ def provider_order(preferred: str, configured: set[str]) -> list[Provider]:
     return [name for name in ordered if name in configured]
 
 
+def is_account_problem(exc: Exception) -> bool:
+    """True when a hosted provider refused the account itself (bad key, no credit left), which no retry
+    or other request can fix until the owner acts. Pure."""
+    if not isinstance(exc, ApiError):
+        return False
+    if exc.status in ACCOUNT_STATUSES:
+        return True
+    message = exc.message.lower()
+    return exc.status == 429 and any(word in message for word in ACCOUNT_WORDS)
+
+
+def account_alert(provider: str, exc: ApiError) -> None:
+    """Tell the owner that a hosted transcription account is unusable (Telegram, `warn`)."""
+    from sixstars import notify
+
+    notify.send(
+        "warn",
+        f"Transcription: {provider} account refused (HTTP {exc.status})",
+        f"{exc.message[:200]}\nLive spike clips fall back to the slow local model until this is fixed "
+        "(add credit or replace the key).",
+    )
+
+
 def budget_ok() -> bool:
     """False when today's hosted transcription spend has reached `transcribe.daily_budget_usd`."""
     return usage.spent_today(PROVIDERS) < settings.get_float("transcribe.daily_budget_usd")
@@ -210,7 +239,8 @@ class Transcriber:
 
     def _hosted(self, audio_path: Path, language: str | None) -> Transcript:
         preferred = self._express_provider or settings.get_str("transcribe.express_provider")
-        order = provider_order(preferred, self.configured_providers())
+        configured = self.configured_providers()
+        order = provider_order(preferred, configured)
         if not order:
             raise NotConfiguredError(
                 "no hosted transcription provider is configured (OPENAI_API_KEY or GROQ_API_KEY)"
@@ -218,12 +248,20 @@ class Transcriber:
         if audio_path.stat().st_size > HOSTED_MAX_BYTES:
             raise TranscriptionError(f"{audio_path.name} is larger than the 25 MB hosted transcription limit")
         last_error: Exception | None = None
+        now = time.monotonic()
         for provider in order:
+            if _account_blocked_until.get(provider, 0.0) > now:
+                self._log.info("transcribe_provider_cooling_down", provider=provider)
+                continue
             try:
                 return self._hosted_call(provider, audio_path, language)
             except (ApiError, httpx.TransportError, ValueError, KeyError) as exc:
                 last_error = exc
                 self._log.warning("transcribe_provider_failed", provider=provider, error=type(exc).__name__)
+                if isinstance(exc, ApiError) and is_account_problem(exc):
+                    _account_blocked_until[provider] = time.monotonic() + ACCOUNT_COOLDOWN_S
+                    self._log.error("transcribe_account_refused", provider=provider, status=exc.status)
+                    account_alert(provider, exc)
         raise TranscriptionError(f"hosted transcription failed with {', '.join(order)}") from last_error
 
     def _hosted_call(self, provider: Provider, audio_path: Path, language: str | None) -> Transcript:

@@ -210,6 +210,12 @@ jobs:
           tag="$2"
           previous="$(grep -E '^IMAGE_TAG=' .env | tail -n 1 | cut -d= -f2- || true)"
           echo "previous image tag: ${previous:-none}"
+          # Free disk before the pull (each app image is about 7.5 GB; a full disk failed the 2026-11-25 staging
+          # deploy). Removes images that no container uses and that were built more than 24 h ago: the running
+          # image is in use, and an image built today (e.g. pulled by a failed deploy) is kept.
+          echo "disk before pull: $(df -h / | tail -n 1)"
+          docker image prune -af --filter "until=24h" >/dev/null || true
+          echo "disk after prune: $(df -h / | tail -n 1)"
           # Pull with the new tag first; .env is changed only when the image is really there.
           IMAGE_TAG="$tag" docker compose pull --quiet
           if grep -qE '^IMAGE_TAG=' .env; then

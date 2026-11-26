@@ -325,6 +325,19 @@ class Renderer:
         finally:
             page.close()
 
+    def render_page(
+        self, template: str, size: tuple[int, int], data: Mapping[str, Any], out_png: Path
+    ) -> dict[str, Any]:
+        """Any template in `templates/` at any canvas size (the 16:9 episode thumbnail, M20)."""
+        page = self._browser.new_page(viewport={"width": size[0], "height": size[1]}, device_scale_factor=1)
+        try:
+            page.goto((TEMPLATES / template).as_uri())
+            result: dict[str, Any] = page.evaluate("data => renderCover(data)", dict(data))
+            page.locator("#canvas").screenshot(path=str(out_png), type="png")
+            return result
+        finally:
+            page.close()
+
 
 _renderer: Renderer | None = None
 

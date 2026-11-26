@@ -44,6 +44,7 @@ from sixstars.ai.schemas import (
     ClipWriting,
     CoverLines,
     CoverQa,
+    EpisodePackage,
     Layout,
     Moment,
     PermissionVerdict,
@@ -86,6 +87,7 @@ P10 = "p10_sentence_ends"
 P11 = "p11_title_writer"
 P12 = "p12_cover_hookline"
 P13 = "p13_cover_qa"
+P14 = "p14_episode_package"
 
 # Shapes fixed by docs/15 (prompt contract, not runtime settings).
 SPIKE_BATCH_SIZE = 10
@@ -121,6 +123,7 @@ MAX_TOKENS: dict[str, int] = {
     P11: 2500,
     P12: 1500,
     P13: 1200,
+    P14: 3000,
 }
 # Reasoning depth per prompt. The clip writer and the layout box are judgement calls worth more thought;
 # the classifiers are not.
@@ -139,6 +142,7 @@ EFFORT: dict[str, Effort] = {
     P11: "low",
     P12: "low",
     P13: "low",
+    P14: "medium",
 }
 
 _log = get_logger("ai")
@@ -302,7 +306,7 @@ def _writer_model() -> str:
 
 
 # The role each prompt takes its model from when `ai.model.<prompt_id>` is not set (docs/15).
-WRITER_PROMPTS = frozenset({P2, P3, P4, P8})
+WRITER_PROMPTS = frozenset({P2, P3, P4, P8, P14})
 MODEL_SETTING_PREFIX = "ai.model."
 PROVIDERS = frozenset({"anthropic"})
 
@@ -1198,3 +1202,18 @@ def translate_segments(
             for source, item in zip(batch, reply.segments, strict=True)
         )
     return translated
+
+
+# ── P14 episode_package (M20 long-form episodes) ─────────────
+
+
+def write_episode_package(
+    values: dict[str, object],
+    *,
+    client: AnthropicClient | None = None,
+    episode_id: str | None = None,
+) -> EpisodePackage:
+    """P14: title, description intro, hashtags, tags and thumbnail words + picture of one episode. One call
+    a day on the writer model; the caller falls back to the template text on any error."""
+    _guard(P14, "vod")
+    return _ask(P14, EpisodePackage, model_for(P14), values, client, ref_id=episode_id)

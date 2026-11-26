@@ -21,6 +21,7 @@ the object path. `clips.storage_path` holds the whole key. A clip thumbnail (con
 it as `clips/thumbs/<env>/<yyyy>/<mm>/<dd>/<clip_id>.jpg`, in `clips.thumb_path`.
 """
 
+import base64
 from collections.abc import Iterable, Sequence
 from datetime import UTC, datetime
 from pathlib import Path
@@ -39,6 +40,9 @@ CACHE_CONTROL_S = "3600"
 SIGNED_URL_TTL_S = 3600
 THUMB_CONTENT_TYPE = "image/jpeg"
 SIGN_PATHS_MAX = 1000  # MAX_OBJECTS_PER_REQUEST of the storage server
+TUS_VERSION = "1.0.0"
+TUS_CHUNK_BYTES = 6 * 1024 * 1024  # Supabase resumable uploads take chunks of exactly 6 MB (docs/14 §8)
+EPISODES_BUCKET = "episodes"
 
 
 class StorageError(ClientError):
@@ -150,6 +154,76 @@ class ClipStorage:
         _http.raise_for_status(SERVICE, endpoint, response)
         return key
 
+    def upload_resumable(self, local_path: Path, key: str, content_type: str = CONTENT_TYPE) -> str:
+        """Upload a large file with the TUS resumable protocol (Supabase recommends it above 6 MB; chunks
+        are exactly 6 MB except the last). Each chunk is retried under the client policy; after a refused
+        chunk the server's offset is read back and the upload resumes there. Returns `key`."""
+        bucket, path = split_key(key)
+        size = local_path.stat().st_size
+        headers = {**self._headers(), "Tus-Resumable": TUS_VERSION, "x-upsert": "true"}
+        metadata = ",".join(
+            f"{name} {base64.b64encode(value.encode()).decode()}"
+            for name, value in (
+                ("bucketName", bucket),
+                ("objectName", path),
+                ("contentType", content_type),
+                ("cacheControl", CACHE_CONTROL_S),
+            )
+        )
+        endpoint = "POST /upload/resumable"
+
+        def create() -> httpx.Response:
+            return self._http.post(
+                f"{self._base()}/upload/resumable",
+                headers={**headers, "Upload-Length": str(size), "Upload-Metadata": metadata},
+            )
+
+        response = _http.send(SERVICE, endpoint, create)
+        _http.raise_for_status(SERVICE, endpoint, response)
+        location = response.headers.get("Location")
+        if not location:
+            raise StorageError("resumable upload answered without a Location")
+        origin = self._base().removesuffix("/storage/v1")
+        upload_url = location if location.startswith("http") else f"{origin}{location}"
+        offset = 0
+        with local_path.open("rb") as handle:
+            while offset < size:
+                handle.seek(offset)
+                chunk = handle.read(TUS_CHUNK_BYTES)
+                answer = self._tus_patch(upload_url, headers, offset, chunk)
+                if answer.status_code in (200, 204):
+                    offset = int(answer.headers.get("Upload-Offset", offset + len(chunk)))
+                    continue
+                server = self._tus_offset(upload_url, headers)
+                if server <= offset and answer.status_code != 409:
+                    _http.raise_for_status(SERVICE, "PATCH /upload/resumable/{id}", answer)
+                offset = server
+        return key
+
+    def _tus_patch(self, url: str, headers: dict[str, str], offset: int, chunk: bytes) -> httpx.Response:
+        def call() -> httpx.Response:
+            return self._http.patch(
+                url,
+                headers={
+                    **headers,
+                    "Upload-Offset": str(offset),
+                    "Content-Type": "application/offset+octet-stream",
+                },
+                content=chunk,
+            )
+
+        return _http.send(SERVICE, "PATCH /upload/resumable/{id}", call)
+
+    def _tus_offset(self, url: str, headers: dict[str, str]) -> int:
+        """The bytes the server already has for this upload (HEAD)."""
+        endpoint = "HEAD /upload/resumable/{id}"
+        head = _http.send(SERVICE, endpoint, lambda: self._http.head(url, headers=headers))
+        _http.raise_for_status(SERVICE, endpoint, head)
+        try:
+            return int(head.headers["Upload-Offset"])
+        except (KeyError, ValueError) as exc:
+            raise StorageError("resumable upload HEAD answered without Upload-Offset") from exc
+
     def delete(self, key: str) -> bool:
         """Delete one object. Returns True when Storage reports it removed (False: it was not there)."""
         bucket, path = split_key(key)
@@ -251,6 +325,9 @@ class FakeClipStorage(ClipStorage):
         split_key(key)
         self.objects[key] = local_path.read_bytes()
         return key
+
+    def upload_resumable(self, local_path: Path, key: str, content_type: str = CONTENT_TYPE) -> str:
+        return self.upload(local_path, key, content_type)
 
     def delete(self, key: str) -> bool:
         split_key(key)

@@ -1119,3 +1119,39 @@ def covers_report(
         with Path(out).open("a", encoding="utf-8") as handle:
             handle.write("\n" + section)
     typer.echo(section)
+
+
+longform_app = typer.Typer(help="Long-form episodes (M20).", no_args_is_help=True)
+app.add_typer(longform_app, name="longform")
+
+
+@longform_app.command("build")
+def longform_build(
+    date_: str = typer.Option("", "--date", help="Episode date YYYY-MM-DD (UTC); default today."),
+) -> None:
+    """Plan the episode of a day (idempotent) and print the result."""
+    from datetime import UTC, date, datetime
+
+    from sixstars.longform.planner import plan_episode
+
+    with _database():
+        day = date.fromisoformat(date_) if date_ else datetime.now(UTC).date()
+        result = plan_episode(day)
+        typer.echo(
+            f"episode {result.episode_id} {result.episode_date} {result.status}: "
+            f"{result.n_moments} moments, ~{result.est_s:.0f}s (new={result.created})"
+        )
+
+
+@longform_app.command("render")
+def longform_render(
+    date_: str = typer.Option("", "--date", help="Episode date YYYY-MM-DD (UTC); default today."),
+) -> None:
+    """Queue the download and render of every moment of a planned episode."""
+    from datetime import UTC, date, datetime
+
+    from sixstars.longform.build import build_day
+
+    with _database():
+        day = date.fromisoformat(date_) if date_ else datetime.now(UTC).date()
+        typer.echo(f"queued {build_day(day)} moments for {day}")

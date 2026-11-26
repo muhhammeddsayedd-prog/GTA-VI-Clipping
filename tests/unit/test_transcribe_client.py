@@ -9,7 +9,7 @@ import pytest
 import respx
 
 from sixstars.clients import transcribe
-from sixstars.clients._http import NotConfiguredError
+from sixstars.clients._http import ApiError, NotConfiguredError
 from sixstars.clients.transcribe import Transcriber, TranscriptionError
 
 VERBOSE = {
@@ -32,6 +32,17 @@ def clip(tmp_path: Path) -> Path:
     path = tmp_path / "clip.flac"
     path.write_bytes(b"fLaC-not-really")
     return path
+
+
+@pytest.fixture(autouse=True)
+def alerts(monkeypatch: pytest.MonkeyPatch) -> list[tuple[str, int]]:
+    """Account alerts sent (no database in unit tests); the cooldown starts empty for every test."""
+    sent: list[tuple[str, int]] = []
+    monkeypatch.setattr(
+        transcribe, "account_alert", lambda provider, exc: sent.append((provider, exc.status))
+    )
+    monkeypatch.setattr(transcribe, "_account_blocked_until", {})
+    return sent
 
 
 @pytest.fixture
@@ -234,3 +245,52 @@ def test_decode_samples_reports_an_unreadable_file(tmp_path: Path) -> None:
     broken.write_bytes(b"not audio")
     with pytest.raises(TranscriptionError, match="could not decode broken.wav"):
         transcribe.decode_samples(broken)
+
+
+@pytest.mark.parametrize(
+    ("status", "message", "expected"),
+    [
+        (429, "You have no credits remaining. Add credits to continue using the API", True),
+        (429, "You exceeded your current quota", True),
+        (429, "Rate limit reached for requests", False),
+        (401, "Incorrect API key provided", True),
+        (403, "forbidden", True),
+        (500, "server error", False),
+    ],
+)
+def test_is_account_problem(status: int, message: str, expected: bool) -> None:
+    exc = ApiError("openai", "POST /v1/audio/transcriptions", status, message)
+    assert transcribe.is_account_problem(exc) is expected
+    assert transcribe.is_account_problem(ValueError("x")) is False
+
+
+@respx.mock
+def test_out_of_credit_alerts_once_and_skips_the_provider_for_a_while(
+    clip: Path, alerts: list[tuple[str, int]], sleeps: list[float]
+) -> None:
+    openai = respx.post(transcribe.OPENAI_URL).mock(
+        return_value=httpx.Response(
+            429,
+            json={"error": {"message": "You have no credits remaining.", "code": "credit_balance_exhausted"}},
+        )
+    )
+    groq = respx.post(transcribe.GROQ_URL).mock(return_value=httpx.Response(200, json=VERBOSE))
+    transcriber = Transcriber(openai_api_key="o", groq_api_key="g", express_provider="openai")
+
+    first = transcriber.transcribe(clip, mode="hosted")
+    calls_after_first = openai.call_count
+    second = transcriber.transcribe(clip, mode="hosted")
+
+    assert first.provider == "groq" and second.provider == "groq"
+    assert openai.call_count == calls_after_first  # cooling down: not called again
+    assert groq.call_count == 2
+    assert alerts == [("openai", 429)]
+
+
+@respx.mock
+def test_every_provider_cooling_down_raises(clip: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(transcribe, "_account_blocked_until", {"openai": float("inf")})
+    openai = respx.post(transcribe.OPENAI_URL).mock(return_value=httpx.Response(200, json=VERBOSE))
+    with pytest.raises(TranscriptionError, match="openai"):
+        Transcriber(openai_api_key="o", express_provider="openai").transcribe(clip, mode="hosted")
+    assert openai.call_count == 0

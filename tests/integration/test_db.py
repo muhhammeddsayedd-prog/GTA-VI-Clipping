@@ -19,8 +19,8 @@ def test_schema_objects_exist() -> None:
     # clip_titles (0040), ai_shadow (0041) and the six clipping-campaign tables of 0050 (clip_campaigns,
     # clip_campaign_creators, clip_campaign_posts, render_profiles, lane_quotas, creator_live_status) and
     # covers
-    # (0044, the cover engine)
-    assert len(tables) == 34
+    # (0044, the cover engine), episodes and episode_items (0058, long-form)
+    assert len(tables) == 36
     assert db.fetch_one("select * from v_queue_depth") is None
     assert db.fetch_all("select * from v_posts_last_24h") == []
 

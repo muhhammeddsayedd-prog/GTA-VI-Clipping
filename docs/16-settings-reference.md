@@ -437,3 +437,44 @@ Campaign lanes, decision D118 (migration 0050). The campaigns themselves live in
 | `twitch_clips.campaign_first` | `true` | Viewer clips of campaign streamers are read per broadcaster and come before the game-wide list, inside `twitch_clips.daily_cap`. |
 | `lanes.return_unused_at_utc` | `18` | From this UTC hour (20:00 Cairo) unused campaign quota goes back to the Normal lane for the rest of the day. Before it, Normal posts leave room for the campaign minimums still open. |
 | `lanes.campaign_gap_s` | `3600` | Seconds between two posts of the same campaign on one account. |
+
+## Long-form episodes
+
+One daily 1920×1080 "TOP N" YouTube episode built from moments the engine already clipped (D122, development-plan/M20, docs/31). Migration 0058.
+
+| Key | Default | Meaning |
+|---|---|---|
+| `longform.enabled` | `false` | Master switch (D122, development-plan/M20). Off: no episode is planned, built or published. Staging: `true`. Migration 0058. |
+| `longform.publish_mode` | `"off"` | `off` = build only (console preview), `private` = upload as a private YouTube video, `public` = publish. Staging is always private. Production starts `private`; `public` needs the owner's go. |
+| `longform.build_hour_utc` | `10` | UTC hour the daily episode is planned and built. |
+| `longform.publish_hour_utc` | `16` | UTC hour the ready episode is uploaded. Keep it outside `youtube_main.hourly_hours_utc`. |
+| `longform.pool_hours` | `48` | Clips created within this many hours are candidates. Staging: `72`. |
+| `longform.pool_statuses` | `["approved","posted","expired"]` | Clip statuses that are candidates (passed the quality gate). |
+| `longform.pool_reject_reasons` | `["creator_daily_cap","duplicate_topic","unreadable_subtitles","creator_tier_express"]` | Rejected clips with one of these reasons are candidates too: they were refused by Shorts-only rules. |
+| `longform.min_score` | `7` | Minimum clip score (Claude, 1–10). Staging: `6`. |
+| `longform.target_s` | `720` | Target length of the moments together, in seconds. |
+| `longform.min_s` | `600` | Below this the day is skipped (notify), never padded. |
+| `longform.max_s` | `870` | Hard maximum (14:30), under YouTube's 15 min default. |
+| `longform.segment_min_s` | `15` | Shortest moment, in seconds. |
+| `longform.segment_max_s` | `45` | Longest moment, in seconds. |
+| `longform.lead_s` | `3` | Seconds kept before the build-up starts. |
+| `longform.tail_s` | `2` | Seconds kept after the payoff pause. |
+| `longform.max_per_creator` | `3` | Most moments of one creator per episode. |
+| `longform.max_creator_s` | `90` | Most seconds of one creator per episode. |
+| `longform.reuse_after_days` | `7` | A clip can be in a new episode again after this many days. |
+| `longform.fetch_pad_s` | `5` | Extra seconds downloaded on each side of a moment, for alignment. |
+| `longform.whisper_model` | `"medium"` | Local faster-whisper model for alignment and subtitles (no hosted cost). Must be baked into the image (`docker/Dockerfile` `WHISPER_MODEL`); the workers run offline (0060). |
+| `longform.render` | `{"width": 1920, "height": 1080, "fps": 30, "crf": 20, "maxrate": "8M"}` | Segment encode: full frame, scale + pad, no crop. Every segment shares it so they join without re-encoding. |
+| `longform.priority` | `15` | Job priority on the normal queue (below hourly 110, spikes 90, VODs 30). |
+| `longform.keep_days` | `7` | Local and Storage episode files are deleted after this many days. |
+| `longform.cold_open_s` | `5` | Seconds of #1 shown before the countdown. |
+| `longform.end_card_s` | `10` | End card length (room for YouTube end-screen elements). |
+| `longform.rank_weights` | `{"score": 1.0, "spike_z": 1.0, "spike_z_cap": 5.0, "views": 1.0, "fresh": 0.5}` | Ranking of candidates: score × score + spike_z × min(score_z, spike_z_cap) / spike_z_cap + views × (views / best views in the pool) + fresh × (1 − age / pool_hours). |
+| `longform.account_id` | `"youtube_main"` | `platform_accounts` row the episode posts to. |
+| `longform.auto_build` | `false` | On: the moments of a planned episode are downloaded and rendered right after planning. Off: plan only (review the Telegram summary first). Migration 0059. |
+| `longform.cut` | `{"pause_s": 0.4, "snap_before_s": 3.0, "snap_after_s": 3.0, "lead_share": 0.6, "match_tolerance_s": 0.6, "min_matches": 3, "max_shift_s": 12.0}` | How a clip is found in its re-downloaded footage (at least `min_matches` words agreeing within `match_tolerance_s`, at most `max_shift_s` from the expected place), and how the cut is widened toward the moment length (`lead_share` of the extra goes before the clip) with its ends snapped to the nearest speech pause of at least `pause_s`. |
+| `longform.format_cycle` | `["mix", "creator"]` | Day rotation (0061). Each new episode takes the format after the last built one; a skipped day does not break it. `mix` = top moments of many creators; `creator` = one top creator only. |
+| `longform.solo` | `{"pool_hours": 168, "min_s": 360, "target_s": 480, "max_s": 600, "cooldown_days": 14, "min_moments": 8, "min_score": 5.5}` | Creator day (`min_score` from 0062, owner 2026-11-26: creator days take clips scored 5.5+, mix days keep `longform.min_score`): the creator with the most good moments within `pool_hours` who had no creator episode within `cooldown_days`; at least `min_moments` moments and `min_s` seconds, filled to `target_s`, never above `max_s`. Nobody qualifies: the day is a mix day (0061). |
+| `longform.thumb` | `{"ai": true, "model": "gpt-image-2.6-sunburst", "quality": "high", "size": "1536x864", "timeout_s": 240, "usd_max": 0.5, "frames": 2, "max_bytes": 2000000}` | Thumbnail (0061). `ai`: OpenAI image edit from `frames` episode frames (+ the creator picture on a creator day) in the style of `assets/longform/thumb_style.md`; off, refused, failed or over `usd_max` USD today → the #1 frame. The words are ours (template `thumb_16x9.html`). `max_bytes`: YouTube's custom thumbnail limit. |
+| `longform.publish` | `{"video_url_ttl_s": 21600, "wait_timeout_s": 5400, "poll_s": 20, "category_id": "20"}` | Upload (0061): Upload-Post fetches the MP4 from a signed URL valid `video_url_ttl_s`; the result is awaited up to `wait_timeout_s`, polling every `poll_s`; YouTube category 20 = Gaming. |
+| `longform.style` | `see migration 0059` | The 16:9 overlay. Captions bottom-centre; the `#N` badge top-left for `badge_s`; the creator credit bottom-left for `credit_s`; the brand mark top-right; `cold_open_text` and `end_card_text`; `thumb_text_size` for the 1280×720 thumbnail words. |

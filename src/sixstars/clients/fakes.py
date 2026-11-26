@@ -17,6 +17,7 @@ from pydantic import BaseModel
 
 from sixstars.clients.anthropic_client import AnthropicClient, Effort
 from sixstars.clients.apify import ApifyClient, ApifyRun, YouTubeItem, normalise_youtube_item
+from sixstars.clients.openai_images import GeneratedImage, OpenAIImagesClient
 from sixstars.clients.proxy_probe import ProbeResult, ProxyProbe
 from sixstars.clients.transcribe import Mode, Transcriber, Transcript, Word
 from sixstars.clients.twitch import TwitchClient, TwitchClip, TwitchStream, TwitchUser, TwitchVideo
@@ -702,6 +703,37 @@ class FakeUploadPostClient(_Recorder, UploadPostClient):
             }
         return UploadStatus(request_id=first, status="pending", completed=0, total=1)
 
+    def upload_video_url(
+        self,
+        user: str,
+        platform: str,
+        video_url: str,
+        fields: Mapping[str, Any],
+        idempotency_key: str,
+        request_id: str,
+    ) -> UploadStatus:
+        self._record(
+            "upload_video_url",
+            user=user,
+            platform=platform,
+            video_url=video_url,
+            fields=dict(fields),
+            idempotency_key=idempotency_key,
+            request_id=request_id,
+        )
+        if self.upload_error is not None:
+            error, self.upload_error = self.upload_error, None
+            raise error
+        first = self._by_key.setdefault(idempotency_key, request_id)
+        if first == request_id:
+            self.uploads[request_id] = {
+                "user": user,
+                "platform": platform,
+                "fields": dict(fields),
+                "url": video_url,
+            }
+        return UploadStatus(request_id=first, status="pending", completed=0, total=1)
+
     def _result(self, request_id: str) -> PlatformResult:
         platform = str(self.uploads[request_id]["platform"])
         if platform in self.platform_results:
@@ -810,3 +842,44 @@ class FakeYouTubeAnalyticsClient(_Recorder, YouTubeAnalyticsClient):
     def video_report(self, video_ids: Sequence[str], start: Any, end: Any) -> dict[str, VideoAnalytics]:
         self._record("video_report", video_ids=list(video_ids), start=start, end=end)
         return {v: self.reports[v] for v in video_ids if v in self.reports}
+
+
+# ── OpenAI images ────────────────────────────────────────────
+
+
+class FakeOpenAIImagesClient(_Recorder, OpenAIImagesClient):
+    """Image generation without the network. Returns `image` (default: a small solid JPEG) or raises the
+    exceptions in `errors`, one per call, before answering."""
+
+    def __init__(self, image: bytes | None = None, errors: Sequence[Exception] = ()) -> None:
+        self.calls = []
+        self.image = image
+        self.errors = list(errors)
+
+    def is_configured(self) -> bool:
+        return True
+
+    def edit(
+        self,
+        images: Sequence[bytes],
+        prompt: str,
+        *,
+        model: str,
+        size: str,
+        quality: str,
+        output_format: str = "jpeg",
+        ref_id: str | None = None,
+    ) -> GeneratedImage:
+        self._record("edit", images=len(images), prompt=prompt, model=model, size=size, quality=quality)
+        if self.errors:
+            raise self.errors.pop(0)
+        if self.image is None:
+            import io
+
+            from PIL import Image
+
+            out = io.BytesIO()
+            w, h = (int(v) for v in size.split("x"))
+            Image.new("RGB", (w, h), (240, 120, 160)).save(out, format="JPEG")
+            self.image = out.getvalue()
+        return GeneratedImage(self.image, output_format, 0.0)

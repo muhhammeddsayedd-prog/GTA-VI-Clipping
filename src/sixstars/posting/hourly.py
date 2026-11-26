@@ -31,7 +31,9 @@ HOURLY_JOB_TYPE = "post.hourly"
 HOURLY_QUEUE: jobs.Queue = (
     "express"  # posting jobs are short; the normal queue can be busy with a long render
 )
-HOURLY_PRIORITY = 50  # below the spike lane's 90
+# Above the express renders (live.priority_express, 100): the slot job is short and due at a fixed time,
+# and on a busy evening a stream of spike renders kept it waiting for over an hour (2026-11-23).
+HOURLY_PRIORITY = 110
 HEARTBEAT_NAME = "trigger:hourly"
 # Accounts that are simply not part of a lane are not reported every hour.
 QUIET_SKIPS = frozenset({Reason.ACCOUNT_DISABLED, Reason.LANE_NOT_ALLOWED})

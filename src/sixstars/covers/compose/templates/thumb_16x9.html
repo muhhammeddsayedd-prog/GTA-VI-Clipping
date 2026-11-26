@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>episode thumbnail 16x9</title>
+<!--
+  Long-form episode thumbnail (M20 go-live), 1280x720. The picture is the AI image; the text is ours and
+  deliberately quiet: one tracked eyebrow line and a 1-3 word headline in the lower-left corner over a soft
+  corner shade. No outlines, no boxes. The headline stays readable at the 168x94 px size YouTube shows on
+  phones (cap height >= 8% of the frame).
+-->
+<style>
+  html, body { margin: 0; padding: 0; background: #0b0714; }
+  #canvas {
+    position: relative; width: 1280px; height: 720px; overflow: hidden; background: #0b0714;
+    --pink: #ffc2e2;
+  }
+  #bg { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+  #shade {
+    position: absolute; inset: 0;
+    background:
+      radial-gradient(120% 90% at 0% 100%, rgba(11, 7, 20, 0.70) 0%, rgba(11, 7, 20, 0.35) 38%, rgba(11, 7, 20, 0) 62%);
+  }
+  #text { position: absolute; left: 64px; bottom: 58px; max-width: 760px; }
+  #eyebrow {
+    display: flex; align-items: center; gap: 14px; margin: 0 0 14px;
+    font-family: "Inter6", system-ui, sans-serif; font-weight: 650; font-size: 22px;
+    letter-spacing: 0.32em; text-transform: uppercase; color: var(--pink);
+    text-shadow: 0 1px 10px rgba(0, 0, 0, 0.45);
+  }
+  #eyebrow::before { content: ""; width: 34px; height: 2px; background: var(--pink); border-radius: 2px; }
+  #eyebrow:empty { display: none; }
+  #headline {
+    margin: 0; font-family: "Anton6", Impact, sans-serif; font-weight: 400; font-size: 104px;
+    line-height: 0.94; letter-spacing: 0.01em; text-transform: uppercase; color: #ffffff;
+    text-shadow: 0 2px 22px rgba(0, 0, 0, 0.42); text-wrap: balance;
+  }
+  #headline:empty { display: none; }
+</style>
+<script>
+  // Called by the renderer with { bg, anton, inter, eyebrow, headline }. Fits the headline to 2 lines.
+  function renderCover(data) {
+    if (data.anton) document.fonts.add(new FontFace("Anton6", `url(${data.anton})`));
+    if (data.inter) document.fonts.add(new FontFace("Inter6", `url(${data.inter})`, { weight: "100 900" }));
+    document.getElementById("bg").src = data.bg;
+    document.getElementById("eyebrow").textContent = data.eyebrow || "";
+    const h = document.getElementById("headline");
+    h.textContent = data.headline || "";
+    return Promise.all([document.fonts.ready, document.getElementById("bg").decode().catch(() => null)]).then(() => {
+      let size = 104;
+      while (size > 64 && (h.getBoundingClientRect().height > size * 0.94 * 2 + 4 || h.scrollWidth > 760)) {
+        size -= 4;
+        h.style.fontSize = size + "px";
+      }
+      return { size: size, fits: h.getBoundingClientRect().height <= size * 0.94 * 2 + 4 };
+    });
+  }
+</script>
+</head>
+<body>
+<div id="canvas">
+  <img id="bg" alt="">
+  <div id="shade"></div>
+  <div id="text"><p id="eyebrow"></p><h1 id="headline"></h1></div>
+</div>
+</body>
+</html>
