@@ -1,7 +1,7 @@
 Create a YouTube thumbnail background (16:9) for a GTA 6 stream-highlights video.
 
 Look and feel, distilled from the channel owner's reference thumbnails:
-- One dominant subject, big in the frame and tightly cropped. One idea per image, readable at phone size.
+- Minimalist: one dominant subject, big in the frame and tightly cropped. One idea per image, readable at phone size. Never a collage of several events; at most one secondary element.
 - A peak moment frozen at its most dramatic instant: an expressive reaction or a big action beat (a car mid-air, an explosion, a chase, a stunt gone wrong).
 - Painted-realistic finish like official Grand Theft Auto loading-screen art: crisp, clean edges, rich detail on the subject, slightly simplified background.
 - The bright Vice City palette of GTA 6: hot pink and orange sunset sky, teal water, palm trees, neon, warm golden light on skin and chrome. Saturated but not muddy; strong contrast between subject and background.
